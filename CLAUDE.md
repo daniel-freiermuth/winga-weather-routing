@@ -84,6 +84,12 @@ Before writing any code or changing a technical decision, present a plan and wai
 
 When something is marked complete (requirement done, bug fixed), update the documentation to reflect that status and commit both the code changes and the documentation changes together in the same commit. Do not mark something complete without committing.
 
+The commit message must include `closes #N` (or `fixes #N`) referencing the GitHub issue for the requirement or bug being resolved. GitHub uses this to automatically close the issue and cross-link the commit in the issue timeline.
+
+## Issue Closure Rule
+
+A GitHub issue must not be closed unless the fix or implementation has been confirmed solved — either by explicit user confirmation or by automated testing/validation. Closing an issue solely because the code was written is not sufficient.
+
 ## Two-Table Rule
 
 SPEC.md and BUGS.md each maintain two tables: one for open items (status `open`) and one for closed items (status `done`, `fixed`, `superseded`, or `not needed`). Rows are sorted by ID number within each table. When an item is marked done or fixed, move its row from the open table to the closed table in the same commit.
