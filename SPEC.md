@@ -93,6 +93,7 @@ The isochrone algorithm runs in two sequential phases: a coarse pre-pass that es
 | coarse sector size | 1° | no | Bearing-sector width for pre-pass frontier pruning (reduced from 5° to preserve narrow-passage candidates — see BUG-34) |
 | cone half-angle | 90° | no | Maximum deviation from start→destination bearing allowed in the pre-pass |
 | fine-pass cone half-angle | 100° | no | Maximum heading deviation from the direct start→destination bearing allowed in the fine pass; referenced per OpenCPN MaxDivertedCourse convention (BUG-43) |
+| max heading change per step | 120° | no | Maximum per-step heading change from a frontier point's incoming heading; not applied from the seed point (BUG-44) |
 
 ### Phase 1 — Coarse pre-pass
 
@@ -118,6 +119,7 @@ For each time step, for each frontier point:
 2. Look up wind at the point's position and time step.
 3. For each heading at `headingStep` (5°) resolution:
    - Discard if heading deviates more than 100° from the direct start→destination bearing (BUG-43).
+   - Discard if heading change from parent's incoming heading exceeds 120°; constraint not applied from the seed point (BUG-44).
    - Discard if boatSpeed < minBoatSpeed.
    - Discard if the path segment crosses land.
    - Add to candidates. If within `arrivalRadiusNm` of destination, record as `arrived`.

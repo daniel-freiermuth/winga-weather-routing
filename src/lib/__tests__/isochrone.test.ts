@@ -277,6 +277,54 @@ test('calculate: maxWaveM=0 imposes no wave constraint', async () => {
   assert.ok(route.length >= 2, 'route should be found with no wave constraint');
 });
 
+test('calculate: BUG-44 seed point (parent=undefined) ignores heading-change constraint', async () => {
+  const t0 = new Date('2024-01-01T00:00:00Z');
+  const t1 = new Date('2024-01-01T01:00:00Z');
+  const t2 = new Date('2024-01-01T02:00:00Z');
+  const wind = makeWind(makeGrib([t0, t1, t2]));
+  const polar = makePolar();
+  // Destination east (bearing ≈ 90°), T_bound=null. The seed has heading:0 (initialised
+  // to north). Without the seed exemption, BUG-44 would block headings more than 120°
+  // from heading:0, cutting ~12 in-cone headings (125°–185°) and yielding ~29 frontier
+  // points instead of ~39. With the exemption all 41 cone-valid headings are tried.
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41, lon: 12 },
+    departureTime: t0.toISOString(),
+  };
+  let step1FrontierSize = 0;
+  await algo.calculate(wind, polar, null, req, (pct, frontier) => {
+    if (pct === 75) step1FrontierSize = frontier.length;  // fine-pass step 0
+  });
+  assert.ok(
+    step1FrontierSize >= 35,
+    `step-1 frontier has ${step1FrontierSize} points — expected ≥ 35; seed exemption may be missing (BUG-44)`,
+  );
+});
+
+test('calculate: BUG-44 non-seed heading constraint does not crash or empty the frontier', async () => {
+  const t0 = new Date('2024-01-01T00:00:00Z');
+  const t1 = new Date('2024-01-01T01:00:00Z');
+  const t2 = new Date('2024-01-01T02:00:00Z');
+  const wind = makeWind(makeGrib([t0, t1, t2]));
+  const polar = makePolar();
+  // Destination north (bearing=0°), T_bound=null.
+  // Verifies that the ±120° heading-change constraint from non-seed frontier points
+  // does not crash the algorithm and still produces a live frontier at step 2.
+  // (BUG-44's directional restriction is verified end-to-end via the BUG-34 acceptance test.)
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 43, lon: 11 },
+    departureTime: t0.toISOString(),
+  };
+  const finePayloads: Array<[number, number][]> = [];
+  await algo.calculate(wind, polar, null, req, (pct, frontier) => {
+    if (pct > 50) finePayloads.push(frontier);
+  });
+  assert.ok(finePayloads.length >= 2, 'fine pass should emit at least 2 frontier updates');
+  assert.ok(finePayloads[1].length > 0, 'step-2 frontier must be non-empty with BUG-44 active');
+});
+
 test('calculate: fine pass cone excludes candidates >100° from start→dest bearing (BUG-43)', async () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');

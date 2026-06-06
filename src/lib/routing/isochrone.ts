@@ -138,6 +138,13 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           const deviation = Math.abs(((hdg - startToDestBearing + 180 + 360) % 360) - 180);
           if (deviation > FINE_PASS_CONE_HALF_ANGLE) continue;
 
+          // Seed point (parent===undefined) has no meaningful prior heading — allow all cone-valid
+          // headings unconditionally on step 1 (BUG-44).
+          if (point.parent !== undefined) {
+            const delta = Math.abs(((hdg - point.heading + 180 + 360) % 360) - 180);
+            if (delta > MAX_HEADING_CHANGE) continue;
+          }
+
           let twa = ((hdg - wdir) + 360) % 360;
           if (twa > 180) twa = 360 - twa;
 
