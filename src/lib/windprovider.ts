@@ -1,5 +1,5 @@
 // MultiFileWindProvider: resolves wind and wave lookups across multiple GRIB files.
-// When files overlap spatially and temporally, the most-recently-modified file wins.
+// When files overlap spatially and temporally, the freshest file that covers the requested time wins.
 
 import { GribFileEntry, WindProvider, WindVector } from '../types';
 import { getWindAt, getWaveAt, nearestTimeIndex } from './grib';
@@ -36,15 +36,31 @@ export class MultiFileWindProvider implements WindProvider {
 
   getWind(lat: number, lon: number, timeIdx: number): WindVector {
     const t = this.times[timeIdx];
-    const f = this.sortedFiles.find(e => coversPoint(e, lat, lon)) ?? this.sortedFiles[0];
+    const tMs = t.getTime();
+    const f =
+      this.sortedFiles.find(e =>
+        coversPoint(e, lat, lon) &&
+        e.meta.timeStart.getTime() <= tMs &&
+        e.meta.timeEnd.getTime() >= tMs
+      ) ??
+      this.sortedFiles.find(e => coversPoint(e, lat, lon)) ??
+      this.sortedFiles[0];
     return getWindAt(f.data!, lat, lon, nearestTimeIndex(f.data!, t));
   }
 
   getWave(lat: number, lon: number, t: Date): number | undefined {
     const waveFiles = this.sortedFiles.filter(e => e.data?.swhByTime?.size);
     if (waveFiles.length === 0) return undefined;
-    const f = waveFiles.find(e => coversPoint(e, lat, lon)) ?? waveFiles[0];
-    return getWaveAt(f.data!, lat, lon, t.getTime());
+    const tMs = t.getTime();
+    const f =
+      waveFiles.find(e =>
+        coversPoint(e, lat, lon) &&
+        e.meta.timeStart.getTime() <= tMs &&
+        e.meta.timeEnd.getTime() >= tMs
+      ) ??
+      waveFiles.find(e => coversPoint(e, lat, lon)) ??
+      waveFiles[0];
+    return getWaveAt(f.data!, lat, lon, tMs);
   }
 
   coversPoint(lat: number, lon: number): boolean {

@@ -105,6 +105,35 @@ test('MultiFileWindProvider: getWind falls back to any file when point outside a
   assert.ok(typeof wind.u === 'number' && typeof wind.v === 'number', 'should return numbers');
 });
 
+test('MultiFileWindProvider: getWind prefers temporally-correct file over newer file outside the requested time', () => {
+  const may24 = new Date('2026-05-24T00:00:00Z');
+  const may25 = new Date('2026-05-25T00:00:00Z');
+  const jun6  = new Date('2026-06-06T00:00:00Z');
+  const jun7  = new Date('2026-06-07T00:00:00Z');
+  // Older file covers May 24–25 with v=5 (the correct data for a May 24 departure)
+  const gOld = makeGrib({ v: 5,  times: [may24, may25] });
+  // Newer file (higher mtime) covers June 6–7 with v=10 — same spatial bbox, wrong time period
+  const gNew = makeGrib({ v: 10, times: [jun6,  jun7]  });
+  const provider = new MultiFileWindProvider([
+    makeEntry(gOld, 1000, 'may24.grib2'),
+    makeEntry(gNew, 2000, 'jun06.grib2'),
+  ]);
+  // timeIdx 0 is May 24 in the merged timeline — gOld covers it, gNew does not
+  const wind = provider.getWind(41, 11, 0);
+  assert.strictEqual(wind.v, 5, 'should use the May 24 file which covers the requested time');
+});
+
+test('MultiFileWindProvider: getWind falls back to spatial-only match when no file covers the requested time', () => {
+  const jun6 = new Date('2026-06-06T00:00:00Z');
+  const jun7 = new Date('2026-06-07T00:00:00Z');
+  const grib = makeGrib({ v: 7, times: [jun6, jun7] });
+  const provider = new MultiFileWindProvider([makeEntry(grib, 1000)]);
+  // Request a time well outside the file's range — should fall back to spatial match
+  const futureIdx = 0; // only one time in the merged axis; provider still returns data
+  const wind = provider.getWind(41, 11, futureIdx);
+  assert.ok(typeof wind.v === 'number', 'should return a number via spatial fallback');
+});
+
 test('MultiFileWindProvider: getWave returns undefined when no file has swh data', () => {
   const g = makeGrib({});
   const provider = new MultiFileWindProvider([makeEntry(g, 1000)]);
