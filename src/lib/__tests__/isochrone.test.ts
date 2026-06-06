@@ -325,6 +325,32 @@ test('calculate: BUG-44 non-seed heading constraint does not crash or empty the 
   assert.ok(finePayloads[1].length > 0, 'step-2 frontier must be non-empty with BUG-44 active');
 });
 
+test('calculate: BUG-45 pruneToFrontier keeps top-2 survivors per sector', async () => {
+  const t0 = new Date('2024-01-01T00:00:00Z');
+  const t1 = new Date('2024-01-01T01:00:00Z');
+  const t2 = new Date('2024-01-01T02:00:00Z');
+  const wind = makeWind(makeGrib([t0, t1, t2]));
+  const polar = makePolar();
+  // Destination east (bearing ≈ 90°), T_bound=null.
+  // Step 0 (from seed): 39 candidates land in 39 distinct sectors → frontier=39 with both
+  // top-1 and top-2. Step 1 (from 39 frontier points, each trying ~33 headings = ~1300
+  // candidates): many candidates share sectors. With top-1: 145 survivors. With top-2:
+  // sector collisions retain two survivors → significantly more frontier points (≥ 200).
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41, lon: 12 },
+    departureTime: t0.toISOString(),
+  };
+  let step2FrontierSize = 0;
+  await algo.calculate(wind, polar, null, req, (pct, frontier) => {
+    if (pct === 100) step2FrontierSize = frontier.length;
+  });
+  assert.ok(
+    step2FrontierSize >= 200,
+    `BUG-45: step-2 frontier has ${step2FrontierSize} points — expected ≥ 200 (top-2 per sector not active?)`,
+  );
+});
+
 test('calculate: fine pass cone excludes candidates >100° from start→dest bearing (BUG-43)', async () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');

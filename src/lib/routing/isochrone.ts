@@ -257,8 +257,15 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
   }
 }
 
-// Farthest-from-start dominance: within each bearing sector keep the candidate
-// that has travelled the greatest distance from the original start.
+// Farthest-from-start dominance: within each bearing sector keep the two candidates
+// that have travelled the greatest distance from the original start (BUG-45).
+// Keeping two per sector instead of one allows a channel-threading path and an
+// open-water escape in the same 1° sector to coexist — with single-survivor selection
+// the farther (open-water) point always won, silently discarding the channel path.
+// OpenCPN uses topologically correct closed-contour merging instead; top-2 is a
+// deliberate simplification that fixes the immediate failure mode (D16). The full
+// closed-contour merge remains a candidate for a future sprint if top-2 proves
+// insufficient.
 // g+h (A*) was attempted but fails here because all step-N candidates share the
 // same g value (wind.times[N]), reducing g+h to min-h = min haversine-to-destination.
 // For routes requiring a southward detour (e.g. Öresund), min-h prefers near-start
@@ -273,7 +280,7 @@ function pruneToFrontier<T extends { lat: number; lon: number }>(
   sectorSize: number,
 ): T[] {
   type Entry = { point: T; distSq: number };
-  const sectors = new Map<number, Entry>();
+  const sectors = new Map<number, Entry[]>();
 
   for (const p of candidates) {
     const brng = bearingTo(startLat, startLon, p.lat, p.lon);
@@ -283,13 +290,18 @@ function pruneToFrontier<T extends { lat: number; lon: number }>(
     const dLon = (p.lon - startLon) * Math.cos(startLat * (Math.PI / 180)); // cosine correction: longitude degrees are shorter than latitude degrees away from the equator
     const distSq = dLat * dLat + dLon * dLon;
 
-    const existing = sectors.get(sector);
-    if (!existing || distSq > existing.distSq) {
-      sectors.set(sector, { point: p, distSq });
+    const existing = sectors.get(sector) ?? [];
+    if (existing.length < 2) {
+      existing.push({ point: p, distSq });
+      sectors.set(sector, existing);
+    } else {
+      // Replace the closer of the two survivors if the new candidate is farther.
+      const minIdx = existing[0].distSq <= existing[1].distSq ? 0 : 1;
+      if (distSq > existing[minIdx].distSq) existing[minIdx] = { point: p, distSq };
     }
   }
 
-  return Array.from(sectors.values()).map((e) => e.point);
+  return [...sectors.values()].flatMap((arr) => arr.map((e) => e.point));
 }
 
 // includeEnd=true appends the destination as the final waypoint (normal arrival).
