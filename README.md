@@ -11,6 +11,7 @@ A SignalK plugin that calculates time-optimal sailing routes using GRIB2 weather
 - Polar diagrams in ORC/OpenCPN semicolon-delimited CSV format
 - Automatic land avoidance using [GSHHG](https://www.soest.hawaii.edu/pwessel/gshhg/) high-resolution coastlines
 - Optional 0.5 NM safety margin that closes narrow passages below the algorithm's resolution
+- Optional max wind speed and max wave height routing constraints
 - Routes saved to SignalK `resources/routes` — visible in freeboard-sk automatically
 - Leaflet-based webapp with live isochrone rendering during calculation
 - Runs on Raspberry Pi 3–5
@@ -45,11 +46,22 @@ Open the webapp at `http://<your-signalk-host>:3000/signalk-weather-routing/`.
 1. Set a departure point and destination on the map (or use **Run test** for a pre-filled example)
 2. Set a departure time
 3. Optionally enable **Safety margin** to close narrow passages near the route
-4. Click **Calculate Route**
+4. Optionally set **Max wind** and/or **Max wave** routing constraints (see below)
+5. Click **Calculate Route**
 
 Isochrones are drawn live as the calculation progresses. The finished route is saved to SignalK resources and displayed with wind barbs and ETA at each waypoint.
 
 The **Land overlay** checkbox shows the GSHHG coastline used for routing. When the safety margin is enabled, the dilated (merged) polygons appear in light gray beneath the original coastline.
+
+## Routing constraints
+
+The **Max wind** and **Max wave** fields in the Routing Options panel let you restrict the route to areas where conditions are within your limits.
+
+**Max wind (knots):** Any candidate position where the forecasted wind speed exceeds this value is discarded — the router will not route through that area regardless of the time savings. Leave empty for no limit.
+
+**Max wave (metres):** Any candidate position where the significant wave height exceeds this value is discarded. Only applied when wave data (SWH bands) is present in the loaded GRIB file — OpenSkiron ICON-EU EWAM files include both wind and wave bands. Leave empty for no limit.
+
+Both constraints are independent. Setting max wind to 20 kn and leaving max wave empty means only wind is constrained.
 
 ## Polar diagram format
 
@@ -60,6 +72,10 @@ twa/tws;6;8;10;12;14;16;20
 52;4.5;5.2;5.8;6.1;6.3;6.4;6.5
 ...
 ```
+
+**Wind speed limits:** The router treats the polar's highest TWS column as a hard cap. Any forecast wind above that value is evaluated at the maximum column speed — the router does not extrapolate beyond measured data. For a polar whose highest column is 20 kn, a 30 kn forecast cell gives the same boat speed as a 20 kn cell. This prevents the router from preferring high-wind areas because of artificially inflated speed predictions.
+
+**Minimum TWA:** The polar's lowest TWA row is the tacking angle. The router returns zero speed for any heading tighter than this — the boat cannot sail into the wind.
 
 ## Land data (GSHHG)
 
