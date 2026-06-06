@@ -8,7 +8,6 @@
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
 | [BUG-30](https://github.com/kristianwiklund/signalk-weather-routing/issues/89) | The codebase contains no explanatory comments. The coding standard requires comments that explain non-obvious "why" — hidden constraints, subtle invariants, workarounds — but none are present anywhere in the source. Partially addressed — see investigation notes. |
 | [BUG-32](https://github.com/kristianwiklund/signalk-weather-routing/issues/92) | When the destination is set to 62.3980°N 17.4875°E (Alnön, Sundsvall), the final leg of the calculated route crosses land. |
-| [BUG-33](https://github.com/kristianwiklund/signalk-weather-routing/issues/93) | After the BUG-10/BUG-32 fix, the standard test route (Run test button, both points confirmed in open water) fails with "could not open event stream: stream connection failed". System is not functional. |
 
 ## Fixed Bugs
 
@@ -306,3 +305,7 @@ Root cause is the same family as BUG-10: no validation that the destination is i
 ### Fix
 
 Same fix as BUG-10 — `isPointOnLand` check for the end point added alongside the start check in the `/calculate` handler. Returns HTTP 400 with "Destination is on land — move it to open water".
+
+### Regression during deployment
+
+First deploy used `npm install --ignore-scripts` in the source build step, which skipped `gdal-async`'s postinstall hook. The bundled `gdal-async` in the tarball then had no native binary, causing the plugin to fail to load entirely. Fixed by following DEVELOPMENT.md correctly: `npm install` (no flags) in step 2 so the binary is downloaded, `--ignore-scripts` only in step 3 (tarball install).
