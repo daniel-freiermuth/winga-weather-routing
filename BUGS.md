@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-37](https://github.com/kristianwiklund/signalk-weather-routing/issues/99) | When no route can be found — e.g. departure 2026-06-06 16:00 with the current test GRIBs, start outside Gothenburg, destination Stockholm — the system enters a broken state ("completely b0rks"). Exact failure mode (UI crash, error display, hung state, wrong status) not yet established. |
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
 | [BUG-34](https://github.com/kristianwiklund/signalk-weather-routing/issues/94) | Route from 60.3996°N 18.3403°E to 57.6219°N 11.4313°E (Gothenburg area, west coast of Sweden) never leaves the start area — the algorithm does not find a route through or around Sweden with the test GRIB. |
 | [BUG-30](https://github.com/kristianwiklund/signalk-weather-routing/issues/89) | The codebase contains no explanatory comments. The coding standard requires comments that explain non-obvious "why" — hidden constraints, subtle invariants, workarounds — but none are present anywhere in the source. Partially addressed — see investigation notes. |
