@@ -82,7 +82,9 @@ Before writing any code or changing a technical decision, present a plan and wai
 
 ## Commit Rule
 
-When something is marked complete (requirement done, bug fixed), update the documentation to reflect that status and commit both the code changes and the documentation changes together in the same commit. Do not mark something complete without committing.
+Commit at logical boundaries, not at every file change. A logical boundary is: a requirement implemented, a bug fixed, or a coherent batch of related changes (e.g. several rule updates, a set of documentation corrections). Do not make a separate commit for each individual file edit — accumulate related changes and commit them together.
+
+When something is marked complete (requirement done, bug fixed), the code changes and all associated documentation updates go in the same commit. Do not mark something complete without committing.
 
 The commit message must include `closes #N` (or `fixes #N`) referencing the GitHub issue for the requirement or bug being resolved. GitHub uses this to automatically close the issue and cross-link the commit in the issue timeline.
 
