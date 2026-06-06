@@ -82,6 +82,10 @@ Before writing any code or changing a technical decision, present a plan and wai
 
 When something is marked complete (requirement done, bug fixed), update the documentation to reflect that status and commit both the code changes and the documentation changes together in the same commit. Do not mark something complete without committing.
 
+## Two-Table Rule
+
+SPEC.md and BUGS.md each maintain two tables: one for open items (status `open`) and one for closed items (status `done`, `fixed`, `superseded`, or `not needed`). Rows are sorted by ID number within each table. When an item is marked done or fixed, move its row from the open table to the closed table in the same commit.
+
 ## GitHub Issue Rule
 
 When a new requirement is added to SPEC.md or a new bug is added to BUGS.md, create a corresponding GitHub issue with the same ID and text. When the text of an existing entry is updated in either file, update the corresponding GitHub issue with the same information at the time of the next commit.
