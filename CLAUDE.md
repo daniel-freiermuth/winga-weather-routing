@@ -81,3 +81,9 @@ Before writing any code or changing a technical decision, present a plan and wai
 ## Commit Rule
 
 When something is marked complete (requirement done, bug fixed), update the documentation to reflect that status and commit both the code changes and the documentation changes together in the same commit. Do not mark something complete without committing.
+
+## GitHub Issue Rule
+
+When a new requirement is added to SPEC.md or a new bug is added to BUGS.md, create a corresponding GitHub issue with the same ID and text. When the text of an existing entry is updated in either file, update the corresponding GitHub issue with the same information at the time of the next commit.
+
+Issue titles must follow the format `<ID>: <slogan>` (e.g. `REQ-23: Coast avoidance toggle`, `BUG-10: Start on land gives misleading error`). Each entry in SPEC.md and BUGS.md must include a link to its GitHub issue.
