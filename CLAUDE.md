@@ -44,6 +44,10 @@ Format: `<type>(<scope>): <subject>` — type = feat|fix|docs|refactor|test|chor
 - **Never change version numbers**
 - Reference issues with `ref #N` in commit messages; use `gh issue close` after confirmation
 
+## Build and Deploy Rule
+
+Before performing any build, deploy, install, or test operation, read `DEVELOPMENT.md` at the repo root and follow its instructions exactly. Do not reconstruct the build procedure from memory or prior steps — the procedure has specific flag requirements (e.g. which steps use `--ignore-scripts` and which do not) that are easy to get wrong and have caused repeated deployment failures.
+
 ## Specification Rule
 
 All requirements and design decisions must be recorded in `SPEC.md` at the repo root before any code is written. If it is not in SPEC.md, it is not decided.
