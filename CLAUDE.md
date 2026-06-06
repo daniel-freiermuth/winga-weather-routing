@@ -42,7 +42,7 @@ Format: `<type>(<scope>): <subject>` — type = feat|fix|docs|refactor|test|chor
 - PR title is descriptive and self-contained
 - Description: motivation (why) and approach (how) — the diff shows what
 - **Never change version numbers**
-- Reference issues with `closes #N` / `fixes #N`
+- Reference issues with `ref #N` in commit messages; use `gh issue close` after confirmation
 
 ## Specification Rule
 
@@ -86,7 +86,7 @@ Commit at logical boundaries, not at every file change. A logical boundary is: a
 
 When something is marked complete (requirement done, bug fixed), the code changes and all associated documentation updates go in the same commit. Do not mark something complete without committing.
 
-The commit message must include `closes #N` (or `fixes #N`) referencing the GitHub issue for the requirement or bug being resolved. GitHub uses this to automatically close the issue and cross-link the commit in the issue timeline.
+The commit message must reference the GitHub issue with `ref #N`. Do not use `closes #N` or `fixes #N` — these auto-close the issue on push, which violates the Issue Closure Rule. Close the issue explicitly with `gh issue close` only after confirmation.
 
 ## New Tooling Rule
 
