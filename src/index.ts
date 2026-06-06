@@ -1,8 +1,10 @@
 // SignalK plugin entry point — registers API routes, manages plugin lifecycle and server state.
 
+import * as nodepath from 'node:path';
 import { Router, Request, Response } from 'express';
-import { GribData, PolarData, LandIndex, LandEdgeIndex, CalculationStatus, GribInfo, PluginSettings } from './types';
-import { loadGrib } from './lib/grib';
+import { GribFileEntry, GribInfoResponse, PolarData, LandIndex, LandEdgeIndex, CalculationStatus, PluginSettings } from './types';
+import { loadGrib, scanGribDir, readGribMeta } from './lib/grib';
+import { MultiFileWindProvider } from './lib/windprovider';
 import { parsePolar } from './lib/polar';
 import { buildLandIndex, polygonsInBbox, isPointOnLand } from './lib/landmask';
 import { saveRoute } from './lib/resources';
@@ -17,7 +19,8 @@ const ALGORITHMS: Map<string, RoutingAlgorithm> = new Map([
 const DEFAULT_ALGORITHM = 'isochrone';
 
 module.exports = (app: any) => {
-  let grib: GribData | null = null;
+  let gribFiles: GribFileEntry[] = [];
+  let gribFailedFiles: Array<{ path: string; error: string }> = [];
   let polar: PolarData | null = null;
   let landIndex: LandIndex | null = null;              // polygon index — overlay only
   let edgeIndex: LandEdgeIndex | null = null;          // edge-tile index — routing land checks
@@ -47,12 +50,31 @@ module.exports = (app: any) => {
 
   function setReady(): void {
     const parts: string[] = [];
-    if (grib) parts.push(`GRIB: ${grib.times.length} steps`);
+    if (gribFiles.length > 0) parts.push(`${gribFiles.length} GRIB file(s) indexed`);
     if (polar) parts.push('polar loaded');
-    if (edgeIndex) {
-      parts.push(`land index: ${edgeIndex.edgeGrid.size} cells`);
-    }
+    if (edgeIndex) parts.push(`land index: ${edgeIndex.edgeGrid.size} cells`);
+    if (gribFailedFiles.length > 0) parts.push(`${gribFailedFiles.length} file(s) failed to index`);
     app.setPluginStatus(parts.join(' · '));
+  }
+
+  async function scanAndIndexGribDir(dir: string): Promise<void> {
+    gribFiles = [];
+    gribFailedFiles = [];
+    let paths: string[];
+    try {
+      paths = await scanGribDir(dir);
+    } catch (e: any) {
+      app.setPluginError(`Failed to scan GRIB directory: ${e.message}`);
+      return;
+    }
+    for (const p of paths) {
+      try {
+        const meta = await readGribMeta(p);
+        gribFiles.push({ meta, data: null });
+      } catch (e: any) {
+        gribFailedFiles.push({ path: p, error: e.message });
+      }
+    }
   }
 
   const plugin = {
@@ -60,6 +82,10 @@ module.exports = (app: any) => {
     name: 'Weather Routing',
 
     start: async (cfg: PluginSettings) => {
+      // Schema migration: saved configs from before REQ-32 have gribPath instead of gribDir.
+      if (!cfg.gribDir && (cfg as any).gribPath) {
+        cfg.gribDir = nodepath.dirname((cfg as any).gribPath);
+      }
       settings = cfg;
       app.setPluginStatus('Starting...');
 
@@ -84,24 +110,19 @@ module.exports = (app: any) => {
         return;
       }
 
-      if (!cfg.gribPath) {
-        app.setPluginStatus('No GRIB file configured — set gribPath in plugin settings');
+      if (!cfg.gribDir) {
+        app.setPluginStatus('No GRIB directory configured — set gribDir in plugin settings');
         return;
       }
 
-      app.setPluginStatus('Loading GRIB2 file...');
-      try {
-        grib = await loadGrib(cfg.gribPath);
-      } catch (e: any) {
-        app.setPluginError(`Failed to load GRIB file: ${e.message}`);
-        return;
-      }
-
+      app.setPluginStatus('Indexing GRIB directory...');
+      await scanAndIndexGribDir(cfg.gribDir);
       setReady();
     },
 
     stop: () => {
-      grib = null;
+      gribFiles = [];
+      gribFailedFiles = [];
       polar = null;
       landIndex = null;
       edgeIndex = null;
@@ -115,12 +136,12 @@ module.exports = (app: any) => {
 
     schema: () => ({
       type: 'object',
-      required: ['gribPath', 'polarPath'],
+      required: ['polarPath'],
       properties: {
-        gribPath: {
+        gribDir: {
           type: 'string',
-          title: 'Path to GRIB2 file',
-          description: 'Full filesystem path to GRIB2 weather forecast file (e.g. from OpenSkiron)',
+          title: 'Path to GRIB2 directory',
+          description: 'Filesystem path to a directory containing GRIB2 weather forecast files (e.g. from OpenSkiron)',
         },
         polarPath: {
           type: 'string',
@@ -139,7 +160,7 @@ module.exports = (app: any) => {
 
     registerWithRouter: (router: Router) => {
       router.post('/calculate', async (req: Request, res: Response) => {
-        if (!grib) return void res.status(503).json({ error: 'GRIB data not loaded' });
+        if (gribFiles.length === 0) return void res.status(503).json({ error: 'No GRIB files indexed — configure gribDir and reload' });
         if (!polar) return void res.status(503).json({ error: 'Polar data not loaded' });
         if (calcStatus.status === 'calculating') {
           return void res.status(409).json({ error: 'Calculation already in progress' });
@@ -171,27 +192,59 @@ module.exports = (app: any) => {
             return void res.status(400).json({ error: 'Destination is on land — move it to open water' });
         }
 
+        const departureMs = new Date(departureTime).getTime();
+        const selectedEntries = gribFiles.filter(f => f.meta.timeEnd.getTime() >= departureMs);
+        if (selectedEntries.length === 0) {
+          return void res.status(400).json({ error: 'No GRIB files cover the requested departure time' });
+        }
+
         calcStatus = { status: 'calculating', progress: 0 };
         res.json({ status: 'calculating' });
 
-        algorithm
-          .calculate(grib, polar, activeIndex, req.body, (pct, frontier) => {
-            calcStatus = { status: 'calculating', progress: pct, frontier };
-            pushSse({ type: 'progress', progress: pct, frontier });
-          }, options)
-          .then((route) => {
-            pendingRoute = route;
+        try {
+          for (const entry of selectedEntries) {
+            if (entry.data === null) {
+              try {
+                entry.data = await loadGrib(entry.meta.path);
+              } catch (e: any) {
+                console.warn(`[weather-routing] Failed to load GRIB file ${entry.meta.path}: ${e.message}`);
+              }
+            }
+          }
+
+          const loadedEntries = selectedEntries.filter(e => e.data !== null);
+          if (loadedEntries.length === 0) {
+            throw new Error('All relevant GRIB files failed to load — check file integrity');
+          }
+
+          const wind = new MultiFileWindProvider(loadedEntries);
+
+          const { route, warning } = await algorithm.calculate(
+            wind, polar, activeIndex, req.body,
+            (pct, frontier) => {
+              calcStatus = { status: 'calculating', progress: pct, frontier };
+              pushSse({ type: 'progress', progress: pct, frontier });
+            },
+            options,
+          );
+
+          pendingRoute = route;
+          if (warning) {
+            calcStatus = { status: 'warning', progress: 100, warning };
+            app.setPluginStatus(`Partial route: ${route.length} waypoints`);
+            pushSse({ type: 'warning', warning });
+          } else {
             calcStatus = { status: 'done', progress: 100 };
             app.setPluginStatus(`Route ready: ${route.length} waypoints`);
             pushSse({ type: 'done' });
-            closeSseClients();
-          })
-          .catch((e: Error) => {
-            calcStatus = { status: 'error', progress: 0, error: e.message };
-            app.setPluginError(`Route calculation failed: ${e.message}`);
-            pushSse({ type: 'error', error: e.message });
-            closeSseClients();
-          });
+          }
+          closeSseClients();
+        } catch (e: any) {
+          calcStatus = { status: 'error', progress: 0, error: e.message };
+          app.setPluginError(`Route calculation failed: ${e.message}`);
+          pushSse({ type: 'error', error: e.message });
+          closeSseClients();
+        }
       });
 
       router.get('/status', (_req: Request, res: Response) => {
@@ -221,17 +274,11 @@ module.exports = (app: any) => {
       });
 
       router.get('/grib-info', (_req: Request, res: Response) => {
-        const info: GribInfo = { loaded: grib !== null };
-        if (grib) {
-          info.path = settings?.gribPath;
-          info.timeStart = grib.times[0].toISOString();
-          info.timeEnd = grib.times[grib.times.length - 1].toISOString();
-          info.nTimes = grib.times.length;
-          info.latMin = grib.latMin;
-          info.latMax = grib.latMin + grib.latStep * (grib.nLat - 1);
-          info.lonMin = grib.lonMin;
-          info.lonMax = grib.lonMin + grib.lonStep * (grib.nLon - 1);
-        }
+        const info: GribInfoResponse = {
+          gribDir: settings?.gribDir ?? '',
+          files: gribFiles.map(f => f.meta),
+          failedFiles: gribFailedFiles,
+        };
         res.json(info);
       });
 
@@ -301,13 +348,12 @@ module.exports = (app: any) => {
       });
 
       router.post('/reload-grib', async (req: Request, res: Response) => {
-        const gribPath: string = req.body?.path ?? settings?.gribPath;
-        if (!gribPath) return void res.status(400).json({ error: 'No gribPath provided or configured' });
+        const dir = settings?.gribDir;
+        if (!dir) return void res.status(400).json({ error: 'No gribDir configured' });
         try {
-          app.setPluginStatus('Reloading GRIB2 file...');
-          grib = await loadGrib(gribPath);
-          if (settings) settings.gribPath = gribPath;
-          res.json({ success: true, nTimes: grib.times.length });
+          app.setPluginStatus('Re-indexing GRIB directory...');
+          await scanAndIndexGribDir(dir);
+          res.json({ success: true, nFiles: gribFiles.length, failedFiles: gribFailedFiles });
           setReady();
         } catch (e: any) {
           app.setPluginError(`GRIB reload failed: ${e.message}`);

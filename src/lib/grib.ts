@@ -1,7 +1,64 @@
 // GRIB2 loading and interpolation, scoped to OpenSkiron/ICON-EU wind and wave band layout.
 
+import * as fs from 'node:fs/promises';
+import * as nodepath from 'node:path';
 import * as gdal from 'gdal-async';
-import { GribData, WindVector } from '../types';
+import { GribData, GribFileMeta, WindVector } from '../types';
+
+const GRIB_EXTENSIONS = new Set(['.grib2', '.grib', '.grb2', '.grb']);
+
+export async function scanGribDir(dir: string): Promise<string[]> {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  return entries
+    .filter(e => e.isFile() && GRIB_EXTENSIONS.has(nodepath.extname(e.name).toLowerCase()))
+    .map(e => nodepath.join(dir, e.name))
+    .sort();
+}
+
+export async function readGribMeta(filePath: string): Promise<GribFileMeta> {
+  const stat = await fs.stat(filePath);
+  const ds = await gdal.openAsync(filePath);
+  try {
+    const gt = ds.geoTransform;
+    if (!gt) throw new Error('GRIB2 file has no geotransform');
+
+    const lonMin = gt[0];
+    const lonStep = gt[1];
+    const latMax = gt[3];
+    const latStep = -gt[5];
+    const nLon = ds.rasterSize.x;
+    const nLat = ds.rasterSize.y;
+    const latMin = latMax - latStep * (nLat - 1);
+    const lonMax = lonMin + lonStep * (nLon - 1);
+
+    const bandCount = ds.bands.count();
+    const timeMs = new Set<number>();
+
+    for (let i = 1; i <= bandCount; i++) {
+      const band = ds.bands.get(i);
+      const md = band.getMetadata() as Record<string, string>;
+      if (md['GRIB_SHORT_NAME'] !== GRIB_HEIGHT_LEVEL) continue;
+      if (md['GRIB_ELEMENT'] !== GRIB_U_ELEMENT) continue;
+      const vtStr = md['GRIB_VALID_TIME'];
+      if (!vtStr) continue;
+      timeMs.add(parseInt(vtStr, 10) * 1000);
+    }
+
+    const sortedMs = Array.from(timeMs).sort((a, b) => a - b);
+    if (sortedMs.length === 0) throw new Error('No U10 time steps found — not an OpenSkiron/ICON-EU file');
+
+    return {
+      path: filePath,
+      mtime: stat.mtimeMs,
+      latMin, latMax, lonMin, lonMax,
+      timeStart: new Date(sortedMs[0]),
+      timeEnd: new Date(sortedMs[sortedMs.length - 1]),
+      nTimes: sortedMs.length,
+    };
+  } finally {
+    ds.close();
+  }
+}
 
 // Scoped to OpenSkiron/ICON-EU GRIB2 format
 const GRIB_U_ELEMENT = 'UGRD';

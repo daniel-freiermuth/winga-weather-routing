@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { IsochroneAlgorithm } from '../routing/isochrone';
-import { GribData, PolarData, CalculationRequest, LandPolygon } from '../../types';
+import { GribData, GribFileEntry, PolarData, CalculationRequest, LandPolygon } from '../../types';
+import { MultiFileWindProvider } from '../windprovider';
 import { buildLandEdgeIndex } from '../landmask';
 
 // Build a tiny synthetic GRIB: 3×3 grid, 2 time steps, constant 5 m/s southerly wind
-function makeGrib(): GribData {
+function makeGrib(times?: Date[]): GribData {
   const nLat = 3, nLon = 3;
   const nPoints = nLat * nLon;
 
@@ -13,16 +14,38 @@ function makeGrib(): GribData {
   const uFrame = new Float32Array(nPoints).fill(0);
   const vFrame = new Float32Array(nPoints).fill(5);
 
-  const t0 = new Date('2024-01-01T00:00:00Z');
-  const t1 = new Date('2024-01-01T01:00:00Z');
+  const t0 = times?.[0] ?? new Date('2024-01-01T00:00:00Z');
+  const t1 = times?.[1] ?? new Date('2024-01-01T01:00:00Z');
+  const allTimes = times ?? [t0, t1];
 
   return {
     latMin: 40, latStep: 1, lonMin: 10, lonStep: 1,
     nLat, nLon,
-    times: [t0, t1],
-    u10: [uFrame, uFrame],
-    v10: [vFrame, vFrame],
+    times: allTimes,
+    u10: allTimes.map(() => new Float32Array(uFrame)),
+    v10: allTimes.map(() => new Float32Array(vFrame)),
   };
+}
+
+function makeEntry(grib: GribData): GribFileEntry {
+  return {
+    meta: {
+      path: 'test.grib2',
+      mtime: 0,
+      latMin: grib.latMin,
+      latMax: grib.latMin + grib.latStep * (grib.nLat - 1),
+      lonMin: grib.lonMin,
+      lonMax: grib.lonMin + grib.lonStep * (grib.nLon - 1),
+      timeStart: grib.times[0],
+      timeEnd: grib.times[grib.times.length - 1],
+      nTimes: grib.times.length,
+    },
+    data: grib,
+  };
+}
+
+function makeWind(grib: GribData): MultiFileWindProvider {
+  return new MultiFileWindProvider([makeEntry(grib)]);
 }
 
 // Simple polar: 5 kt at all TWA>0, 0 on the nose
@@ -47,7 +70,7 @@ test('IsochroneAlgorithm.id is "isochrone"', () => {
 });
 
 test('calculate: rejects departure time past GRIB end', async () => {
-  const grib = makeGrib();
+  const wind = makeWind(makeGrib());
   const polar = makePolar();
   const req: CalculationRequest = {
     start: { lat: 41, lon: 11 },
@@ -55,24 +78,24 @@ test('calculate: rejects departure time past GRIB end', async () => {
     departureTime: '2025-01-01T00:00:00Z',  // far outside GRIB
   };
   await assert.rejects(
-    () => algo.calculate(grib, polar, null, req, () => {}),
+    () => algo.calculate(wind, polar, null, req, () => {}),
     /departure time/i,
   );
 });
 
 test('calculate: arrives when destination is within arrival radius', async () => {
-  const grib = makeGrib();
+  const wind = makeWind(makeGrib());
   const polar = makePolar();
 
   // Very close destination — should arrive in one step
   const req: CalculationRequest = {
     start: { lat: 41, lon: 11 },
     end: { lat: 41.05, lon: 11 },  // ~3 nm north — reachable in 1h at 5 kt
-    departureTime: grib.times[0].toISOString(),
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
     options: { arrivalRadiusNm: 5 },  // generous radius
   };
 
-  const route = await algo.calculate(grib, polar, null, req, () => {});
+  const { route } = await algo.calculate(wind, polar, null, req, () => {});
   assert.ok(route.length >= 2, 'route should have at least start and end waypoints');
   assert.strictEqual(route[0].lat, 41);
   assert.strictEqual(route[0].lon, 11);
@@ -81,16 +104,16 @@ test('calculate: arrives when destination is within arrival radius', async () =>
 });
 
 test('calculate: every RoutePoint has a non-negative legCalcMs; start point is 0', async () => {
-  const grib = makeGrib();
+  const wind = makeWind(makeGrib());
   const polar = makePolar();
   const req: CalculationRequest = {
     start: { lat: 41, lon: 11 },
     end: { lat: 41.05, lon: 11 },
-    departureTime: grib.times[0].toISOString(),
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
     options: { arrivalRadiusNm: 5 },
   };
 
-  const route = await algo.calculate(grib, polar, null, req, () => {});
+  const { route } = await algo.calculate(wind, polar, null, req, () => {});
   for (const p of route) {
     assert.ok(typeof p.legCalcMs === 'number' && p.legCalcMs >= 0,
       `legCalcMs must be a non-negative number, got ${p.legCalcMs}`);
@@ -98,89 +121,71 @@ test('calculate: every RoutePoint has a non-negative legCalcMs; start point is 0
   assert.strictEqual(route[0].legCalcMs, 0, 'start point legCalcMs must be 0');
 });
 
-test('calculate: throws when destination unreachable in forecast period', async () => {
-  const grib = makeGrib();
+test('calculate: returns partial route with warning when destination unreachable in forecast period', async () => {
+  const wind = makeWind(makeGrib());
   const polar = makePolar();
 
-  // Far destination — can't reach in 1 time step
+  // Far destination — can't reach in 1 time step; expect partial route + warning
   const req: CalculationRequest = {
     start: { lat: 41, lon: 11 },
     end: { lat: 50, lon: 20 },
-    departureTime: grib.times[0].toISOString(),
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
   };
 
-  await assert.rejects(
-    () => algo.calculate(grib, polar, null, req, () => {}),
-    /destination not reached/i,
-  );
+  const { route, warning } = await algo.calculate(wind, polar, null, req, () => {});
+  assert.ok(route.length >= 1, 'partial route should have at least one waypoint');
+  assert.ok(typeof warning === 'string' && warning.length > 0, 'warning should be set');
+  assert.match(warning!, /forecast coverage/i);
 });
 
 test('calculate: calls onProgress at least once', async () => {
-  const grib = makeGrib();
+  const wind = makeWind(makeGrib());
   const polar = makePolar();
 
   const req: CalculationRequest = {
     start: { lat: 41, lon: 11 },
     end: { lat: 50, lon: 20 },  // unreachable — will still progress
-    departureTime: grib.times[0].toISOString(),
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
   };
 
   let progressCalled = false;
-  await assert.rejects(
-    () => algo.calculate(grib, polar, null, req, () => { progressCalled = true; }),
-    /destination not reached/i,
-  );
+  await algo.calculate(wind, polar, null, req, () => { progressCalled = true; });
   assert.ok(progressCalled, 'onProgress should have been called');
 });
 
 
 test('calculate: T_bound heuristic does not prevent route discovery in a 2-step scenario (REQ-34)', async () => {
   // 3-step GRIB → 2 isochrone steps. Destination ~9 NM north — reachable in step 2 only.
-  // Coarse pass sets T_bound = t2; southward frontier points after step 1 are pruned
-  // (can't reach destination by t2 at max speed); northward points survive and arrive at step 2.
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');
   const t2 = new Date('2024-01-01T02:00:00Z');
-  const n = 9;
-  const grib3: GribData = {
-    latMin: 40, latStep: 1, lonMin: 10, lonStep: 1, nLat: 3, nLon: 3,
-    times: [t0, t1, t2],
-    u10: [new Float32Array(n).fill(0), new Float32Array(n).fill(0), new Float32Array(n).fill(0)],
-    v10: [new Float32Array(n).fill(5),  new Float32Array(n).fill(5),  new Float32Array(n).fill(5)],
-  };
-  const polar = makePolar(); // 5 kt at all TWA > 0; wdir=180° → heading 0° is best
+  const wind = makeWind(makeGrib([t0, t1, t2]));
+  const polar = makePolar();
   const req: CalculationRequest = {
     start: { lat: 41, lon: 11 },
     end:   { lat: 41.15, lon: 11 }, // ~9 NM north: unreachable in 1 step (5 NM), reachable in 2
     departureTime: t0.toISOString(),
     options: { arrivalRadiusNm: 2 },
   };
-  const route = await algo.calculate(grib3, polar, null, req, () => {});
+  const { route } = await algo.calculate(wind, polar, null, req, () => {});
   assert.ok(route.length >= 2, 'route must be found in 2 steps with T_bound active');
   assert.ok(Math.abs(route[route.length - 1].lat - 41.15) < 0.1, 'last waypoint must be near destination');
 });
 
 test('calculate: coarse pass cone excludes candidates >90° from start→end bearing (REQ-35)', async () => {
-  // Wind from south (v=5): all non-dead headings viable.
-  // Start at (41,11), destination due north at (41.05,11).
-  // Candidates heading south (bearing ~180° from start) deviate 180° from start→end (0°) → pruned.
-  // Route should still be found via northward headings.
-  const grib = makeGrib();
+  const wind = makeWind(makeGrib());
   const polar = makePolar();
   const req: CalculationRequest = {
     start: { lat: 41, lon: 11 },
     end: { lat: 41.05, lon: 11 },
-    departureTime: grib.times[0].toISOString(),
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
     options: { arrivalRadiusNm: 5 },
   };
   const progressPayloads: Array<[number, number][]> = [];
-  const route = await algo.calculate(grib, polar, null, req, (_pct, frontier) => {
+  const { route } = await algo.calculate(wind, polar, null, req, (_pct, frontier) => {
     progressPayloads.push(frontier);
   });
   assert.ok(route.length >= 2, 'route should be found');
-  // Coarse-pass frontiers (first half of progress calls) must not contain candidates
-  // whose bearing from start is >90° from north (i.e., lat < 41 is heading south).
-  // All coarse frontier points should be at lat >= 41 (north of start).
   const coarsePayloads = progressPayloads.slice(0, Math.floor(progressPayloads.length / 2));
   for (const frontier of coarsePayloads) {
     for (const [lat] of frontier) {
@@ -190,19 +195,10 @@ test('calculate: coarse pass cone excludes candidates >90° from start→end bea
 });
 
 test('calculate: REQ-36 fine-pass onProgress only sends T_bound-passing points', async () => {
-  // 3-step GRIB so we get a T_bound from the coarse pass and T_bound filtering in the fine pass.
-  // Track frontier sizes: fine-pass progress payloads (second half) must all be non-null arrays,
-  // and when T_bound filtering removes some points they must not appear.
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');
   const t2 = new Date('2024-01-01T02:00:00Z');
-  const n = 9;
-  const grib3: GribData = {
-    latMin: 40, latStep: 1, lonMin: 10, lonStep: 1, nLat: 3, nLon: 3,
-    times: [t0, t1, t2],
-    u10: [new Float32Array(n).fill(0), new Float32Array(n).fill(0), new Float32Array(n).fill(0)],
-    v10: [new Float32Array(n).fill(5),  new Float32Array(n).fill(5),  new Float32Array(n).fill(5)],
-  };
+  const wind = makeWind(makeGrib([t0, t1, t2]));
   const polar = makePolar();
   const req: CalculationRequest = {
     start: { lat: 41, lon: 11 },
@@ -211,18 +207,16 @@ test('calculate: REQ-36 fine-pass onProgress only sends T_bound-passing points',
     options: { arrivalRadiusNm: 2 },
   };
   const allFrontiers: Array<[number, number][]> = [];
-  await algo.calculate(grib3, polar, null, req, (_pct, frontier) => {
+  await algo.calculate(wind, polar, null, req, (_pct, frontier) => {
     allFrontiers.push(frontier);
   });
-  // Fine-pass frontier arrays (progress >=50) must not be undefined — they are always arrays
-  // (possibly empty). This verifies drawIsochrone is always sent, not undefined.
   for (const f of allFrontiers) {
     assert.ok(Array.isArray(f), 'every onProgress frontier must be an array');
   }
 });
 
 test('calculate: land index blocks land points', async () => {
-  const grib = makeGrib();
+  const wind = makeWind(makeGrib());
   const polar = makePolar();
 
   // A polygon covering the entire GRIB area blocks all candidates
@@ -235,11 +229,11 @@ test('calculate: land index blocks land points', async () => {
   const req: CalculationRequest = {
     start: { lat: 41, lon: 11 },
     end: { lat: 41.05, lon: 11 },
-    departureTime: grib.times[0].toISOString(),
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
   };
 
   await assert.rejects(
-    () => algo.calculate(grib, polar, allLand, req, () => {}),
+    () => algo.calculate(wind, polar, allLand, req, () => {}),
     /no reachable positions/i,
   );
 });

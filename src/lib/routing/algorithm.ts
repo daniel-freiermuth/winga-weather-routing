@@ -1,16 +1,16 @@
 // RoutingAlgorithm interface — the contract all routing algorithm implementations must satisfy.
 
-import { GribData, LandEdgeIndex, PolarData, CalculationRequest, RoutePoint } from '../../types';
+import { WindProvider, LandEdgeIndex, PolarData, CalculationRequest, RoutePoint } from '../../types';
 
 export interface RoutingAlgorithm {
   readonly id: string;
   readonly name: string;
   calculate(
-    grib: GribData,
+    wind: WindProvider,
     polar: PolarData,
     edgeIndex: LandEdgeIndex | null,
     request: CalculationRequest,
     onProgress: (pct: number, frontier: Array<[number, number]>) => void,
     options?: Record<string, unknown>,
-  ): Promise<RoutePoint[]>;
+  ): Promise<{ route: RoutePoint[]; warning?: string }>;
 }

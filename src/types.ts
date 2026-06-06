@@ -10,6 +10,32 @@ export interface WindVector {
   v: number;  // northward m/s
 }
 
+// Metadata read from a GRIB file at startup — no grid data loaded yet.
+export interface GribFileMeta {
+  path: string;
+  mtime: number;     // file modification time, ms since epoch (used for conflict resolution)
+  latMin: number;
+  latMax: number;
+  lonMin: number;
+  lonMax: number;
+  timeStart: Date;
+  timeEnd: Date;
+  nTimes: number;
+}
+
+// One entry per GRIB file; data is null until lazy-loaded at calculation time.
+export interface GribFileEntry {
+  meta: GribFileMeta;
+  data: GribData | null;
+}
+
+// Abstraction over one or more loaded GRIB files; used by the routing algorithm.
+export interface WindProvider {
+  readonly times: Date[];  // merged, sorted, deduplicated time axis across all files
+  getWind(lat: number, lon: number, timeIdx: number): WindVector;
+  getWave(lat: number, lon: number, t: Date): number | undefined;
+}
+
 export interface GribData {
   times: Date[];
   latMin: number;
@@ -87,27 +113,22 @@ export interface CalculationRequest {
 }
 
 export interface CalculationStatus {
-  status: 'idle' | 'calculating' | 'done' | 'error';
+  status: 'idle' | 'calculating' | 'done' | 'warning' | 'error';
   progress: number; // 0–100
   routeId?: string;
   error?: string;
+  warning?: string;
   frontier?: Array<[number, number]>; // [lat, lon] pairs of current isochrone frontier
 }
 
-export interface GribInfo {
-  loaded: boolean;
-  path?: string;
-  timeStart?: string;
-  timeEnd?: string;
-  nTimes?: number;
-  latMin?: number;
-  latMax?: number;
-  lonMin?: number;
-  lonMax?: number;
+export interface GribInfoResponse {
+  gribDir: string;
+  files: GribFileMeta[];
+  failedFiles: Array<{ path: string; error: string }>;
 }
 
 export interface PluginSettings {
-  gribPath: string;
+  gribDir: string;
   polarPath: string;
   algorithm?: string;
 }

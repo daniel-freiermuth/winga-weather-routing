@@ -12,6 +12,7 @@
 | [REQ-59](https://github.com/kristianwiklund/signalk-weather-routing/issues/59) | Traffic separation zone handling. | open |
 | [REQ-60](https://github.com/kristianwiklund/signalk-weather-routing/issues/91) | Add a routing condition to keep the route away from land — either by specifying a minimum distance from the coastline that candidates must maintain, or by rewarding (preferring) routes that are further out to sea. | open |
 | [REQ-61](https://github.com/kristianwiklund/signalk-weather-routing/issues/95) | The webapp displays a GitHub button with the classic GitHub logo (Octocat mark) that links to the plugin's GitHub repository. | open |
+| [REQ-62](https://github.com/kristianwiklund/signalk-weather-routing/issues/96) | The user can select an existing SignalK route or waypoint from `resources/routes` or `resources/waypoints` as the departure point for a new route calculation. | open |
 
 ## Closed Requirements
 

@@ -1,8 +1,8 @@
 // Isochrone routing: two-phase time-optimal route search (coarse T_bound pre-pass then fine expansion).
 
-import { GribData, LandEdgeIndex, PolarData, CalculationRequest, IsochronePoint, RoutePoint } from '../../types';
+import { WindProvider, LandEdgeIndex, PolarData, CalculationRequest, IsochronePoint, RoutePoint } from '../../types';
 import { RoutingAlgorithm } from './algorithm';
-import { getWindAt, getWaveAt, nearestTimeIndex } from '../grib';
+import { nearestIdx } from '../windprovider';
 import { interpolateBoatSpeed } from '../polar';
 import { segmentCrossesLandFast, isPointOnLand } from '../landmask';
 import { haversineNM, bearingTo, destinationPoint, windSpeedKnots, windDirection } from '../geo';
@@ -58,13 +58,13 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
   readonly name = 'Isochrone';
 
   async calculate(
-    grib: GribData,
+    wind: WindProvider,
     polar: PolarData,
     edgeIndex: LandEdgeIndex | null,
     request: CalculationRequest,
     onProgress: (pct: number, frontier: Array<[number, number]>) => void,
     options?: Record<string, unknown>,
-  ): Promise<RoutePoint[]> {
+  ): Promise<{ route: RoutePoint[]; warning?: string }> {
     const headingStep = Number(options?.headingStep ?? DEFAULT_HEADING_STEP);
     const sectorSize = Number(options?.sectorSize ?? DEFAULT_SECTOR_SIZE);
     const minBoatSpeed = Number(options?.minBoatSpeed ?? DEFAULT_MIN_BOAT_SPEED);
@@ -72,14 +72,14 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
     const { start, end } = request;
     const departureTime = new Date(request.departureTime);
-    const startTimeIdx = nearestTimeIndex(grib, departureTime);
-    const nSteps = grib.times.length - startTimeIdx - 1;
+    const startTimeIdx = nearestIdx(wind.times, departureTime);
+    const nSteps = wind.times.length - startTimeIdx - 1;
 
-    if (nSteps <= 0) throw new Error('Departure time is at or after the end of the GRIB forecast period');
+    if (nSteps <= 0) throw new Error('Departure time is at or after the end of the forecast data');
 
     let isochrone: IsochronePoint[] = [{
       lat: start.lat, lon: start.lon,
-      time: grib.times[startTimeIdx],
+      time: wind.times[startTimeIdx],
       heading: 0, twa: 0, tws: 0, boatSpeed: 0, windDir: 0,
       stepCalcMs: 0,
       parent: undefined,
@@ -88,15 +88,15 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     let arrived: IsochronePoint | null = null;
 
     const maxBoatSpeed = getMaxPolarSpeed(polar);
-    const tBound = await runCoarsePass(grib, polar, edgeIndex, start, end, minBoatSpeed, arrivalRadiusNm, startTimeIdx, nSteps, onProgress);
+    const tBound = await runCoarsePass(wind, polar, edgeIndex, start, end, minBoatSpeed, arrivalRadiusNm, startTimeIdx, nSteps, onProgress);
     const tBoundMs = tBound !== null ? tBound.getTime() : null;
 
     const stepTimings: StepTiming[] = [];
 
-    for (let step = startTimeIdx; step < grib.times.length - 1; step++) {
+    for (let step = startTimeIdx; step < wind.times.length - 1; step++) {
       const stepStart = performance.now();
-      const nextTime = grib.times[step + 1];
-      const dtHours = (nextTime.getTime() - grib.times[step].getTime()) / 3_600_000;
+      const nextTime = wind.times[step + 1];
+      const dtHours = (nextTime.getTime() - wind.times[step].getTime()) / 3_600_000;
       const candidates: IsochronePoint[] = [];
 
       let windLookupMs = 0;
@@ -110,11 +110,11 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         if (edgeIndex && isPointOnLand(edgeIndex, point.lat, point.lon)) continue;
 
         const t0wind = performance.now();
-        const wind = getWindAt(grib, point.lat, point.lon, step);
+        const windVec = wind.getWind(point.lat, point.lon, step);
         windLookupMs += performance.now() - t0wind;
 
-        const tws = windSpeedKnots(wind.u, wind.v);
-        const wdir = windDirection(wind.u, wind.v);
+        const tws = windSpeedKnots(windVec.u, windVec.v);
+        const wdir = windDirection(windVec.u, windVec.v);
 
         for (let hdg = 0; hdg < 360; hdg += headingStep) {
           let twa = ((hdg - wdir) + 360) % 360;
@@ -204,14 +204,26 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     logTimingSummary(stepTimings);
 
     if (!arrived) {
+      if (isochrone.length > 0) {
+        // Time steps exhausted with a live frontier — route extends past forecast coverage.
+        const closest = isochrone.reduce((best, p) =>
+          haversineNM(p.lat, p.lon, end.lat, end.lon) < haversineNM(best.lat, best.lon, end.lat, end.lon) ? p : best
+        );
+        const dist = Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon));
+        return {
+          route: backtrack(closest, wind, false),
+          warning: `Route extends past forecast coverage — partial route shown (${dist} nm from destination)`,
+        };
+      }
       const closest = isochrone.reduce((best, p) =>
-        haversineNM(p.lat, p.lon, end.lat, end.lon) < haversineNM(best.lat, best.lon, end.lat, end.lon) ? p : best
+        haversineNM(p.lat, p.lon, end.lat, end.lon) < haversineNM(best.lat, best.lon, end.lat, end.lon) ? p : best,
+        isochrone[0],
       );
-      const dist = Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon));
+      const dist = closest ? Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon)) : 0;
       throw new Error(`Destination not reached within forecast period (closest approach: ${dist} nm)`);
     }
 
-    return backtrack(arrived, end, grib);
+    return { route: backtrack(arrived, wind, true, end) };
   }
 }
 
@@ -241,20 +253,26 @@ function pruneToFrontier<T extends { lat: number; lon: number }>(
   return Array.from(sectors.values()).map((e) => e.point);
 }
 
-function backtrack(arrived: IsochronePoint, end: { lat: number; lon: number }, grib: GribData): RoutePoint[] {
+// includeEnd=true appends the destination as the final waypoint (normal arrival).
+// includeEnd=false omits it (partial route — boat never reached destination).
+function backtrack(
+  arrived: IsochronePoint,
+  wind: WindProvider,
+  includeEnd: boolean,
+  end?: { lat: number; lon: number },
+): RoutePoint[] {
   const route: RoutePoint[] = [];
 
-  const wave = (lat: number, lon: number, t: Date): number | undefined =>
-    getWaveAt(grib, lat, lon, t.getTime());
-
-  route.unshift({
-    lat: end.lat, lon: end.lon,
-    time: arrived.time,
-    heading: arrived.heading,
-    twa: arrived.twa, tws: arrived.tws, boatSpeed: arrived.boatSpeed, windDir: arrived.windDir,
-    legCalcMs: 0,
-    waveHeight: wave(end.lat, end.lon, arrived.time),
-  });
+  if (includeEnd && end) {
+    route.unshift({
+      lat: end.lat, lon: end.lon,
+      time: arrived.time,
+      heading: arrived.heading,
+      twa: arrived.twa, tws: arrived.tws, boatSpeed: arrived.boatSpeed, windDir: arrived.windDir,
+      legCalcMs: 0,
+      waveHeight: wind.getWave(end.lat, end.lon, arrived.time),
+    });
+  }
 
   let cur: IsochronePoint | undefined = arrived;
   while (cur) {
@@ -264,7 +282,7 @@ function backtrack(arrived: IsochronePoint, end: { lat: number; lon: number }, g
       heading: cur.heading,
       twa: cur.twa, tws: cur.tws, boatSpeed: cur.boatSpeed, windDir: cur.windDir,
       legCalcMs: cur.stepCalcMs,
-      waveHeight: wave(cur.lat, cur.lon, cur.time),
+      waveHeight: wind.getWave(cur.lat, cur.lon, cur.time),
     });
     cur = cur.parent;
   }
@@ -279,7 +297,7 @@ function getMaxPolarSpeed(polar: PolarData): number {
 type CoarsePoint = { lat: number; lon: number };
 
 async function runCoarsePass(
-  grib: GribData,
+  wind: WindProvider,
   polar: PolarData,
   edgeIndex: LandEdgeIndex | null,
   start: CoarsePoint,
@@ -293,17 +311,17 @@ async function runCoarsePass(
   let frontier: CoarsePoint[] = [{ lat: start.lat, lon: start.lon }];
   const bearingToEnd = bearingTo(start.lat, start.lon, end.lat, end.lon);
 
-  for (let step = startTimeIdx; step < grib.times.length - 1; step++) {
-    const nextTime = grib.times[step + 1];
-    const dtHours = (nextTime.getTime() - grib.times[step].getTime()) / 3_600_000;
+  for (let step = startTimeIdx; step < wind.times.length - 1; step++) {
+    const nextTime = wind.times[step + 1];
+    const dtHours = (nextTime.getTime() - wind.times[step].getTime()) / 3_600_000;
     const candidates: CoarsePoint[] = [];
 
     for (const point of frontier) {
       if (edgeIndex && isPointOnLand(edgeIndex, point.lat, point.lon)) continue;
 
-      const wind = getWindAt(grib, point.lat, point.lon, step);
-      const tws = windSpeedKnots(wind.u, wind.v);
-      const wdir = windDirection(wind.u, wind.v);
+      const windVec = wind.getWind(point.lat, point.lon, step);
+      const tws = windSpeedKnots(windVec.u, windVec.v);
+      const wdir = windDirection(windVec.u, windVec.v);
 
       for (let hdg = 0; hdg < 360; hdg += TBOUND_HEADING_STEP) {
         let twa = ((hdg - wdir) + 360) % 360;
