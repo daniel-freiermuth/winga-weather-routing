@@ -6,7 +6,7 @@
 |---|---|
 | [BUG-10](https://github.com/kristianwiklund/signalk-weather-routing/issues/69) | Start point on land causes immediate "No reachable positions" — the isochrone algorithm fails on the very first step when the start point is inside a GSHHG land polygon: `segmentHitsPoly` calls `pointInRing(startLat, startLon, …)` and returns `true` for all 72 headings, leaving `candidates` empty → throws "No reachable positions — check GRIB coverage and polar data" (misleading: the real cause is the start point being on land, not missing GRIB/polar data). Confirmed by OGR lookup: `59.3°N, 18.1°E` is inside GSHHG L1 polygon FID 0 (Swedish mainland). |
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
-| [BUG-30](https://github.com/kristianwiklund/signalk-weather-routing/issues/89) | The codebase contains no explanatory comments. The coding standard requires comments that explain non-obvious "why" — hidden constraints, subtle invariants, workarounds — but none are present anywhere in the source. |
+| [BUG-30](https://github.com/kristianwiklund/signalk-weather-routing/issues/89) | The codebase contains no explanatory comments. The coding standard requires comments that explain non-obvious "why" — hidden constraints, subtle invariants, workarounds — but none are present anywhere in the source. Partially addressed — see investigation notes. |
 
 ## Fixed Bugs
 
@@ -219,3 +219,26 @@ The same bug is present in fa72712 (identical code in `setup.ts`). The cache is 
 
 - **Fix the alignment only**: pad the bbox header to 40 bytes (or use a copy instead of a typed-array view for loading), bump the index version to invalidate old caches. The union still blocks on the very first run after a clean install, but subsequent startups load from cache and are fast. Acceptable if "first-run pause" is documented.
 - **Fix alignment + move union to a worker thread**: also move `CascadedPolygonUnion.union()` into a `worker_threads` Worker so the main thread stays responsive even on first run. More complex but eliminates the blocking behaviour entirely.
+
+---
+
+## BUG-30 — Investigation Notes
+
+### Audit of backend source files (2026-06-06)
+
+Reviewed all 10 TypeScript source files. The following was addressed in commit 42688a1:
+
+**File headers added** — all 10 files now open with a single-line role description: `src/types.ts`, `src/index.ts`, `src/lib/geo.ts`, `src/lib/grib.ts`, `src/lib/polar.ts`, `src/lib/landmask.ts`, `src/lib/resources.ts`, `src/lib/setup.ts`, `src/lib/routing/algorithm.ts`, `src/lib/routing/isochrone.ts`.
+
+**"Why" comments added** at 9 locations across 5 files:
+- `isochrone.ts`: `COARSE_CONE_HALF_ANGLE_DEG = 90` rationale; `setImmediate` event-loop yield (×3); cosine correction in `pruneToFrontier`; T_bound admissibility of `maxBoatSpeed`
+- `landmask.ts`: `edgeCellKey` formula constants; DDA `maxSteps` Manhattan-distance bound; strict-interior `t > 0 && t < 1` in `segmentsIntersect`
+- `geo.ts`: `+540` longitude wrap in `destinationPoint`; m/s→knots conversion factor
+- `polar.ts`: `bracketIndex` low-end clamp rationale
+- `setup.ts`: cache magic+version validation rationale
+
+**SPEC.md corrected** — Phase 2 algorithm description and `coarseHeadingStep` parameter description updated to match current code (the inner two-pass band scan was removed by REQ-43 but the spec was not updated at the time).
+
+### Remaining scope
+
+The frontend (`public/index.html`) has not been audited for missing "why" comments. The backend audit may also have missed non-obvious invariants introduced in future changes.
