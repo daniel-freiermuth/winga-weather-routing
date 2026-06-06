@@ -10,6 +10,8 @@ Do not add features, refactor, or make improvements beyond what was asked. Do no
 
 Write self-documenting code. Comments explain "why", not "what". No echo comments. Keep functions small and single-responsibility. Prefer composition over inheritance. No magic numbers — use named constants. Documentation describes current state, not history.
 
+Every source file must begin with a single-line comment describing what the file is — its role in the system, not a restatement of its name. Example: `// Isochrone routing algorithm: expands a time frontier from start toward destination, pruning by land and T_bound.` This comment must be present in new files and added to existing files when they are modified.
+
 ## Type Safety
 
 All code is TypeScript. Use strict type checking; avoid `any`. Validate external inputs at system boundaries. Prefer immutable data where practical.
