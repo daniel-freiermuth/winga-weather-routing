@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-50](https://github.com/kristianwiklund/signalk-weather-routing/issues/118) | The conditions graph at the bottom of the screen shows wave height values that appear much higher than the values shown in the hover tooltips for the same points. |
 | [BUG-49](https://github.com/kristianwiklund/signalk-weather-routing/issues/117) | When wind speed is below 5 kn, no wind arrow is drawn — only a circle (the calm indicator). |
 | [BUG-48](https://github.com/kristianwiklund/signalk-weather-routing/issues/116) | The REQ-67 tooltip was added to the waypoint wind barbs (ETA markers) but not to the wind arrows drawn at the midpoint of each route leg (REQ-22). Hovering over a leg wind arrow shows no tooltip. |
 | [BUG-47](https://github.com/kristianwiklund/signalk-weather-routing/issues/111) | The isochrone seed point (`isochrone.ts:82`) is initialised with `heading:0, twa:0, tws:0, boatSpeed:0, windDir:0`. These values appear verbatim in the backtracked route as the first waypoint. Any consumer of per-waypoint wind/speed data (REQ-46 conditions graph, REQ-63 per-GRIB conditions) will display 0 for the departure point. |
