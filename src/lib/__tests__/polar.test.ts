@@ -6,14 +6,14 @@ import * as path from 'path';
 import { parsePolar, interpolateBoatSpeed } from '../polar';
 import { PolarData } from '../../types';
 
-// Minimal inline polar for testing:
+// Minimal inline polar for testing — minimum TWA is 30° (realistic tacking angle):
 // TWS: 10, 20
-// TWA:  0 →  0,  0
+// TWA: 30 →  3,  5
 //       90 →  5, 10
 //      180 →  3,  6
 const POLAR_CSV = [
   'twa/tws;10;20',
-  '0;0;0',
+  '30;3;5',
   '90;5;10',
   '180;3;6',
 ].join('\n');
@@ -34,7 +34,7 @@ test('parsePolar: parses header TWS values', () => {
 });
 
 test('parsePolar: parses TWA rows', () => {
-  assert.deepStrictEqual(polar.twa, [0, 90, 180]);
+  assert.deepStrictEqual(polar.twa, [30, 90, 180]);
 });
 
 test('parsePolar: speeds array shape', () => {
@@ -74,16 +74,23 @@ test('interpolateBoatSpeed: polar is symmetric — negative TWA same as positive
   assert.strictEqual(pos, neg);
 });
 
-test('interpolateBoatSpeed: zero boat speed for TWA=0 (head-to-wind)', () => {
-  const spd = interpolateBoatSpeed(polar, 0, 15);
-  assert.strictEqual(spd, 0);
+test('interpolateBoatSpeed: TWA below polar minimum returns 0', () => {
+  // Boat cannot sail below its tacking angle — 0° and 15° are both below min TWA of 30°
+  assert.strictEqual(interpolateBoatSpeed(polar, 0, 15), 0);
+  assert.strictEqual(interpolateBoatSpeed(polar, 15, 15), 0);
 });
 
-test('interpolateBoatSpeed: clamps TWS below minimum', () => {
-  // TWS below the grid minimum should return speed at grid minimum
+test('interpolateBoatSpeed: TWA at polar minimum returns nonzero', () => {
+  const spd = interpolateBoatSpeed(polar, 30, 10);
+  assert.ok(spd > 0, `expected positive speed at minimum TWA, got ${spd}`);
+});
+
+test('interpolateBoatSpeed: extrapolates proportionally below minimum TWS — lighter wind gives lower speed', () => {
+  // Physical constraint: less wind → lower speed. Bilinear extrapolation below the
+  // minimum-TWS bracket is the intended behaviour (not clamping to the minimum).
   const atMin = interpolateBoatSpeed(polar, 90, 10);
   const below = interpolateBoatSpeed(polar, 90, 5);
-  assert.strictEqual(below, atMin);
+  assert.ok(below < atMin, `expected below-minimum TWS (${below}) < at-minimum (${atMin})`);
 });
 
 test('cleanup temp file', () => {

@@ -30,6 +30,10 @@ export function interpolateBoatSpeed(polar: PolarData, twaDeg: number, twsKnots:
   // Polar is symmetric: use absolute TWA clamped to 0–180
   const twa = Math.min(180, Math.max(0, Math.abs(twaDeg)));
 
+  // Below the polar's minimum close-hauled angle the boat cannot make progress against the wind.
+  // Bilinear extrapolation below polar.twa[0] produces non-zero speeds for impossible headings.
+  if (twa < polar.twa[0]) return 0;
+
   const twsIdx = bracketIndex(polar.tws, twsKnots);
   const twaIdx = bracketIndex(polar.twa, twa);
 

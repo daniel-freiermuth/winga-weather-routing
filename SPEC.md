@@ -87,7 +87,7 @@ The isochrone algorithm runs in two sequential phases: a coarse pre-pass that es
 | `sectorSize` | 1° | yes | Bearing-sector width for fine-pass frontier pruning |
 | `minBoatSpeed` | 0.3 kt | yes | Headings producing less than this are discarded |
 | `arrivalRadiusNm` | 2 NM | yes | Distance to destination that counts as arrival |
-| coarse sector size | 5° | no | Bearing-sector width for pre-pass frontier pruning |
+| coarse sector size | 1° | no | Bearing-sector width for pre-pass frontier pruning (reduced from 5° to preserve narrow-passage candidates — see BUG-34) |
 | cone half-angle | 90° | no | Maximum deviation from start→destination bearing allowed in the pre-pass |
 
 ### Phase 1 — Coarse pre-pass
@@ -101,7 +101,7 @@ For each time step, for each frontier point:
 4. Discard if the path segment crosses land.
 5. If within `arrivalRadiusNm` of the destination, record the current time as T_bound and stop.
 
-After each step, prune candidates to a frontier using 5° bearing sectors (one point per sector, keeping the farthest from start). Emits progress events from 0% to 50%.
+After each step, prune candidates to a frontier using 1° bearing sectors (one point per sector, keeping the farthest from start). Emits progress events from 0% to 50%.
 
 Returns T_bound (a Date) if the destination was reached, or null if the GRIB period was exhausted without arrival.
 
@@ -172,6 +172,8 @@ Key observations:
 | D12 | Island cluster merging (REQ-39) uses dilated union: each polygon is expanded outward by 0.5 NM (D/2), then overlapping expanded polygons are merged into a single no-go area. This simultaneously clusters islands within 1 NM and adds a 0.5 NM safety margin off all shores. Convex hull and bounding box were considered and rejected: convex hull fills in navigable concave areas; bounding box is too conservative for scattered archipelagos. |
 | D10 | Calculation progress uses Server-Sent Events (`GET /calculation-stream`, `text/event-stream`): each `onProgress` call pushes a `progress` event immediately; `done`/`error` events close the stream. The webapp opens the SSE connection and awaits `onopen` before sending `POST /calculate`, guaranteeing the client is registered before the first frontier update fires. |
 | D13 | `pruneToFrontier` uses **farthest-from-start** (distSq, cosine-corrected) as the dominance criterion in both passes. A* `g+h` was implemented and then reverted: in the isochrone algorithm all step-N candidates share the same `g` value (`wind.times[N]`), so `g+h` reduces to `constant + h = min-haversine-to-destination` per sector. For routes requiring a southward detour (e.g. Gothenburg→Stockholm via Öresund), min-h strongly prefers near-start points (smaller haversine to the NE destination) over correctly south-advancing points, pinning the frontier near the start for the entire forecast window. Farthest-from-start is correct provided (a) frontier escape is prevented by the GRIB domain boundary check (Fix B) and (b) T_bound is correctly established by the coarse pass (Fix A — cone removal), since T_bound pruning in the fine pass then eliminates escaped points. |
+| D14 | `interpolateBoatSpeed` returns 0 for any TWA strictly below `polar.twa[0]` (the polar's minimum close-hauled angle). This is a hard physical constraint: the boat cannot sail at a wind angle tighter than its tacking angle. The existing `bracketIndex` clamping (index 0 returned for below-minimum values) followed by bilinear extrapolation gives non-zero speeds for TWA below the minimum — for sunwind33.pol (min TWA 52°), TWA=0° yields ~4–5 kts instead of 0, allowing the router to send the boat directly into the wind. The fix is a single early-return guard added to `interpolateBoatSpeed` before `bracketIndex` is called, applied to both the coarse and fine passes. The TWS light-air extrapolation (same `bracketIndex` behaviour but for TWS below minimum) is a separate issue (BUG-36) and is not changed by this decision. |
+| D15 | Reduce `TBOUND_HEADING_STEP` from 20° to 10°. The coarse pre-pass must be able to land within the `arrivalRadiusNm` (2 nm) circle of destinations approached via narrow waterways. At 20° heading steps and ~24 nm per time step, the probability of a coarse candidate landing within 2 nm of Gothenburg's approach corridor is too low; the coarse pass consistently returns T_bound=null, leaving the fine pass unconstrained. At 10° steps the coarse pass tries 36 headings per frontier point (vs. 18 at 20°) — sufficient resolution to cover the approach heading. This makes the coarse pass ~2× more expensive in polar and land-check calls, but without a valid T_bound the fine pass wastes all of its compute expanding unconstrained across the full GRIB domain. |
 
 ## Algorithm Research Notes
 
