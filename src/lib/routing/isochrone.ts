@@ -1,3 +1,5 @@
+// Isochrone routing: two-phase time-optimal route search (coarse T_bound pre-pass then fine expansion).
+
 import { GribData, LandEdgeIndex, PolarData, CalculationRequest, IsochronePoint, RoutePoint } from '../../types';
 import { RoutingAlgorithm } from './algorithm';
 import { getWindAt, getWaveAt, nearestTimeIndex } from '../grib';
@@ -11,7 +13,7 @@ const DEFAULT_MIN_BOAT_SPEED = 0.3;
 const DEFAULT_ARRIVAL_RADIUS_NM = 2;
 const TBOUND_HEADING_STEP = 20;
 const TBOUND_SECTOR_SIZE = 5;
-const COARSE_CONE_HALF_ANGLE_DEG = 90;
+const COARSE_CONE_HALF_ANGLE_DEG = 90; // covers full tacking range while eliminating the hemisphere behind the start→end bearing
 
 interface StepTiming {
   step: number;
@@ -168,13 +170,13 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       let drawIsochrone = isochrone;
       if (tBoundMs !== null) {
         const bounded = isochrone.filter((p) => {
-          const minRemainingH = haversineNM(p.lat, p.lon, end.lat, end.lon) / maxBoatSpeed;
+          const minRemainingH = haversineNM(p.lat, p.lon, end.lat, end.lon) / maxBoatSpeed; // admissible lower bound: even at max polar speed this point cannot beat T_bound
           return p.time.getTime() + minRemainingH * 3_600_000 <= tBoundMs;
         });
         drawIsochrone = bounded;
         if (bounded.length === 0) {
           onProgress(50 + Math.round(((step - startTimeIdx + 1) / nSteps) * 50), []);
-          await new Promise<void>((resolve) => setImmediate(resolve));
+          await new Promise<void>((resolve) => setImmediate(resolve)); // yield event loop so SSE progress events are flushed to the browser
           break;
         }
         isochrone = bounded;
@@ -196,7 +198,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
       const frontier: Array<[number, number]> = drawIsochrone.map((p) => [p.lat, p.lon]);
       onProgress(50 + Math.round(((step - startTimeIdx + 1) / nSteps) * 50), frontier);
-      await new Promise<void>((resolve) => setImmediate(resolve));
+      await new Promise<void>((resolve) => setImmediate(resolve)); // yield event loop so SSE progress events are flushed to the browser
     }
 
     logTimingSummary(stepTimings);
@@ -227,7 +229,7 @@ function pruneToFrontier<T extends { lat: number; lon: number }>(
     const sector = Math.floor(((brng % 360) + 360) % 360 / sectorSize);
 
     const dLat = p.lat - startLat;
-    const dLon = (p.lon - startLon) * Math.cos(startLat * (Math.PI / 180));
+    const dLon = (p.lon - startLon) * Math.cos(startLat * (Math.PI / 180)); // cosine correction: longitude degrees are shorter than latitude degrees away from the equator
     const distSq = dLat * dLat + dLon * dLon;
 
     const existing = sectors.get(sector);
@@ -333,7 +335,7 @@ async function runCoarsePass(
 
     const coarseFrontier: Array<[number, number]> = frontier.map((p) => [p.lat, p.lon]);
     onProgress(Math.round(((step - startTimeIdx + 1) / nSteps) * 50), coarseFrontier);
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => setImmediate(resolve)); // yield event loop so SSE progress events are flushed to the browser
   }
 
   return null;

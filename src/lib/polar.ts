@@ -1,3 +1,5 @@
+// Polar diagram loading (ORC/OpenCPN semicolon-delimited CSV) and bilinear boat-speed interpolation.
+
 import * as fs from 'fs';
 import { PolarData } from '../types';
 
@@ -55,7 +57,7 @@ export function interpolateBoatSpeed(polar: PolarData, twaDeg: number, twsKnots:
 }
 
 function bracketIndex(arr: number[], value: number): number {
-  if (value <= arr[0]) return 0;
+  if (value <= arr[0]) return 0; // clamp to lowest entry — extrapolate rather than discard in light air below polar minimum
   if (value >= arr[arr.length - 1]) return arr.length - 2;
   for (let i = 0; i < arr.length - 1; i++) {
     if (value >= arr[i] && value <= arr[i + 1]) return i;

@@ -1,3 +1,5 @@
+// Geographic primitives: haversine distance, bearing, destination point, wind vector conversions.
+
 const R_NM = 3440.065;  // Earth radius in nautical miles
 
 export function haversineNM(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -41,12 +43,12 @@ export function destinationPoint(
 
   return {
     lat: lat2 * (180 / Math.PI),
-    lon: (((lon2 * 180) / Math.PI + 540) % 360) - 180,
+    lon: (((lon2 * 180) / Math.PI + 540) % 360) - 180, // +540 not +360: guarantees positive operand for % when lon2 is just outside [−π, π]
   };
 }
 
 export function windSpeedKnots(u: number, v: number): number {
-  return Math.sqrt(u * u + v * v) * 1.94384;
+  return Math.sqrt(u * u + v * v) * 1.94384; // m/s → knots
 }
 
 // Meteorological wind direction: the direction FROM which the wind blows (0=N, 90=E)

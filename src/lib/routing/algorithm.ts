@@ -1,3 +1,5 @@
+// RoutingAlgorithm interface — the contract all routing algorithm implementations must satisfy.
+
 import { GribData, LandEdgeIndex, PolarData, CalculationRequest, RoutePoint } from '../../types';
 
 export interface RoutingAlgorithm {

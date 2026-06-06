@@ -78,7 +78,7 @@ The isochrone algorithm runs in two sequential phases: a coarse pre-pass that es
 | Parameter | Default | Configurable | Description |
 |---|---|---|---|
 | `headingStep` | 5° | yes | Heading resolution for the fine isochrone pass |
-| `coarseHeadingStep` | 20° | yes | Heading resolution for the coarse pre-pass and coarse band scan |
+| `coarseHeadingStep` | 20° | yes | Heading resolution for the coarse pre-pass |
 | `sectorSize` | 1° | yes | Bearing-sector width for fine-pass frontier pruning |
 | `minBoatSpeed` | 0.3 kt | yes | Headings producing less than this are discarded |
 | `arrivalRadiusNm` | 2 NM | yes | Distance to destination that counts as arrival |
@@ -104,14 +104,13 @@ Returns T_bound (a Date) if the destination was reached, or null if the GRIB per
 
 Runs the full isochrone expansion at `headingStep` (5°) resolution, using T_bound to discard provably suboptimal frontier points.
 
-For each time step, for each frontier point, two inner passes are performed:
-
-**Pass 1 — coarse polar band scan (no land check):** Tests all 5° headings grouped into 20° bands. A band is marked "surviving" if any heading within it yields boatSpeed ≥ minBoatSpeed. This identifies polar-dead zones without land checks (a coarse heading blocked by land does not mean adjacent fine headings are also blocked).
-
-**Pass 2 — fine evaluation (land check applied):** For each 5° heading in a surviving band:
-1. Discard if boatSpeed < minBoatSpeed.
-2. Discard if the path segment crosses land.
-3. Add to candidates. If within `arrivalRadiusNm` of destination, record as `arrived`.
+For each time step, for each frontier point:
+1. Skip if the point is on land.
+2. Look up wind at the point's position and time step.
+3. For each heading at `headingStep` (5°) resolution:
+   - Discard if boatSpeed < minBoatSpeed.
+   - Discard if the path segment crosses land.
+   - Add to candidates. If within `arrivalRadiusNm` of destination, record as `arrived`.
 
 If `arrived` is set, the loop terminates.
 

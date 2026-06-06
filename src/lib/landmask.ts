@@ -1,8 +1,12 @@
+// GSHHG land polygon indices: edge-tile index for segment-crossing checks, polygon grid for point-in-polygon.
+
 import { LandPolygon, LandIndex, LandEdgeIndex } from '../types';
 
 const EDGE_CELL_DEG = 0.1;
 
 function edgeCellKey(latCell: number, lonCell: number): number {
+  // At 0.1° resolution, lat cells span −900..+900 and lon cells span −1800..+1800;
+  // formula produces a unique non-negative integer key for each (lat, lon) cell pair.
   return (latCell + 900) * 3600 + ((lonCell % 3600) + 3600) % 3600;
 }
 
@@ -43,7 +47,7 @@ function insertEdgeIntoCells(
   else if (sLon < 0) tMLon = (lonCell * D - lon1) / dLon;
   else tMLon = Infinity;
 
-  const maxSteps = Math.abs(latEnd - latCell) + Math.abs(lonEnd - lonCell);
+  const maxSteps = Math.abs(latEnd - latCell) + Math.abs(lonEnd - lonCell); // Manhattan distance = max cell boundaries the segment can cross
   for (let s = 0; s < maxSteps; s++) {
     if (tMLat < tMLon) { tMLat += tDLat; latCell += sLat; }
     else { tMLon += tDLon; lonCell += sLon; }
@@ -121,7 +125,7 @@ export function segmentCrossesLandFast(
   else if (sLon < 0) tMLon = (lonCell * D - lon1) / dLon;
   else tMLon = Infinity;
 
-  const maxCells = Math.abs(latEnd - latCell) + Math.abs(lonEnd - lonCell) + 1;
+  const maxCells = Math.abs(latEnd - latCell) + Math.abs(lonEnd - lonCell) + 1; // Manhattan distance + 1 to include the starting cell
 
   for (let step = 0; step < maxCells; step++) {
     const entries = index.edgeGrid.get(edgeCellKey(latCell, lonCell));
@@ -270,7 +274,7 @@ function segmentsIntersect(
   const dx = x3 - x1, dy = y3 - y1;
   const t = (dx * d2y - dy * d2x) / cross;
   const u = (dx * d1y - dy * d1x) / cross;
-  return t > 0 && t < 1 && u > 0 && u < 1;
+  return t > 0 && t < 1 && u > 0 && u < 1; // strict interior: shared endpoints between adjacent polygon edges would otherwise register as two intersections
 }
 
 export function polygonsInBbox(

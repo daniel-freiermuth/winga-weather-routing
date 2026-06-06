@@ -1,3 +1,5 @@
+// GRIB2 loading and interpolation, scoped to OpenSkiron/ICON-EU wind and wave band layout.
+
 import * as gdal from 'gdal-async';
 import { GribData, WindVector } from '../types';
 

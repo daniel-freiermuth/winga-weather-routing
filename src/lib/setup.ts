@@ -1,3 +1,5 @@
+// Loads pre-built land index files bundled in the package, decompressing to a per-run local cache.
+
 import * as zlib from 'zlib';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -72,6 +74,7 @@ function extractAndLoad(
   if (fs.existsSync(cachePath)) {
     try {
       const buf = fs.readFileSync(cachePath);
+      // Magic guards against corrupt or wrong-format files; version bump invalidates caches written by older index formats.
       if (buf.length >= 8 && buf.readUInt32LE(0) === magic && buf.readUInt32LE(4) === version) {
         return parseIndexBuffer(buf);
       }

@@ -1,3 +1,5 @@
+// Saves a computed route to SignalK resources/routes as a GeoJSON Feature.
+
 import { RoutePoint } from '../types';
 import { haversineNM } from './geo';
 

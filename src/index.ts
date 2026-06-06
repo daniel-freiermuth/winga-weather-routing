@@ -1,3 +1,5 @@
+// SignalK plugin entry point — registers API routes, manages plugin lifecycle and server state.
+
 import { Router, Request, Response } from 'express';
 import { GribData, PolarData, LandIndex, LandEdgeIndex, CalculationStatus, GribInfo, PluginSettings } from './types';
 import { loadGrib } from './lib/grib';

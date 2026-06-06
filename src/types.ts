@@ -1,3 +1,5 @@
+// All shared TypeScript interfaces and data types for the plugin.
+
 export interface LatLon {
   lat: number;
   lon: number;
