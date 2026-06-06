@@ -34,6 +34,7 @@ export interface WindProvider {
   readonly times: Date[];  // merged, sorted, deduplicated time axis across all files
   getWind(lat: number, lon: number, timeIdx: number): WindVector;
   getWave(lat: number, lon: number, t: Date): number | undefined;
+  coversPoint(lat: number, lon: number): boolean;
 }
 
 export interface GribData {

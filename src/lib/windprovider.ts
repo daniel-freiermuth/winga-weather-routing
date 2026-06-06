@@ -46,4 +46,8 @@ export class MultiFileWindProvider implements WindProvider {
     const f = waveFiles.find(e => coversPoint(e, lat, lon)) ?? waveFiles[0];
     return getWaveAt(f.data!, lat, lon, t.getTime());
   }
+
+  coversPoint(lat: number, lon: number): boolean {
+    return this.sortedFiles.some(e => coversPoint(e, lat, lon));
+  }
 }
