@@ -66,6 +66,10 @@ Examples of assumptions that caused real bugs in this project:
 - Stride sampling and size filtering on land polygons (BUG-12) — violated REQ-17
 - Assuming the package was published to npm — caused wrong installation instructions in README
 
+## Bug During Implementation Rule
+
+When a bug is discovered while testing an implementation that has not yet been confirmed working, do not immediately log it as a separate bug. Instead, ask: should this be logged as a separate bug, or should work continue on the current implementation? Log separately only if the user says so.
+
 ## Bug Report Rule
 
 Before acting on any user message, ask: does this describe behavior that differs from expectation? If yes, it is a bug report — regardless of phrasing. Examples that are bug reports: "X is empty", "Y shows wrong values", "Z doesn't appear", "it's not working", "the numbers are wrong". Conversational descriptions of problems are bug reports just as much as formal "bug:" prefixes.
