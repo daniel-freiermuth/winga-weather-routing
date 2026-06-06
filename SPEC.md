@@ -11,6 +11,7 @@
 | [REQ-58](https://github.com/kristianwiklund/signalk-weather-routing/issues/58) | The plugin is published to the SignalK App Store. The repository and package must satisfy all requirements listed at https://demo.signalk.org/documentation/Developing/Plugins/Publishing_to_The_AppStore.html, including but not limited to: correct `package.json` metadata, a compliant README, a screenshot, and the npm package published under the correct name. | open |
 | [REQ-59](https://github.com/kristianwiklund/signalk-weather-routing/issues/59) | Traffic separation zone handling. | open |
 | [REQ-60](https://github.com/kristianwiklund/signalk-weather-routing/issues/91) | Add a routing condition to keep the route away from land — either by specifying a minimum distance from the coastline that candidates must maintain, or by rewarding (preferring) routes that are further out to sea. | open |
+| [REQ-61](https://github.com/kristianwiklund/signalk-weather-routing/issues/95) | The webapp displays a GitHub button with the classic GitHub logo (Octocat mark) that links to the plugin's GitHub repository. | open |
 
 ## Closed Requirements
 
