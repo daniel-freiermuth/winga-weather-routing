@@ -431,6 +431,8 @@
       if (!depTime) return setStatus('error', 'Please set a departure time');
 
       clearIsochrones();
+      if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+      if (windBarbLayer) { map.removeLayer(windBarbLayer); windBarbLayer = null; }
       if (legLabelLayer) { map.removeLayer(legLabelLayer); legLabelLayer = null; }
       if (calcStream) { calcStream.close(); calcStream = null; }
       document.getElementById('save-route-btn').style.display = 'none';
