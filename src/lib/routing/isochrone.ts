@@ -12,7 +12,10 @@ const DEFAULT_SECTOR_SIZE = 1;
 const DEFAULT_MIN_BOAT_SPEED = 0.3;
 const DEFAULT_ARRIVAL_RADIUS_NM = 2;
 const TBOUND_HEADING_STEP = 20;
-const TBOUND_SECTOR_SIZE = 5;
+// Same granularity as the fine pass: prevents adjacent bearing sectors (e.g. Öresund at
+// 213° vs overshot-south at 211° from Åland) from competing in the same 5° bucket,
+// which caused the coarse pass to discard the Öresund candidate and return T_bound=null.
+const TBOUND_SECTOR_SIZE = 1;
 
 interface StepTiming {
   step: number;
