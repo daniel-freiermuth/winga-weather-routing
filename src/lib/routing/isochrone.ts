@@ -16,6 +16,12 @@ const TBOUND_HEADING_STEP = 20;
 // 213° vs overshot-south at 211° from Åland) from competing in the same 5° bucket,
 // which caused the coarse pass to discard the Öresund candidate and return T_bound=null.
 const TBOUND_SECTOR_SIZE = 1;
+// Bearing from start to destination, referenced per OpenCPN MaxDivertedCourse convention.
+// Not per-point-to-destination: using the global start→end bearing is simpler and consistent
+// with the coarse-pass cone. Allows full tacking coverage (100° ≈ 10° past beam) while
+// cutting the backward hemisphere (BUG-43).
+const FINE_PASS_CONE_HALF_ANGLE = 100;
+const MAX_HEADING_CHANGE = 120;
 
 interface StepTiming {
   step: number;
@@ -81,6 +87,8 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
     if (nSteps <= 0) throw new Error('Departure time is at or after the end of the forecast data');
 
+    const startToDestBearing = bearingTo(start.lat, start.lon, end.lat, end.lon);
+
     let isochrone: IsochronePoint[] = [{
       lat: start.lat, lon: start.lon,
       time: wind.times[startTimeIdx],
@@ -127,6 +135,9 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         }
 
         for (let hdg = 0; hdg < 360; hdg += headingStep) {
+          const deviation = Math.abs(((hdg - startToDestBearing + 180 + 360) % 360) - 180);
+          if (deviation > FINE_PASS_CONE_HALF_ANGLE) continue;
+
           let twa = ((hdg - wdir) + 360) % 360;
           if (twa > 180) twa = 360 - twa;
 
