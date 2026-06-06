@@ -24,6 +24,7 @@ module.exports = (app: any) => {
   let dilatedIndexReady = false;
   let settings: PluginSettings | null = null;
   let calcStatus: CalculationStatus = { status: 'idle', progress: 0 };
+  let pendingRoute: import('./types').RoutePoint[] | null = null;
   const sseClients = new Set<Response>();
 
   function pushSse(data: object): void {
@@ -106,6 +107,7 @@ module.exports = (app: any) => {
       dilatedEdgeIndex = null;
       dilatedIndexReady = false;
       calcStatus = { status: 'idle', progress: 0 };
+      pendingRoute = null;
       closeSseClients();
     },
 
@@ -168,11 +170,11 @@ module.exports = (app: any) => {
             calcStatus = { status: 'calculating', progress: pct, frontier };
             pushSse({ type: 'progress', progress: pct, frontier });
           }, options)
-          .then(async (route) => {
-            const routeId = await saveRoute(app, route);
-            calcStatus = { status: 'done', progress: 100, routeId };
+          .then((route) => {
+            pendingRoute = route;
+            calcStatus = { status: 'done', progress: 100 };
             app.setPluginStatus(`Route ready: ${route.length} waypoints`);
-            pushSse({ type: 'done', routeId });
+            pushSse({ type: 'done' });
             closeSseClients();
           })
           .catch((e: Error) => {
@@ -250,6 +252,43 @@ module.exports = (app: any) => {
           await new Promise<void>(r => setImmediate(r));
         }
         res.end(']}');
+      });
+
+      router.get('/pending-route', (_req: Request, res: Response) => {
+        if (!pendingRoute) return void res.status(404).json({ error: 'No pending route' });
+        res.json({
+          feature: {
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: pendingRoute.map(p => [p.lon, p.lat]),
+            },
+            properties: {
+              coordinatesMeta: pendingRoute.map(p => ({
+                name: p.time.toISOString(),
+                time: p.time.toISOString(),
+                windDir: Math.round(p.windDir),
+                heading: Math.round(p.heading),
+                twa: Math.round(p.twa),
+                tws: Math.round(p.tws * 10) / 10,
+                boatSpeed: Math.round(p.boatSpeed * 10) / 10,
+                legCalcMs: p.legCalcMs,
+                ...(p.waveHeight !== undefined ? { waveHeight: Math.round(p.waveHeight * 100) / 100 } : {}),
+              })),
+            },
+          },
+        });
+      });
+
+      router.post('/save-route', async (req: Request, res: Response) => {
+        if (!pendingRoute) return void res.status(404).json({ error: 'No pending route to save' });
+        const name: string = req.body?.name?.trim() || `Weather Route ${new Date().toLocaleString()}`;
+        try {
+          const routeId = await saveRoute(app, pendingRoute, name);
+          res.json({ routeId });
+        } catch (e: any) {
+          res.status(500).json({ error: e.message });
+        }
       });
 
       router.post('/reload-grib', async (req: Request, res: Response) => {

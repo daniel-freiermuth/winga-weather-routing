@@ -113,6 +113,34 @@
       padding: 6px 10px; font-size: 11px; color: #cdd6f4;
       pointer-events: none; z-index: 9999; white-space: nowrap; line-height: 1.6;
     }
+
+    #save-route-btn {
+      width: 100%; padding: 8px; border-radius: 6px; cursor: pointer; border: none;
+      background: #a6e3a1; color: #1e1e2e; font-size: 13px; font-weight: 600;
+      display: none;
+    }
+    #save-route-btn:hover { background: #94d89e; }
+
+    #save-modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6); z-index: 10000;
+      align-items: center; justify-content: center;
+    }
+    #save-modal-overlay.visible { display: flex; }
+    #save-modal {
+      background: #2a2f45; border: 1px solid #45475a; border-radius: 8px;
+      padding: 20px; width: 320px; display: flex; flex-direction: column; gap: 14px;
+    }
+    #save-modal h2 { font-size: 14px; color: #cdd6f4; font-weight: 600; }
+    #save-modal label { font-size: 12px; color: #a6adc8; }
+    #save-modal input { width: 100%; }
+    .modal-buttons { display: flex; gap: 8px; justify-content: flex-end; }
+    .modal-buttons button {
+      padding: 7px 16px; border-radius: 5px; border: none;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    #modal-save-btn  { background: #89b4fa; color: #1e1e2e; }
+    #modal-cancel-btn { background: #313244; color: #cdd6f4; }
   </style>
 </head>
 <body>
@@ -168,6 +196,7 @@
 
     <button id="calculate" disabled>Calculate Route</button>
     <button id="run-test">Run test</button>
+    <button id="save-route-btn">Save Route…</button>
 
     <div id="progress-bar-wrap" style="display:none">
       <div id="progress-bar"></div>
@@ -177,6 +206,20 @@
   </div>
 
   <div id="graph-tooltip"></div>
+
+  <div id="save-modal-overlay">
+    <div id="save-modal">
+      <h2>Save Route</h2>
+      <div>
+        <label for="route-name-input">Route name</label>
+        <input type="text" id="route-name-input">
+      </div>
+      <div class="modal-buttons">
+        <button id="modal-cancel-btn">Cancel</button>
+        <button id="modal-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
   <div id="right-col">
     <div id="map"></div>
     <div id="conditions-panel">
@@ -390,6 +433,7 @@
       clearIsochrones();
       if (legLabelLayer) { map.removeLayer(legLabelLayer); legLabelLayer = null; }
       if (calcStream) { calcStream.close(); calcStream = null; }
+      document.getElementById('save-route-btn').style.display = 'none';
       document.getElementById('conditions-panel').style.display = 'none';
       calcBtn.disabled = true;
       progressWrap.style.display = 'block';
@@ -473,9 +517,10 @@
           } else if (j.type === 'done') {
             stream.close(); calcStream = null;
             progressBar.style.width = '100%';
-            setStatus('done', `Route saved to SignalK resources.\nRoute ID: ${j.routeId}`);
+            setStatus('done', 'Route calculated.');
             calcBtn.disabled = false;
-            fetchAndDrawRoute(j.routeId);
+            document.getElementById('save-route-btn').style.display = '';
+            fetchAndDrawRoute();
           } else if (j.type === 'error') {
             stream.close(); calcStream = null;
             clearIsochrones();
@@ -537,10 +582,9 @@
         `</svg></div>`;
     }
 
-    async function fetchAndDrawRoute(routeId) {
+    async function fetchAndDrawRoute() {
       try {
-        const skUrl = `/signalk/v2/api/resources/routes/${encodeURIComponent(routeId)}`;
-        const r = await apiFetch(skUrl);
+        const r = await apiFetch(`${API}/pending-route`);
         if (!r.ok) { setStatus('error', `Could not fetch route (HTTP ${r.status})`); return; }
         const route = await r.json();
         const coords = route.feature?.geometry?.coordinates;
@@ -800,6 +844,46 @@
     document.getElementById('safety-margin-toggle').addEventListener('change', () => {
       if (document.getElementById('land-toggle').checked) {
         renderLandOverlay();
+      }
+    });
+
+    const saveRouteBtn   = document.getElementById('save-route-btn');
+    const saveModalOverlay = document.getElementById('save-modal-overlay');
+    const routeNameInput = document.getElementById('route-name-input');
+    const modalSaveBtn   = document.getElementById('modal-save-btn');
+    const modalCancelBtn = document.getElementById('modal-cancel-btn');
+
+    saveRouteBtn.addEventListener('click', () => {
+      const defaultName = `Weather Route ${new Date().toLocaleString()}`;
+      routeNameInput.value = defaultName;
+      saveModalOverlay.classList.add('visible');
+      routeNameInput.select();
+    });
+
+    modalCancelBtn.addEventListener('click', () => {
+      saveModalOverlay.classList.remove('visible');
+    });
+
+    modalSaveBtn.addEventListener('click', async () => {
+      const name = routeNameInput.value.trim() || `Weather Route ${new Date().toLocaleString()}`;
+      modalSaveBtn.disabled = true;
+      try {
+        const r = await apiFetch(`${API}/save-route`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        const j = await r.json();
+        if (j.error) {
+          setStatus('error', `Save failed: ${j.error}`);
+        } else {
+          setStatus('done', `Route saved: ${name}`);
+        }
+      } catch(e) {
+        setStatus('error', `Save failed: ${e}`);
+      } finally {
+        modalSaveBtn.disabled = false;
+        saveModalOverlay.classList.remove('visible');
       }
     });
 

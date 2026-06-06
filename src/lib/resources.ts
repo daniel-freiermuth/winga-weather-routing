@@ -1,7 +1,7 @@
 import { RoutePoint } from '../types';
 import { haversineNM } from './geo';
 
-export async function saveRoute(app: any, route: RoutePoint[]): Promise<string> {
+export async function saveRoute(app: any, route: RoutePoint[], name: string): Promise<string> {
   const uuid = crypto.randomUUID();
 
   const totalDistNM = route.slice(1).reduce((sum, p, i) => {
@@ -9,7 +9,7 @@ export async function saveRoute(app: any, route: RoutePoint[]): Promise<string> 
   }, 0);
 
   const resource = {
-    name: `Weather Route ${new Date().toLocaleString()}`,
+    name,
     description: `Isochrone route calculated by signalk-weather-routing`,
     distance: Math.round(totalDistNM * 1852),  // SignalK stores distance in metres
     feature: {
@@ -19,7 +19,7 @@ export async function saveRoute(app: any, route: RoutePoint[]): Promise<string> 
         coordinates: route.map((p) => [p.lon, p.lat]),
       },
       properties: {
-        name: `Weather Route`,
+        name,
         coordinatesMeta: route.map((p) => ({
           name: p.time.toISOString(),
           time: p.time.toISOString(),
