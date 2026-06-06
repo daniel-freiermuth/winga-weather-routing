@@ -7,12 +7,12 @@
 | [BUG-10](https://github.com/kristianwiklund/signalk-weather-routing/issues/69) | Start point on land causes immediate "No reachable positions" — the isochrone algorithm fails on the very first step when the start point is inside a GSHHG land polygon: `segmentHitsPoly` calls `pointInRing(startLat, startLon, …)` and returns `true` for all 72 headings, leaving `candidates` empty → throws "No reachable positions — check GRIB coverage and polar data" (misleading: the real cause is the start point being on land, not missing GRIB/polar data). Confirmed by OGR lookup: `59.3°N, 18.1°E` is inside GSHHG L1 polygon FID 0 (Swedish mainland). |
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
 | [BUG-30](https://github.com/kristianwiklund/signalk-weather-routing/issues/89) | The codebase contains no explanatory comments. The coding standard requires comments that explain non-obvious "why" — hidden constraints, subtle invariants, workarounds — but none are present anywhere in the source. Partially addressed — see investigation notes. |
-| [BUG-31](https://github.com/kristianwiklund/signalk-weather-routing/issues/90) | No button or other UI element to save the route is visible in the webapp (REQ-47). See investigation notes. |
 
 ## Fixed Bugs
 
 | # | Description |
 |---|---|
+| [~~BUG-31~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/90) | ~~No button or other UI element to save the route is visible in the webapp (REQ-47).~~ — **fixed** (`style.display = ''` fell back to CSS `display:none` rule; changed to `'block'`) |
 | [~~BUG-1~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/60) | ~~`saveRoute` fails with "Invalid resource id provided (urn:mrn:signalk:uuid:…)" — `setResource` expects a plain UUID, not the full URN~~ — **fixed** |
 | [~~BUG-2~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/61) | ~~OSM tiles blocked — webapp violates OSM tile usage policy~~ — **fixed** (tile `<img>` elements patched with `referrerpolicy` attribute to override SignalK's `Referrer-Policy: no-referrer`) |
 | [~~BUG-3~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/62) | ~~`saveRoute` rejected by resources provider — `feature.properties.coordinatesMeta` items fail schema validation: each item must have `name` or `href` property~~ — **fixed** |

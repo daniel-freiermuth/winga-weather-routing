@@ -519,7 +519,7 @@
             progressBar.style.width = '100%';
             setStatus('done', 'Route calculated.');
             calcBtn.disabled = false;
-            document.getElementById('save-route-btn').style.display = '';
+            document.getElementById('save-route-btn').style.display = 'block';
             fetchAndDrawRoute();
           } else if (j.type === 'error') {
             stream.close(); calcStream = null;
