@@ -84,7 +84,19 @@ Before writing any code or changing a technical decision, present a plan and wai
 
 Commit at logical boundaries, not at every file change. A logical boundary is: a requirement implemented, a bug fixed, or a coherent batch of related changes (e.g. several rule updates, a set of documentation corrections). Do not make a separate commit for each individual file edit — accumulate related changes and commit them together.
 
-When something is marked complete (requirement done, bug fixed), the code changes and all associated documentation updates go in the same commit. Do not mark something complete without committing.
+Implementation and confirmation are two separate commits:
+
+**Phase 1 — implementation commit** (before confirmation):
+- Code changes only.
+- The row stays in the Open table in SPEC.md / BUGS.md.
+- Commit message uses `ref #N`.
+
+**Phase 2 — confirmation commit** (after user confirms it works):
+- Move the row from the Open table to the Closed table in SPEC.md or BUGS.md.
+- Close the GitHub issue with `gh issue close`.
+- Commit message uses `ref #N`.
+
+Never mark something as done or fixed in the docs before it has been confirmed.
 
 The commit message must reference the GitHub issue with `ref #N`. Do not use `closes #N` or `fixes #N` — these auto-close the issue on push, which violates the Issue Closure Rule. Close the issue explicitly with `gh issue close` only after confirmation.
 
@@ -98,7 +110,7 @@ A GitHub issue must not be closed unless the fix or implementation has been conf
 
 ## Two-Table Rule
 
-SPEC.md and BUGS.md each maintain two tables: one for open items (status `open`) and one for closed items (status `done`, `fixed`, `superseded`, or `not needed`). Rows are sorted by ID number within each table. When an item is marked done or fixed, move its row from the open table to the closed table in the same commit.
+SPEC.md and BUGS.md each maintain two tables: one for open items (status `open`) and one for closed items (status `done`, `fixed`, `superseded`, or `not needed`). Rows are sorted by ID number within each table. A row is moved from the Open table to the Closed table only in the confirmation commit (Phase 2 of the Commit Rule) — never in the implementation commit.
 
 ## GitHub Issue Rule
 
