@@ -4,6 +4,8 @@
 
 | # | Requirement | Status |
 |---|---|---|
+| [REQ-67](https://github.com/kristianwiklund/signalk-weather-routing/issues/115) | Hovering over a wind arrow (barb) on the calculated route shows a tooltip with the wind speed (knots) and direction (degrees) at that waypoint. | open |
+| [REQ-66](https://github.com/kristianwiklund/signalk-weather-routing/issues/114) | The isochrone lines drawn on the map during and after route calculation should be thinner. | open |
 | [REQ-65](https://github.com/kristianwiklund/signalk-weather-routing/issues/113) | The "Run test" button pre-fills the start position as 60.4572°N 18.8141°E (Öregrund). | open |
 | [REQ-23](https://github.com/kristianwiklund/signalk-weather-routing/issues/23) | A checkbox (enabled by default) controls whether coast avoidance is applied during routing; when unchecked, the algorithm runs without land avoidance | open |
 | [REQ-24](https://github.com/kristianwiklund/signalk-weather-routing/issues/24) | When the polar diagram gives zero speed for a heading, the boat may motor at a configurable engine speed instead of treating that heading as unreachable | open |
