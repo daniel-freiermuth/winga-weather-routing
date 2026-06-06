@@ -274,3 +274,7 @@ to:
 ```js
 document.getElementById('save-route-btn').style.display = 'block';
 ```
+
+### Confirmed
+
+Fix confirmed working by user (2026-06-06). REQ-47 (save route with name dialog) also confirmed working in the same session.
