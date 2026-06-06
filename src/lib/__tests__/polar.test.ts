@@ -85,6 +85,19 @@ test('interpolateBoatSpeed: TWA at polar minimum returns nonzero', () => {
   assert.ok(spd > 0, `expected positive speed at minimum TWA, got ${spd}`);
 });
 
+test('interpolateBoatSpeed: TWS above polar maximum is clamped — returns polar-max speed, not extrapolated beyond', () => {
+  // At TWA=90, polar max TWS=20 gives 10 kt. TWS=40 (2× above max) must still give 10 kt.
+  const atMax  = interpolateBoatSpeed(polar, 90, 20);
+  const beyond = interpolateBoatSpeed(polar, 90, 40);
+  assert.ok(Math.abs(beyond - atMax) < 0.001, `expected ${atMax}, got ${beyond}`);
+});
+
+test('interpolateBoatSpeed: TWA above 180° is clamped to 180°', () => {
+  const at180  = interpolateBoatSpeed(polar, 180, 10);
+  const beyond = interpolateBoatSpeed(polar, 200, 10);
+  assert.ok(Math.abs(beyond - at180) < 0.001, `expected ${at180}, got ${beyond}`);
+});
+
 test('interpolateBoatSpeed: extrapolates proportionally below minimum TWS — lighter wind gives lower speed', () => {
   // Physical constraint: less wind → lower speed. Bilinear extrapolation below the
   // minimum-TWS bracket is the intended behaviour (not clamping to the minimum).

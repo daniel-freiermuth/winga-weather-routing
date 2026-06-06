@@ -215,6 +215,68 @@ test('calculate: REQ-36 fine-pass onProgress only sends T_bound-passing points',
   }
 });
 
+function makeGribWithWave(waveHeight: number): GribData {
+  const grib = makeGrib();
+  const nPoints = grib.nLat * grib.nLon;
+  const waveFrame = new Float32Array(nPoints).fill(waveHeight);
+  const swhByTime = new Map<number, Float32Array>();
+  for (const t of grib.times) swhByTime.set(t.getTime(), new Float32Array(waveFrame));
+  return { ...grib, swhByTime };
+}
+
+test('calculate: maxWindKn discards all candidates when wind exceeds limit', async () => {
+  // makeGrib gives 5 m/s wind ≈ 9.7 kn; maxWindKn=5 must discard every frontier point
+  const wind = makeWind(makeGrib());
+  const polar = makePolar();
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
+  };
+  await assert.rejects(
+    () => algo.calculate(wind, polar, null, req, () => {}, { maxWindKn: 5 }),
+    /no reachable positions/i,
+  );
+});
+
+test('calculate: maxWindKn=0 imposes no wind constraint', async () => {
+  const wind = makeWind(makeGrib());
+  const polar = makePolar();
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
+  };
+  const { route } = await algo.calculate(wind, polar, null, req, () => {}, { maxWindKn: 0, arrivalRadiusNm: 5 });
+  assert.ok(route.length >= 2, 'route should be found with no wind constraint');
+});
+
+test('calculate: maxWaveM discards all candidates when wave exceeds limit', async () => {
+  const wind = makeWind(makeGribWithWave(3.0));  // 3 m waves everywhere
+  const polar = makePolar();
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
+  };
+  await assert.rejects(
+    () => algo.calculate(wind, polar, null, req, () => {}, { maxWaveM: 1.0 }),
+    /no reachable positions/i,
+  );
+});
+
+test('calculate: maxWaveM=0 imposes no wave constraint', async () => {
+  const wind = makeWind(makeGribWithWave(3.0));
+  const polar = makePolar();
+  const req: CalculationRequest = {
+    start: { lat: 41, lon: 11 },
+    end: { lat: 41.05, lon: 11 },
+    departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
+  };
+  const { route } = await algo.calculate(wind, polar, null, req, () => {}, { maxWaveM: 0, arrivalRadiusNm: 5 });
+  assert.ok(route.length >= 2, 'route should be found with no wave constraint');
+});
+
 test('calculate: land index blocks land points', async () => {
   const wind = makeWind(makeGrib());
   const polar = makePolar();

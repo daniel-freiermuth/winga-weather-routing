@@ -44,8 +44,11 @@ export function interpolateBoatSpeed(polar: PolarData, twaDeg: number, twsKnots:
   const tws0 = polar.tws[twsIdx];
   const tws1 = polar.tws[Math.min(twsIdx + 1, polar.tws.length - 1)];
 
-  const tTwa = twa1 === twa0 ? 0 : (twa - twa0) / (twa1 - twa0);
-  const tTws = tws1 === tws0 ? 0 : (twsKnots - tws0) / (tws1 - tws0);
+  // Clamp to ≤1 so bilinear interpolation never extrapolates beyond the polar maximum.
+  // bracketIndex returns length-2 for above-max inputs, making the raw ratio > 1.0.
+  // Below-minimum TWS intentionally extrapolates (ratio < 0) — lighter wind gives lower speed.
+  const tTwa = twa1 === twa0 ? 0 : Math.min(1, (twa - twa0) / (twa1 - twa0));
+  const tTws = tws1 === tws0 ? 0 : Math.min(1, (twsKnots - tws0) / (tws1 - tws0));
 
   const s00 = polar.speeds[twaIdx]?.[twsIdx] ?? 0;
   const s10 = polar.speeds[Math.min(twaIdx + 1, polar.twa.length - 1)]?.[twsIdx] ?? 0;

@@ -71,6 +71,8 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     const sectorSize = Number(options?.sectorSize ?? DEFAULT_SECTOR_SIZE);
     const minBoatSpeed = Number(options?.minBoatSpeed ?? DEFAULT_MIN_BOAT_SPEED);
     const arrivalRadiusNm = Number(options?.arrivalRadiusNm ?? DEFAULT_ARRIVAL_RADIUS_NM);
+    const maxWindKn = Number(options?.maxWindKn ?? 0);  // 0 = no limit
+    const maxWaveM  = Number(options?.maxWaveM  ?? 0);  // 0 = no limit
 
     const { start, end } = request;
     const departureTime = new Date(request.departureTime);
@@ -90,7 +92,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     let arrived: IsochronePoint | null = null;
 
     const maxBoatSpeed = getMaxPolarSpeed(polar);
-    const tBound = await runCoarsePass(wind, polar, edgeIndex, start, end, minBoatSpeed, arrivalRadiusNm, startTimeIdx, nSteps, onProgress);
+    const tBound = await runCoarsePass(wind, polar, edgeIndex, start, end, minBoatSpeed, arrivalRadiusNm, maxWindKn, maxWaveM, startTimeIdx, nSteps, onProgress);
     const tBoundMs = tBound !== null ? tBound.getTime() : null;
 
     const stepTimings: StepTiming[] = [];
@@ -117,6 +119,12 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
         const tws = windSpeedKnots(windVec.u, windVec.v);
         const wdir = windDirection(windVec.u, windVec.v);
+
+        if (maxWindKn > 0 && tws > maxWindKn) continue;
+        if (maxWaveM > 0) {
+          const wh = wind.getWave(point.lat, point.lon, wind.times[step]);
+          if (wh != null && wh > maxWaveM) continue;
+        }
 
         for (let hdg = 0; hdg < 360; hdg += headingStep) {
           let twa = ((hdg - wdir) + 360) % 360;
@@ -318,6 +326,8 @@ async function runCoarsePass(
   end: GeoPoint,
   minBoatSpeed: number,
   arrivalRadiusNm: number,
+  maxWindKn: number,
+  maxWaveM: number,
   startTimeIdx: number,
   nSteps: number,
   onProgress: (pct: number, frontier: Array<[number, number]>) => void,
@@ -335,6 +345,12 @@ async function runCoarsePass(
       const windVec = wind.getWind(point.lat, point.lon, step);
       const tws = windSpeedKnots(windVec.u, windVec.v);
       const wdir = windDirection(windVec.u, windVec.v);
+
+      if (maxWindKn > 0 && tws > maxWindKn) continue;
+      if (maxWaveM > 0) {
+        const wh = wind.getWave(point.lat, point.lon, wind.times[step]);
+        if (wh != null && wh > maxWaveM) continue;
+      }
 
       for (let hdg = 0; hdg < 360; hdg += TBOUND_HEADING_STEP) {
         let twa = ((hdg - wdir) + 360) % 360;
