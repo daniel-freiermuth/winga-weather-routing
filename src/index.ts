@@ -4,7 +4,7 @@ import { Router, Request, Response } from 'express';
 import { GribData, PolarData, LandIndex, LandEdgeIndex, CalculationStatus, GribInfo, PluginSettings } from './types';
 import { loadGrib } from './lib/grib';
 import { parsePolar } from './lib/polar';
-import { buildLandIndex, polygonsInBbox } from './lib/landmask';
+import { buildLandIndex, polygonsInBbox, isPointOnLand } from './lib/landmask';
 import { saveRoute } from './lib/resources';
 import { pluginDataDir, loadBundledEdgeIndex, loadBundledDilatedIndex } from './lib/setup';
 import { RoutingAlgorithm } from './lib/routing/algorithm';
@@ -163,6 +163,13 @@ module.exports = (app: any) => {
           return void res.status(503).json({ error: 'Safety margin index not ready yet' });
         }
         const activeIndex = useSafetyMargin ? dilatedEdgeIndex : edgeIndex;
+
+        if (activeIndex) {
+          if (isPointOnLand(activeIndex, start.lat, start.lon))
+            return void res.status(400).json({ error: 'Start point is on land — move it to open water' });
+          if (isPointOnLand(activeIndex, end.lat, end.lon))
+            return void res.status(400).json({ error: 'Destination is on land — move it to open water' });
+        }
 
         calcStatus = { status: 'calculating', progress: 0 };
         res.json({ status: 'calculating' });

@@ -279,3 +279,29 @@ document.getElementById('save-route-btn').style.display = 'block';
 ### Confirmed
 
 Fix confirmed working by user (2026-06-06). REQ-47 (save route with name dialog) also confirmed working in the same session.
+
+---
+
+## BUG-10 — Investigation Notes
+
+### Root cause
+
+No validation of the start point before the calculation begins. When the start is inside a GSHHG land polygon, `isPointOnLand` (called at the top of each frontier loop iteration) immediately skips it, leaving `candidates` empty after the first step. The algorithm then throws "No reachable positions — check GRIB coverage and polar data", which is misleading: the real cause is the start point being on land.
+
+### Fix
+
+Added an explicit `isPointOnLand` check for the start point in the `/calculate` handler (`src/index.ts`) before the calculation starts. Returns HTTP 400 with the message "Start point is on land — move it to open water". Applied to `activeIndex` (respects safety margin setting). Same check added for the end point (see BUG-32).
+
+---
+
+## BUG-32 — Investigation Notes
+
+### Root cause
+
+`backtrack()` in `isochrone.ts` appends the destination coordinates directly as the first route waypoint without checking the final segment for land crossing. The `arrived` frontier point is within `arrivalRadiusNm` (2 NM) of the destination and in open water, but the straight line from there to a destination on land crosses through it.
+
+Root cause is the same family as BUG-10: no validation that the destination is in open water before routing begins.
+
+### Fix
+
+Same fix as BUG-10 — `isPointOnLand` check for the end point added alongside the start check in the `/calculate` handler. Returns HTTP 400 with "Destination is on land — move it to open water".
