@@ -7,6 +7,7 @@
 | [BUG-10](https://github.com/kristianwiklund/signalk-weather-routing/issues/69) | Start point on land causes immediate "No reachable positions" — the isochrone algorithm fails on the very first step when the start point is inside a GSHHG land polygon: `segmentHitsPoly` calls `pointInRing(startLat, startLon, …)` and returns `true` for all 72 headings, leaving `candidates` empty → throws "No reachable positions — check GRIB coverage and polar data" (misleading: the real cause is the start point being on land, not missing GRIB/polar data). Confirmed by OGR lookup: `59.3°N, 18.1°E` is inside GSHHG L1 polygon FID 0 (Swedish mainland). |
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
 | [BUG-30](https://github.com/kristianwiklund/signalk-weather-routing/issues/89) | The codebase contains no explanatory comments. The coding standard requires comments that explain non-obvious "why" — hidden constraints, subtle invariants, workarounds — but none are present anywhere in the source. Partially addressed — see investigation notes. |
+| [BUG-32](https://github.com/kristianwiklund/signalk-weather-routing/issues/92) | When the destination is set to 62.3980°N 17.4875°E (Alnön, Sundsvall), the final leg of the calculated route crosses land. |
 
 ## Fixed Bugs
 
