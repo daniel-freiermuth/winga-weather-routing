@@ -4,9 +4,6 @@
 
 | # | Requirement | Status |
 |---|---|---|
-| [REQ-67](https://github.com/kristianwiklund/signalk-weather-routing/issues/115) | Hovering over a wind arrow (barb) on the calculated route shows a tooltip with the wind speed (knots) and direction (degrees) at that waypoint. | open |
-| [REQ-66](https://github.com/kristianwiklund/signalk-weather-routing/issues/114) | The isochrone lines drawn on the map during and after route calculation should be thinner. | open |
-| [REQ-65](https://github.com/kristianwiklund/signalk-weather-routing/issues/113) | The "Run test" button pre-fills the start position as 60.4572°N 18.8141°E (Öregrund) and the departure time as 2026-05-24 08:00. | open |
 | [REQ-23](https://github.com/kristianwiklund/signalk-weather-routing/issues/23) | A checkbox (enabled by default) controls whether coast avoidance is applied during routing; when unchecked, the algorithm runs without land avoidance | open |
 | [REQ-24](https://github.com/kristianwiklund/signalk-weather-routing/issues/24) | When the polar diagram gives zero speed for a heading, the boat may motor at a configurable engine speed instead of treating that heading as unreachable | open |
 | [REQ-45](https://github.com/kristianwiklund/signalk-weather-routing/issues/45) | Route comfort constraints: the user can configure a maximum wind speed (knots) and/or a maximum wave height (metres) as routing constraints. During isochrone expansion, any candidate where the forecasted wind speed exceeds the wind limit is discarded. Wave height is read from the loaded GRIB file if wave parameters (significant wave height, `swh`) are present — the OpenSkiron ICON-EU EWAM files include both wind and wave bands in a single file. The wave height constraint is only applied when wave data is present in the loaded file. Both limits are optional and independent. **Implement together with BUG-42** (unbounded TWS extrapolation): fixing the polar clamping and adding the max-wind constraint are both changes to how extreme wind conditions are handled, and testing one requires the other to be correct first. | open |
@@ -22,6 +19,9 @@
 
 | # | Requirement | Status |
 |---|---|---|
+| [REQ-67](https://github.com/kristianwiklund/signalk-weather-routing/issues/115) | Hovering over a wind arrow (barb) on the calculated route shows a tooltip with the wind speed (knots) and direction (degrees) at that waypoint. | done |
+| [REQ-66](https://github.com/kristianwiklund/signalk-weather-routing/issues/114) | The isochrone lines drawn on the map during and after route calculation should be thinner. | done |
+| [REQ-65](https://github.com/kristianwiklund/signalk-weather-routing/issues/113) | The "Run test" button pre-fills the start position as 60.4572°N 18.8141°E (Öregrund) and the departure time as 2026-05-24 08:00. | done |
 | [REQ-32](https://github.com/kristianwiklund/signalk-weather-routing/issues/32) | The plugin config accepts a directory path (`gribDir`) instead of a single file path. At startup and on reload, the plugin scans the directory and indexes all GRIB files found. When a calculation is started, only the GRIB files relevant to the selected departure time are used. Each loaded file's bounding box is shown on the map as a separate dashed rectangle, rotating through a C64-inspired color palette. | done |
 | [REQ-1](https://github.com/kristianwiklund/signalk-weather-routing/issues/1) | SignalK Node.js plugin, TypeScript | done |
 | [REQ-2](https://github.com/kristianwiklund/signalk-weather-routing/issues/2) | GRIB2 wind data from OpenSkiron — ICON-EU model, 7 km grid, hourly to 78 h then 3-hourly to 120 h | done |
