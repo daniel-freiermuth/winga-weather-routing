@@ -103,3 +103,5 @@ SPEC.md and BUGS.md each maintain two tables: one for open items (status `open`)
 When a new requirement is added to SPEC.md or a new bug is added to BUGS.md, create a corresponding GitHub issue with the same ID and text. When the text of an existing entry is updated in either file, update the corresponding GitHub issue with the same information at the time of the next commit.
 
 Issue titles must follow the format `<ID>: <slogan>` (e.g. `REQ-23: Coast avoidance toggle`, `BUG-10: Start on land gives misleading error`). Each entry in SPEC.md and BUGS.md must include a link to its GitHub issue.
+
+Do not include a `Status:` line in GitHub issue bodies. The issue's open/closed state carries the status — open means unresolved, closed means done or fixed.
