@@ -595,7 +595,7 @@
               const segments = splitByAngularGap(pts, startLatLon, ISOCHRONE_GAP_THRESHOLD_DEG);
               for (const seg of segments) {
                 isochroneLayers.push(
-                  L.polyline(seg, { color: colour, weight: 1.5, opacity: 0.6, interactive: false }).addTo(map)
+                  L.polyline(seg, { color: colour, weight: 1.0, opacity: 0.6, interactive: false }).addTo(map)
                 );
               }
             }
@@ -704,7 +704,8 @@
           L.marker([lat, lng], {
             icon: L.divIcon({ html, iconSize: [30, 54], iconAnchor: [15, 33], className: '' }),
             pane: 'windBarbPane',
-          }).addTo(windBarbLayer);
+          }).bindTooltip(`${(m.tws ?? 0).toFixed(1)} kn, ${m.windDir ?? 0}°`, { direction: 'top', offset: [0, -10] })
+            .addTo(windBarbLayer);
         });
         windBarbLayer.addTo(map);
 
@@ -864,7 +865,7 @@
     }
 
     function runTest() {
-      const s = { lat: 60.3996, lon: 18.3403 };
+      const s = { lat: 60.4572, lon: 18.8141 };
       const e = { lat: 58.5052, lon: 17.3474 };
       startLatLon = s;
       endLatLon   = e;
@@ -872,7 +873,7 @@
       endCoords.textContent   = `${e.lat.toFixed(4)}, ${e.lon.toFixed(4)}`;
       startMarker.setLatLng([s.lat, s.lon]).addTo(map);
       endMarker.setLatLng([e.lat, e.lon]).addTo(map);
-      document.getElementById('departure-time').value = toLocalDateTimeInput(new Date('2026-05-24T08:30:00Z'));
+      document.getElementById('departure-time').value = toLocalDateTimeInput(new Date('2026-05-24T08:00:00Z'));
       updateCalcButton();
       startCalculation();
     }
