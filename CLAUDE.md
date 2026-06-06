@@ -86,6 +86,10 @@ When something is marked complete (requirement done, bug fixed), update the docu
 
 The commit message must include `closes #N` (or `fixes #N`) referencing the GitHub issue for the requirement or bug being resolved. GitHub uses this to automatically close the issue and cross-link the commit in the issue timeline.
 
+## New Tooling Rule
+
+If implementing a verification, test, or validation task would require introducing automation tooling not already present in the project (e.g. Playwright, a new test framework, a new CI step), stop. Add the tooling as a new requirement to SPEC.md and wait for explicit approval before proceeding with installation or use.
+
 ## Issue Closure Rule
 
 A GitHub issue must not be closed unless the fix or implementation has been confirmed solved — either by explicit user confirmation or by automated testing/validation. Closing an issue solely because the code was written is not sufficient.
