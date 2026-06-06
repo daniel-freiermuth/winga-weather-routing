@@ -7,7 +7,7 @@
 | [BUG-10](https://github.com/kristianwiklund/signalk-weather-routing/issues/69) | Start point on land causes immediate "No reachable positions" — the isochrone algorithm fails on the very first step when the start point is inside a GSHHG land polygon: `segmentHitsPoly` calls `pointInRing(startLat, startLon, …)` and returns `true` for all 72 headings, leaving `candidates` empty → throws "No reachable positions — check GRIB coverage and polar data" (misleading: the real cause is the start point being on land, not missing GRIB/polar data). Confirmed by OGR lookup: `59.3°N, 18.1°E` is inside GSHHG L1 polygon FID 0 (Swedish mainland). |
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
 | [BUG-30](https://github.com/kristianwiklund/signalk-weather-routing/issues/89) | The codebase contains no explanatory comments. The coding standard requires comments that explain non-obvious "why" — hidden constraints, subtle invariants, workarounds — but none are present anywhere in the source. Partially addressed — see investigation notes. |
-| [BUG-31](https://github.com/kristianwiklund/signalk-weather-routing/issues/90) | No button or other UI element to save the route is visible in the webapp (REQ-47). |
+| [BUG-31](https://github.com/kristianwiklund/signalk-weather-routing/issues/90) | No button or other UI element to save the route is visible in the webapp (REQ-47). See investigation notes. |
 
 ## Fixed Bugs
 
@@ -243,3 +243,34 @@ Reviewed all 10 TypeScript source files. The following was addressed in commit 4
 ### Remaining scope
 
 The frontend (`public/index.html`) has not been audited for missing "why" comments. The backend audit may also have missed non-obvious invariants introduced in future changes.
+
+---
+
+## BUG-31 — Investigation Notes
+
+### Root cause
+
+`public/index.html` line 522, in the SSE `done` handler:
+
+```js
+document.getElementById('save-route-btn').style.display = '';
+```
+
+Setting `style.display = ''` removes any inline style override, causing the element to fall back to its CSS rule — which is `#save-route-btn { display: none }` (line 120 of the same file). The button is therefore still hidden after the calculation completes.
+
+### Same root cause as BUG-27
+
+BUG-27 had the identical pattern: `style.display = ''` on `#safety-margin-building`, which also had a CSS `display: none` rule. Fixed there by using `'block'` instead.
+
+Note: `style.display = ''` works correctly for elements whose `display: none` is set as an inline `style` attribute in the HTML (e.g. `#safety-margin-wrap` at line 897) — removing the inline override restores the browser default. It only fails when the `none` is declared in a stylesheet rule.
+
+### Fix
+
+Change line 522 from:
+```js
+document.getElementById('save-route-btn').style.display = '';
+```
+to:
+```js
+document.getElementById('save-route-btn').style.display = 'block';
+```
