@@ -87,7 +87,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     let arrived: IsochronePoint | null = null;
 
     const maxBoatSpeed = getMaxPolarSpeed(polar);
-    const tBound = await runCoarsePass(wind, polar, edgeIndex, start, end, maxBoatSpeed, minBoatSpeed, arrivalRadiusNm, startTimeIdx, nSteps, onProgress);
+    const tBound = await runCoarsePass(wind, polar, edgeIndex, start, end, minBoatSpeed, arrivalRadiusNm, startTimeIdx, nSteps, onProgress);
     const tBoundMs = tBound !== null ? tBound.getTime() : null;
 
     const stepTimings: StepTiming[] = [];
@@ -163,7 +163,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       if (arrived) break;
 
       const t0prune = performance.now();
-      isochrone = pruneToFrontier(candidates, start.lat, start.lon, end, maxBoatSpeed, sectorSize);
+      isochrone = pruneToFrontier(candidates, start.lat, start.lon, sectorSize);
       const pruningMs = performance.now() - t0prune;
 
       if (isochrone.length === 0) throw new Error('No reachable positions — check GRIB coverage and polar data');
@@ -228,31 +228,35 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
   }
 }
 
-// A* g+h dominance: within each bearing sector keep the candidate with the lowest
-// estimated total arrival time (elapsed time + optimistic remaining time at max speed).
-// "Farthest from start" was rejected because it discards channel-threading points in
-// favour of points that escaped past the GRIB domain boundary (D13, BUG-37).
-function pruneToFrontier<T extends { lat: number; lon: number; time: Date }>(
+// Farthest-from-start dominance: within each bearing sector keep the candidate
+// that has travelled the greatest distance from the original start.
+// g+h (A*) was attempted but fails here because all step-N candidates share the
+// same g value (wind.times[N]), reducing g+h to min-h = min haversine-to-destination.
+// For routes requiring a southward detour (e.g. Öresund), min-h prefers near-start
+// points (smaller haversine) over correctly advancing south-going points, pinning
+// the frontier near the start indefinitely (D13, BUG-37).
+// Frontier escape (escaped points are farthest from start) is prevented by the GRIB
+// domain boundary check applied before candidates enter this function.
+function pruneToFrontier<T extends { lat: number; lon: number }>(
   candidates: T[],
   startLat: number,
   startLon: number,
-  end: { lat: number; lon: number },
-  maxBoatSpeed: number,
   sectorSize: number,
 ): T[] {
-  type Entry = { point: T; fValue: number };
+  type Entry = { point: T; distSq: number };
   const sectors = new Map<number, Entry>();
 
   for (const p of candidates) {
     const brng = bearingTo(startLat, startLon, p.lat, p.lon);
     const sector = Math.floor(((brng % 360) + 360) % 360 / sectorSize);
 
-    // f = g + h: elapsed ms + optimistic remaining ms (haversine / maxSpeed)
-    const fValue = p.time.getTime() + (haversineNM(p.lat, p.lon, end.lat, end.lon) / maxBoatSpeed) * 3_600_000;
+    const dLat = p.lat - startLat;
+    const dLon = (p.lon - startLon) * Math.cos(startLat * (Math.PI / 180)); // cosine correction: longitude degrees are shorter than latitude degrees away from the equator
+    const distSq = dLat * dLat + dLon * dLon;
 
     const existing = sectors.get(sector);
-    if (!existing || fValue < existing.fValue) {
-      sectors.set(sector, { point: p, fValue });
+    if (!existing || distSq > existing.distSq) {
+      sectors.set(sector, { point: p, distSq });
     }
   }
 
@@ -301,7 +305,7 @@ function getMaxPolarSpeed(polar: PolarData): number {
 }
 
 type GeoPoint = { lat: number; lon: number };
-type CoarsePoint = GeoPoint & { time: Date };
+type CoarsePoint = GeoPoint;
 
 async function runCoarsePass(
   wind: WindProvider,
@@ -309,14 +313,13 @@ async function runCoarsePass(
   edgeIndex: LandEdgeIndex | null,
   start: GeoPoint,
   end: GeoPoint,
-  maxBoatSpeed: number,
   minBoatSpeed: number,
   arrivalRadiusNm: number,
   startTimeIdx: number,
   nSteps: number,
   onProgress: (pct: number, frontier: Array<[number, number]>) => void,
 ): Promise<Date | null> {
-  let frontier: CoarsePoint[] = [{ lat: start.lat, lon: start.lon, time: wind.times[startTimeIdx] }];
+  let frontier: CoarsePoint[] = [{ lat: start.lat, lon: start.lon }];
 
   for (let step = startTimeIdx; step < wind.times.length - 1; step++) {
     const nextTime = wind.times[step + 1];
@@ -344,7 +347,7 @@ async function runCoarsePass(
 
         if (edgeIndex && segmentCrossesLandFast(edgeIndex, point.lat, point.lon, newLat, newLon)) continue;
 
-        candidates.push({ lat: newLat, lon: newLon, time: nextTime });
+        candidates.push({ lat: newLat, lon: newLon });
 
         if (haversineNM(newLat, newLon, end.lat, end.lon) <= arrivalRadiusNm) {
           return nextTime;
@@ -354,7 +357,7 @@ async function runCoarsePass(
 
     // A single empty step may be caused by land temporarily blocking all headings — skip rather than abort.
     if (candidates.length === 0) continue;
-    frontier = pruneToFrontier(candidates, start.lat, start.lon, end, maxBoatSpeed, TBOUND_SECTOR_SIZE);
+    frontier = pruneToFrontier(candidates, start.lat, start.lon, TBOUND_SECTOR_SIZE);
     if (frontier.length === 0) return null;
 
     const coarseFrontier: Array<[number, number]> = frontier.map((p) => [p.lat, p.lon]);
