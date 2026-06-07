@@ -59,6 +59,12 @@ At the start of every session, read and apply all rules in:
 - `~/src/weather-routing/CLAUDE.md` (project rules)
 - All memory files listed in `~/.claude/projects/-home-kw-src-weather-routing/memory/MEMORY.md`
 
+## Nautical Safety Rule
+
+This plugin produces routes that sailors may follow at sea. Any silent fallback, soft failure, or substitution that causes the route to be calculated with different inputs than the user specified is a safety hazard — the sailor will act on a route they believe reflects their intended parameters.
+
+Never implement silent fallbacks for mismatched or out-of-range inputs. If the user's input cannot be honoured exactly (wrong date, outside GRIB coverage, start on land, etc.), return a hard error that requires the user to correct the input. Do not substitute nearest available values, clamp silently, or proceed with a warning that can be missed. Fail loudly, fail early, fail clearly.
+
 ## No Assumptions Rule
 
 Do not assume things, and do not simplify things on your own. If a decision has not been made explicitly, ask. If a simplification would change behaviour or omit information, do not apply it without explicit instruction.
