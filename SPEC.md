@@ -4,6 +4,7 @@
 
 | # | Requirement | Status |
 |---|---|---|
+| [REQ-68](https://github.com/kristianwiklund/signalk-weather-routing/issues/119) | The 'No reachable positions' and 'Destination not reached within forecast period' error messages include the number of completed isochrone steps and the current phase (coarse pass or fine pass) at the time of failure. | open |
 | [REQ-23](https://github.com/kristianwiklund/signalk-weather-routing/issues/23) | A checkbox (enabled by default) controls whether coast avoidance is applied during routing; when unchecked, the algorithm runs without land avoidance | open |
 | [REQ-24](https://github.com/kristianwiklund/signalk-weather-routing/issues/24) | When the polar diagram gives zero speed for a heading, the boat may motor at a configurable engine speed instead of treating that heading as unreachable | open |
 | [REQ-58](https://github.com/kristianwiklund/signalk-weather-routing/issues/58) | The plugin is published to the SignalK App Store. The repository and package must satisfy all requirements listed at https://demo.signalk.org/documentation/Developing/Plugins/Publishing_to_The_AppStore.html, including but not limited to: correct `package.json` metadata, a compliant README, a screenshot, and the npm package published under the correct name. | open |
