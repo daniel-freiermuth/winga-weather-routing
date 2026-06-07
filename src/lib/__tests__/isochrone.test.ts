@@ -351,16 +351,16 @@ test('calculate: BUG-45 pruneToFrontier keeps top-2 survivors per sector', async
   );
 });
 
-test('calculate: fine pass cone excludes candidates >100° from start→dest bearing (BUG-43)', async () => {
+test('calculate: fine pass cone excludes candidates >100° from per-position bearing to dest (BUG-43)', async () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');
   const t2 = new Date('2024-01-01T02:00:00Z');
   const wind = makeWind(makeGrib([t0, t1, t2]));
   const polar = makePolar();
-  // Destination due east (bearing ≈ 90°); T_bound = null (45 nm, unreachable in 2 × 5 nm steps).
-  // Cone ±100° around 90°: excludes headings ~191°–349°.
+  // Destination due east (bearing ≈ 90° from any near-start point); T_bound = null.
+  // Per-position cone ±100° around ~90°: excludes headings ~191°–349°.
   // Without cone, heading 260° (west, TWA=80°=5kt) produces lon≈10.89 — below 10.9.
-  // With cone, the westernmost allowed heading is 350°, giving lon≥10.98 per step.
+  // With cone, the westernmost allowed heading is ~350°, giving lon≥10.98 per step.
   const req: CalculationRequest = {
     start: { lat: 41, lon: 11 },
     end: { lat: 41, lon: 12 },

@@ -16,10 +16,10 @@ const TBOUND_HEADING_STEP = 20;
 // 213° vs overshot-south at 211° from Åland) from competing in the same 5° bucket,
 // which caused the coarse pass to discard the Öresund candidate and return T_bound=null.
 const TBOUND_SECTOR_SIZE = 1;
-// Bearing from start to destination, referenced per OpenCPN MaxDivertedCourse convention.
-// Not per-point-to-destination: using the global start→end bearing is simpler and consistent
-// with the coarse-pass cone. Allows full tacking coverage (100° ≈ 10° past beam) while
-// cutting the backward hemisphere (BUG-43).
+// Per-position cone: at each frontier point, headings more than this many degrees off the
+// bearing from that point to the destination are skipped. Using the current-position bearing
+// (not the fixed start→end bearing) allows routes that need to transit passages at angles
+// oblique to the overall course — e.g. northward through Öresund when the full route runs SW.
 const FINE_PASS_CONE_HALF_ANGLE = 100;
 const MAX_HEADING_CHANGE = 120;
 
@@ -87,8 +87,6 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
     if (nSteps <= 0) throw new Error('Departure time is at or after the end of the forecast data');
 
-    const startToDestBearing = bearingTo(start.lat, start.lon, end.lat, end.lon);
-
     let isochrone: IsochronePoint[] = [{
       lat: start.lat, lon: start.lon,
       time: wind.times[startTimeIdx],
@@ -123,6 +121,11 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       for (const point of isochrone) {
         if (edgeIndex && isPointOnLand(edgeIndex, point.lat, point.lon)) continue;
 
+        // Per-position bearing: cone axis points from this frontier point toward the destination,
+        // not from the original start. A fixed start→end axis blocked Öresund transit headings
+        // that were within 100° of the current-position bearing but >100° off the initial bearing.
+        const pointToDestBearing = bearingTo(point.lat, point.lon, end.lat, end.lon);
+
         const t0wind = performance.now();
         const windVec = wind.getWind(point.lat, point.lon, step);
         windLookupMs += performance.now() - t0wind;
@@ -137,7 +140,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         }
 
         for (let hdg = 0; hdg < 360; hdg += headingStep) {
-          const deviation = Math.abs(((hdg - startToDestBearing + 180 + 360) % 360) - 180);
+          const deviation = Math.abs(((hdg - pointToDestBearing + 180 + 360) % 360) - 180);
           if (deviation > FINE_PASS_CONE_HALF_ANGLE) continue;
 
           // Seed point (parent===undefined) has no meaningful prior heading — allow all cone-valid
