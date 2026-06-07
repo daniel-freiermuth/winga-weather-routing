@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-51](https://github.com/kristianwiklund/signalk-weather-routing/issues/121) | When the coarse pass is disabled, the fine pass — constrained by the fixed 100° cone aimed at the start→destination bearing — hits the Swedish coast on the approach to Gothenburg and the frontier remains stuck there for the duration of the forecast. The coarse pass (which has no directional cone) circumvented this by navigating around the obstacle and establishing a T_bound that guided the fine pass. |
 | [BUG-50](https://github.com/kristianwiklund/signalk-weather-routing/issues/118) | The conditions graph at the bottom of the screen shows wave height values that appear much higher than the values shown in the hover tooltips for the same points. |
 | [BUG-49](https://github.com/kristianwiklund/signalk-weather-routing/issues/117) | When wind speed is below 5 kn, no wind arrow is drawn — only a circle (the calm indicator). |
 | [BUG-48](https://github.com/kristianwiklund/signalk-weather-routing/issues/116) | The REQ-67 tooltip was added to the waypoint wind barbs (ETA markers) but not to the wind arrows drawn at the midpoint of each route leg (REQ-22). Hovering over a leg wind arrow shows no tooltip. |
