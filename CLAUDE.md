@@ -65,11 +65,13 @@ This plugin produces routes that sailors may follow at sea. Any silent fallback,
 
 Never implement silent fallbacks for mismatched or out-of-range inputs. If the user's input cannot be honoured exactly (wrong date, outside GRIB coverage, start on land, etc.), return a hard error that requires the user to correct the input. Do not substitute nearest available values, clamp silently, or proceed with a warning that can be missed. Fail loudly, fail early, fail clearly.
 
+See also: **No Assumptions Rule** — assumptions about equivalent inputs (e.g. using nearest available data as a proxy for requested data) are both an assumption violation and a safety violation.
+
 ## No Assumptions Rule
 
 Do not assume things, and do not simplify things on your own. If a decision has not been made explicitly, ask. If a simplification would change behaviour or omit information, do not apply it without explicit instruction.
 
-Before using any value, dataset, or boundary as a proxy for something else, ask: is this explicitly required, or am I assuming it's equivalent? This applies to algorithms, data filters, display choices, query boundaries, and any other design decision.
+Before using any value, dataset, or boundary as a proxy for something else, ask: is this explicitly required, or am I assuming it's equivalent? This applies to algorithms, data filters, display choices, query boundaries, and any other design decision. In a nautical routing context, assuming two inputs are equivalent can be a safety hazard — see also: **Nautical Safety Rule**.
 
 Examples of assumptions that caused real bugs in this project:
 - Using the GRIB bbox as the land overlay query boundary (BUG-14) — violated REQ-17

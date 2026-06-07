@@ -198,6 +198,15 @@ module.exports = (app: any) => {
           return void res.status(400).json({ error: 'No GRIB files cover the requested departure time' });
         }
 
+        // Nautical Safety Rule: hard error if departure is before the forecast starts.
+        // Silent substitution to the nearest GRIB time would route on wrong weather data.
+        const earliestGribStart = new Date(Math.min(...selectedEntries.map(f => f.meta.timeStart.getTime())));
+        if (departureMs < earliestGribStart.getTime()) {
+          return void res.status(400).json({
+            error: `Departure time is before the forecast period — forecast starts ${earliestGribStart.toISOString().slice(0, 16).replace('T', ' ')} UTC. Load a GRIB file covering your departure time or adjust the departure.`,
+          });
+        }
+
         calcStatus = { status: 'calculating', progress: 0 };
         res.json({ status: 'calculating' });
 
