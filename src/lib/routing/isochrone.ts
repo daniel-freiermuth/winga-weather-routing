@@ -104,6 +104,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     const tBoundMs = null;
 
     const stepTimings: StepTiming[] = [];
+    let stepsCompleted = 0;
 
     for (let step = startTimeIdx; step < wind.times.length - 1; step++) {
       const stepStart = performance.now();
@@ -200,7 +201,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       isochrone = pruneToFrontier(candidates, start.lat, start.lon, sectorSize);
       const pruningMs = performance.now() - t0prune;
 
-      if (isochrone.length === 0) throw new Error('No reachable positions — check GRIB coverage and polar data');
+      if (isochrone.length === 0) throw new Error(`No reachable positions at fine-pass step ${step - startTimeIdx + 1} — check GRIB coverage and polar data`);
 
       let drawIsochrone = isochrone;
       if (tBoundMs !== null) {
@@ -232,6 +233,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       logStepTiming(timing);
 
       const frontier: Array<[number, number]> = drawIsochrone.map((p) => [p.lat, p.lon]);
+      stepsCompleted++;
       onProgress(Math.round(((step - startTimeIdx + 1) / nSteps) * 100), frontier);
       await new Promise<void>((resolve) => setImmediate(resolve)); // yield event loop so SSE progress events are flushed to the browser
     }
@@ -247,7 +249,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         const dist = Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon));
         return {
           route: backtrack(closest, wind, false),
-          warning: `Route extends past forecast coverage — partial route shown (${dist} nm from destination)`,
+          warning: `Route extends past forecast coverage after ${stepsCompleted} fine-pass steps — partial route shown (${dist} nm from destination)`,
         };
       }
       const closest = isochrone.reduce((best, p) =>
@@ -255,7 +257,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         isochrone[0],
       );
       const dist = closest ? Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon)) : 0;
-      throw new Error(`Destination not reached within forecast period (closest approach: ${dist} nm)`);
+      throw new Error(`Destination not reached within forecast period after ${stepsCompleted} fine-pass steps (closest approach: ${dist} nm)`);
     }
 
     return { route: backtrack(arrived, wind, true, end) };
