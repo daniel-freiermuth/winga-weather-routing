@@ -100,8 +100,10 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     let arrived: IsochronePoint | null = null;
 
     const maxBoatSpeed = getMaxPolarSpeed(polar);
-    const tBound = await runCoarsePass(wind, polar, edgeIndex, start, end, minBoatSpeed, arrivalRadiusNm, maxWindKn, maxWaveM, startTimeIdx, nSteps, onProgress);
-    const tBoundMs = tBound !== null ? tBound.getTime() : null;
+    // Coarse pass commented out for testing — see BUG-34 investigation.
+    // const tBound = await runCoarsePass(wind, polar, edgeIndex, start, end, minBoatSpeed, arrivalRadiusNm, maxWindKn, maxWaveM, startTimeIdx, nSteps, onProgress);
+    // const tBoundMs = tBound !== null ? tBound.getTime() : null;
+    const tBoundMs = null;
 
     const stepTimings: StepTiming[] = [];
 
@@ -205,7 +207,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         });
         drawIsochrone = bounded;
         if (bounded.length === 0) {
-          onProgress(50 + Math.round(((step - startTimeIdx + 1) / nSteps) * 50), []);
+          onProgress(Math.round(((step - startTimeIdx + 1) / nSteps) * 100), []);
           await new Promise<void>((resolve) => setImmediate(resolve)); // yield event loop so SSE progress events are flushed to the browser
           break;
         }
@@ -227,7 +229,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       logStepTiming(timing);
 
       const frontier: Array<[number, number]> = drawIsochrone.map((p) => [p.lat, p.lon]);
-      onProgress(50 + Math.round(((step - startTimeIdx + 1) / nSteps) * 50), frontier);
+      onProgress(Math.round(((step - startTimeIdx + 1) / nSteps) * 100), frontier);
       await new Promise<void>((resolve) => setImmediate(resolve)); // yield event loop so SSE progress events are flushed to the browser
     }
 
