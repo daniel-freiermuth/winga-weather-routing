@@ -34,9 +34,15 @@ All new code requires tests. Test behaviour, not implementation. Unit tests for 
 
 Format: `<type>(<scope>): <subject>` — type = feat|fix|docs|refactor|test|chore|perf. Subject: 50 chars max, imperative mood, no period. One logical change per commit. Rebase and clean up history before PR; amend fixes into the relevant commit rather than adding "fix typo" commits.
 
+## Feature Branch Rule
+
+Every new feature or bug fix is developed on its own branch. Exception: if the planning discussion explicitly concludes that two or more items must be implemented together (shared logic, mutual dependency, or atomic correctness requirement), they may share a branch — that decision must be stated in the plan before any code is written.
+
+Branch naming: `feature/<REQ-N>-short-description` or `fix/<BUG-N>-short-description`.
+
 ## Pull Request Guidelines
 
-- Branch from latest `master`; rebase, never merge commits
+- Branch from latest `main`; rebase, never merge commits
 - Run `npm run build` and tests before opening PR
 - One logical change per PR
 - PR title is descriptive and self-contained
