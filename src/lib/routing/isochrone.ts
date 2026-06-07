@@ -20,7 +20,10 @@ const TBOUND_SECTOR_SIZE = 1;
 // bearing from that point to the destination are skipped. Using the current-position bearing
 // (not the fixed start→end bearing) allows routes that need to transit passages at angles
 // oblique to the overall course — e.g. northward through Öresund when the full route runs SW.
-const FINE_PASS_CONE_HALF_ANGLE = 100;
+// Set to 180 (disabled) pending REQ-73: cone should be conditional — disabled when land
+// blocks the direct segment from the frontier point to the destination, applied when clear.
+// 100° was too tight to allow the eastward escape from the Roslagen archipelago (BUG-51).
+const FINE_PASS_CONE_HALF_ANGLE = 180;
 const MAX_HEADING_CHANGE = 120;
 
 interface StepTiming {

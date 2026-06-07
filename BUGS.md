@@ -4,7 +4,8 @@
 
 | # | Description |
 |---|---|
-| [BUG-51](https://github.com/kristianwiklund/signalk-weather-routing/issues/121) | When the coarse pass is disabled, the fine pass gets stuck in two distinct places. (1) **Hitting Sweden (early):** Sweden lies between Åland and Gothenburg; the fine pass hits the Swedish east coast within the first few steps and cannot navigate around it. (2) **Threading the sounds (late):** after successfully rounding Sweden, the route must transit northward through the sounds (Öresund / Kattegat) to reach Gothenburg — headings required for this transit are blocked by the fixed-bearing cone. The coarse pass circumvented both problems by running without a directional cone, establishing a T_bound that guided the fine pass past both obstacles. |
+| [BUG-52](https://github.com/kristianwiklund/signalk-weather-routing/issues/123) | When the departure time is set to a date outside the loaded GRIB forecast period, the route silently starts at the nearest available GRIB time instead of the requested time, with no warning shown to the user. Observed: departure set to 2026-05-24 08:00, GRIB starts 2026-06-06 02:00 UTC; first waypoint label shows June 6 02:00. | open |
+| [BUG-51](https://github.com/kristianwiklund/signalk-weather-routing/issues/121) | When the coarse pass is disabled, the fine pass gets stuck. Root cause identified: the per-position cone at 100° half-angle blocks the initial eastward escape from the Roslagen/Stockholm archipelago. From frontier points near the Swedish east coast (~60.1°N), the bearing to the destination is ~204°; heading due east (090°) deviates 114° — outside the cone. The frontier shrinks progressively and collapses. Fix identified: REQ-73 (conditional cone — disable per frontier point when direct path to destination crosses land). Current deployed state: `FINE_PASS_CONE_HALF_ANGLE = 180` (working but allows backward routing when wind turns adverse). |
 | [BUG-50](https://github.com/kristianwiklund/signalk-weather-routing/issues/118) | The conditions graph at the bottom of the screen shows wave height values that appear much higher than the values shown in the hover tooltips for the same points. |
 | [BUG-49](https://github.com/kristianwiklund/signalk-weather-routing/issues/117) | When wind speed is below 5 kn, no wind arrow is drawn — only a circle (the calm indicator). |
 | [BUG-48](https://github.com/kristianwiklund/signalk-weather-routing/issues/116) | The REQ-67 tooltip was added to the waypoint wind barbs (ETA markers) but not to the wind arrows drawn at the midpoint of each route leg (REQ-22). Hovering over a leg wind arrow shows no tooltip. |
@@ -57,6 +58,25 @@
 | [~~BUG-27~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/86) | ~~The Routing Options section shows nothing — neither the safety margin build progress placeholder nor the checkbox.~~ — **fixed** (`style.display = ''` on `#safety-margin-building` was overridden by the CSS `display:none` rule; fixed by using `'block'` instead) |
 | [~~BUG-28~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/87) | ~~Tooltip wave height values for the first few waypoints from the left are wildly wrong (e.g. 158 m, 307.2 m, 7031 m).~~ — **fixed** (same root cause and fix as BUG-26.) |
 | [~~BUG-29~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/88) | ~~The safety margin dataset builder never runs. The dilate worker fails immediately with "Module did not self-register: .../gdal-async/.../gdal.node" — the gdal-async native binary cannot load inside a worker_threads Worker. The buildDilated promise rejects, app.setPluginError() is called silently (not visible in Docker logs), and dilatedIndexReady stays false.~~ — **fixed** (root cause: native addon cannot self-register in a worker_threads secondary V8 isolate. Fixed by moving all GSHHG processing offline — REQ-51: dilated index is now pre-built by the Python build script and bundled in the package. Runtime worker removed entirely.) |
+
+---
+
+## BUG-51 — Investigation Notes
+
+### Root cause
+The per-position cone (BUG-43 fix) at 100° half-angle blocks the initial eastward escape from the Roslagen/Stockholm archipelago. From frontier points near the Swedish east coast (~60.1°N), the bearing to the destination (58.5°N, 17.35°E) is ~204°. Heading due east (090°) deviates 114° from this bearing — outside the 100° cone. The boat must go east to reach open water, but the cone blocks all eastward headings. Step-by-step log shows the frontier shrinks progressively: 153 points at step 6 → 11 at step 17 → 0 at step 18 ("No reachable positions at fine-pass step 19"). All 221 candidates generated from the step-17 frontier fail the land check after being forced south into the dense archipelago with no eastward escape.
+
+### Diagnostic test (360° cone, 2026-06-07)
+Setting `FINE_PASS_CONE_HALF_ANGLE = 180` (no cone) confirmed the destination is reachable. The route succeeded but showed backward loops in the June 6 forecast: wind shifts from westerly to SSW, making the destination bearing adverse. Without a cone, the algorithm routed backward (NNE, running before the SSW wind) to maintain speed before correcting south. This is correct algorithmic behaviour in the absence of motor capability — the boat optimally exploits the following wind even at the cost of temporary backward motion. Correct real-world response: motor through the adverse section (REQ-24) or do not depart at that time.
+
+### Connection to original coarse pass
+The coarse pass solved this problem implicitly: it ran without a directional cone, exploring all bearings to find T_bound, and its omnidirectional expansion could escape any land-blocked start geometry. Without the coarse pass (REQ-69), the fine pass has no mechanism for the initial escape unless REQ-73 is implemented.
+
+### Fix identified
+REQ-73: apply the cone conditionally per frontier point. If the direct segment from the frontier point to the destination crosses land, disable the cone (360° search); if the segment is clear, apply the normal cone. This allows escape from land-blocked starting positions while preventing backward routing once the boat is in open water with a clear bearing.
+
+### Current state (2026-06-07)
+`FINE_PASS_CONE_HALF_ANGLE = 180` deployed — route reaches destination but with backward loops under adverse wind. Awaiting REQ-73 implementation.
 
 ---
 
