@@ -40,6 +40,15 @@ Every new feature or bug fix is developed on its own branch. Exception: if the p
 
 Branch naming: `feature/<REQ-N>-short-description` or `fix/<BUG-N>-short-description`.
 
+A new branch must always be created from the latest `main` **after** the previous sprint's PR has been merged. Never continue committing on an old branch after its PR is merged — the squash merge on main and the original commits on the branch diverge, causing conflicts on the next PR. The correct sequence is:
+
+```
+git checkout main && git pull
+git checkout -b <new-branch>
+```
+
+Do this as the first action of every new sprint or feature, before writing any code.
+
 ## Pull Request Guidelines
 
 - Branch from latest `main`; rebase, never merge commits
