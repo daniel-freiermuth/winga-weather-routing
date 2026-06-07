@@ -294,7 +294,7 @@ test('calculate: BUG-44 seed point (parent=undefined) ignores heading-change con
   };
   let step1FrontierSize = 0;
   await algo.calculate(wind, polar, null, req, (pct, frontier) => {
-    if (pct === 75) step1FrontierSize = frontier.length;  // fine-pass step 0
+    if (pct === 50) step1FrontierSize = frontier.length;  // fine-pass step 0: 1/2 steps = 50%
   });
   assert.ok(
     step1FrontierSize >= 35,
@@ -319,7 +319,7 @@ test('calculate: BUG-44 non-seed heading constraint does not crash or empty the 
   };
   const finePayloads: Array<[number, number][]> = [];
   await algo.calculate(wind, polar, null, req, (pct, frontier) => {
-    if (pct > 50) finePayloads.push(frontier);
+    if (pct >= 50) finePayloads.push(frontier);
   });
   assert.ok(finePayloads.length >= 2, 'fine pass should emit at least 2 frontier updates');
   assert.ok(finePayloads[1].length > 0, 'step-2 frontier must be non-empty with BUG-44 active');
@@ -368,7 +368,7 @@ test('calculate: fine pass cone excludes candidates >100° from per-position bea
   };
   const finePayloads: Array<[number, number][]> = [];
   await algo.calculate(wind, polar, null, req, (pct, frontier) => {
-    if (pct > 50) finePayloads.push(frontier);  // pct=50 is the last coarse-pass emission
+    if (pct >= 50) finePayloads.push(frontier);
   });
   assert.ok(finePayloads.length > 0, 'fine pass should emit at least one frontier');
   for (const frontier of finePayloads) {
