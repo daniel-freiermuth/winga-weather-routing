@@ -12,7 +12,7 @@ A SignalK plugin that calculates time-optimal sailing routes using GRIB2 weather
 - Automatic land avoidance using [GSHHG](https://www.soest.hawaii.edu/pwessel/gshhg/) high-resolution coastlines
 - Optional 0.5 NM safety margin that closes narrow passages below the algorithm's resolution
 - Optional max wind speed and max wave height routing constraints
-- Departure point can be set from any existing SignalK route or waypoint via a dropdown
+- Departure point can be set from any existing SignalK route (last waypoint) or waypoint via a dropdown
 - Routes saved to SignalK `resources/routes` — visible in freeboard-sk automatically
 - Leaflet-based webapp with live isochrone rendering during calculation
 - Runs on Raspberry Pi 3–5
@@ -44,7 +44,7 @@ In the SignalK admin UI under **Server → Plugin Config → Weather Routing**:
 
 Open the webapp at `http://<your-signalk-host>:3000/signalk-weather-routing/`.
 
-1. Set a departure point and destination on the map (or pick an existing route or waypoint from the **— set from resources —** dropdown beneath the start field), or use **Run test** for a pre-filled example
+1. Set a departure point and destination on the map (or pick an existing route or waypoint from the **— set from resources —** dropdown beneath the start field — for routes, the last waypoint is used), or use **Run test** for a pre-filled example
 2. Set a departure time
 3. Optionally enable **Safety margin** to close narrow passages near the route
 4. Optionally set **Max wind** and/or **Max wave** routing constraints (see below)
