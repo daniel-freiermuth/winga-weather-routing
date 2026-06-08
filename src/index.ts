@@ -370,6 +370,64 @@ module.exports = (app: any) => {
         res.json(info);
       });
 
+      router.get('/wind-times', async (_req: Request, res: Response) => {
+        if (gribFiles.length === 0)
+          return void res.status(503).json({ error: 'No GRIB files indexed' });
+        for (const entry of gribFiles) {
+          if (entry.data === null) {
+            try { entry.data = await loadGrib(entry.meta.path); }
+            catch (e: any) { return void res.status(503).json({ error: `Failed to load GRIB: ${e.message}` }); }
+          }
+        }
+        const wind = new MultiFileWindProvider(gribFiles as GribFileEntry[]);
+        res.json({ times: wind.times.map(t => t.toISOString()) });
+      });
+
+      router.get('/wind-grid', (_req: Request, res: Response) => {
+        const timeIdx = parseInt(_req.query.timeIdx as string);
+        if (isNaN(timeIdx)) return void res.status(400).json({ error: 'timeIdx required' });
+
+        const enabledPaths = _req.query.path
+          ? (Array.isArray(_req.query.path) ? _req.query.path : [_req.query.path]) as string[]
+          : undefined;
+
+        const loaded = gribFiles.filter(f =>
+          f.data !== null && (!enabledPaths || enabledPaths.includes(f.meta.path))
+        );
+        if (loaded.length === 0)
+          return void res.status(503).json({ error: 'GRIB data not loaded — fetch /wind-times first' });
+
+        const wind = new MultiFileWindProvider(loaded as GribFileEntry[]);
+        if (timeIdx < 0 || timeIdx >= wind.times.length)
+          return void res.status(400).json({ error: `timeIdx out of range [0, ${wind.times.length - 1}]` });
+
+        const timeMs = wind.times[timeIdx].getTime();
+        const step = 1.0;
+        let latMin = Infinity, latMax = -Infinity, lonMin = Infinity, lonMax = -Infinity;
+        for (const f of loaded) {
+          if (f.meta.latMin < latMin) latMin = f.meta.latMin;
+          if (f.meta.latMax > latMax) latMax = f.meta.latMax;
+          if (f.meta.lonMin < lonMin) lonMin = f.meta.lonMin;
+          if (f.meta.lonMax > lonMax) lonMax = f.meta.lonMax;
+        }
+
+        const points: Array<{ lat: number; lon: number; u: number; v: number }> = [];
+        for (let lat = latMin; lat <= latMax + 0.001; lat += step) {
+          for (let lon = lonMin; lon <= lonMax + 0.001; lon += step) {
+            // Only include points covered both spatially and temporally by at least one file.
+            const covered = loaded.some(f =>
+              f.meta.latMin <= lat && lat <= f.meta.latMax &&
+              f.meta.lonMin <= lon && lon <= f.meta.lonMax &&
+              f.meta.timeStart.getTime() <= timeMs && f.meta.timeEnd.getTime() >= timeMs
+            );
+            if (!covered) continue;
+            const { u, v } = wind.getWind(lat, lon, timeIdx);
+            points.push({ lat: +lat.toFixed(2), lon: +lon.toFixed(2), u, v });
+          }
+        }
+        res.json({ timeMs, points });
+      });
+
       router.get('/land-polygons', async (req: Request, res: Response) => {
         const useDilated = req.query.dilated === 'true';
         const index = useDilated ? dilatedLandIndex : landIndex;
