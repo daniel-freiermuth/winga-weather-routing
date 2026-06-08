@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /home/kw/src/weather-routing/.claude/read-rules.py",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.claude/read-rules.py\"",
             "statusMessage": "Loading project rules and memory..."
           }
         ]
