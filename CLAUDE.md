@@ -58,6 +58,7 @@ Do this as the first action of every new sprint or feature, before writing any c
 - Description: motivation (why) and approach (how) — the diff shows what
 - **Never change version numbers**
 - Reference issues with `ref #N` in commit messages; use `gh issue close` after confirmation
+- Never pass `--delete-branch` to `gh pr merge` — branches are always kept after merge
 
 ## PR and Merge Rule
 
