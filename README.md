@@ -15,7 +15,7 @@ A SignalK plugin that calculates time-optimal sailing routes using GRIB2 weather
 - Departure point can be set from any existing SignalK route (last waypoint) or waypoint via a dropdown
 - Routes saved to SignalK `resources/routes` — visible in freeboard-sk automatically
 - Leaflet-based webapp with live isochrone rendering during calculation
-- Runs on Raspberry Pi 3–5
+- Performance target: Raspberry Pi 3–5; tested on Intel NUC
 
 ![Weather routing webapp](screenshot2.jpg)
 
