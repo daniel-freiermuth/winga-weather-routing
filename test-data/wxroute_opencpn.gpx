@@ -1,0 +1,446 @@
+<?xml version="1.0"?>
+<gpx version="1.1" creator="OpenCPN" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxx="http://www.garmin.com/xmlschemas/GpxExtensions/v3" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd http://www.garmin.com/xmlschemas/GpxExtensions/v3 http://www8.garmin.com/xmlschemas/GpxExtensionsv3.xsd" xmlns:opencpn="http://www.opencpn.org">
+	<rte>
+		<name>WXRoute_06-06-26_14-00_dfgdfg_goteborg</name>
+		<extensions>
+			<opencpn:guid>7ca8ffff-47e4-4787-b724-81691ec60000</opencpn:guid>
+			<opencpn:start>dfgdfg</opencpn:start>
+			<opencpn:end>goteborg</opencpn:end>
+			<opencpn:planned_departure>2026-06-06T14:00:25Z</opencpn:planned_departure>
+		</extensions>
+		<rtept lat="55.176401485" lon="13.892927394">
+			<name>RP-8169-0</name>
+			<extensions>
+				<opencpn:guid>10590000-027e-45b7-a2f3-b0455ba4ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="0.000000" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.181710067" lon="13.886243900">
+			<name>RP-8169-1</name>
+			<extensions>
+				<opencpn:guid>4913ffff-bd2b-4723-8e35-4392028f0000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="3.922812" etd="2026-06-06T14:06:25" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.187681661" lon="13.879597800">
+			<name>RP-8169-2</name>
+			<extensions>
+				<opencpn:guid>6fc8ffff-c5cf-49a7-9464-4dd64d28ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="3.820590" etd="2026-06-06T14:12:25" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.194301742" lon="13.873421281">
+			<name>RP-8169-3</name>
+			<extensions>
+				<opencpn:guid>0c520000-72be-441a-946c-c90d154b0000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="3.690431" etd="2026-06-06T14:19:05" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.201582775" lon="13.867775224">
+			<name>RP-8169-4</name>
+			<extensions>
+				<opencpn:guid>578fffff-7200-444b-974f-e7370e800000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="3.568151" etd="2026-06-06T14:26:24" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.197288925" lon="13.855063488">
+			<name>RP-8169-5</name>
+			<extensions>
+				<opencpn:guid>486cffff-430e-4b05-bfe2-83256a6dffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="3.442245" etd="2026-06-06T14:34:26" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.193947473" lon="13.841130861">
+			<name>RP-8169-6</name>
+			<extensions>
+				<opencpn:guid>4d3affff-9659-45f3-b155-38244c09ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="3.217953" etd="2026-06-06T14:43:15" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.191658889" lon="13.826213219">
+			<name>RP-8169-7</name>
+			<extensions>
+				<opencpn:guid>7e66ffff-f363-4a34-9b96-88cf5aeeffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="3.004043" etd="2026-06-06T14:52:54" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.189251702" lon="13.810746234">
+			<name>RP-8169-8</name>
+			<extensions>
+				<opencpn:guid>0b910000-dfe7-4e4a-bd7f-431c554bffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="2.856567" etd="2026-06-06T15:03:28" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.197963967" lon="13.801060698">
+			<name>RP-8169-9</name>
+			<extensions>
+				<opencpn:guid>5ddbffff-20fe-4924-a3ee-8d8d5a8effff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="2.952006" etd="2026-06-06T15:15:00" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.208035587" lon="13.786044438">
+			<name>RP-8169-10</name>
+			<extensions>
+				<opencpn:guid>2c620000-25b4-4298-9eb8-0d4230ac0000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="3.479121" etd="2026-06-06T15:27:35" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.219030239" lon="13.763288638">
+			<name>RP-8169-11</name>
+			<extensions>
+				<opencpn:guid>015d0000-0a00-44c0-a962-00a214750000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="4.133563" etd="2026-06-06T15:41:16" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.224319107" lon="13.732486313">
+			<name>RP-8169-12</name>
+			<extensions>
+				<opencpn:guid>7001ffff-0ab6-4b0a-b7bc-d4f74af2ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="4.137033" etd="2026-06-06T15:56:05" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.227267227" lon="13.696714570">
+			<name>RP-8169-13</name>
+			<extensions>
+				<opencpn:guid>5b54ffff-1b1a-457a-bb04-089a216a0000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="4.327157" etd="2026-06-06T16:12:03" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.227345005" lon="13.655183865">
+			<name>RP-8169-14</name>
+			<extensions>
+				<opencpn:guid>0c470000-7b0c-45eb-b65b-d00d0fa90000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="4.646846" etd="2026-06-06T16:29:12" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.227004211" lon="13.609228503">
+			<name>RP-8169-15</name>
+			<extensions>
+				<opencpn:guid>4c90ffff-2b42-430c-aa7b-37a46cd7ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="4.806213" etd="2026-06-06T16:47:33" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.226978035" lon="13.558457398">
+			<name>RP-8169-16</name>
+			<extensions>
+				<opencpn:guid>22e00000-04d2-403a-9c4f-8079335e0000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="4.967850" etd="2026-06-06T17:07:11" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.224453332" lon="13.502825921">
+			<name>RP-8169-17</name>
+			<extensions>
+				<opencpn:guid>68cbffff-0b8a-43f9-a542-79886754ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.077662" etd="2026-06-06T17:28:10" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.220903229" lon="13.441848917">
+			<name>RP-8169-18</name>
+			<extensions>
+				<opencpn:guid>6359ffff-b31f-4f99-b645-5d86737affff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.054645" etd="2026-06-06T17:50:44" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.217889558" lon="13.370580561">
+			<name>RP-8169-19</name>
+			<extensions>
+				<opencpn:guid>7ec5ffff-a979-4d8c-85c0-fcc54466ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.326896" etd="2026-06-06T18:15:38" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.215998645" lon="13.285615923">
+			<name>RP-8169-20</name>
+			<extensions>
+				<opencpn:guid>7f31ffff-447c-41fc-8d88-897517410000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.703565" etd="2026-06-06T18:43:11" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.215571940" lon="13.187148525">
+			<name>RP-8169-21</name>
+			<extensions>
+				<opencpn:guid>60d0ffff-96cf-4b7d-b153-d4d506bd0000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.896026" etd="2026-06-06T19:13:48" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.219175876" lon="13.074962340">
+			<name>RP-8169-22</name>
+			<extensions>
+				<opencpn:guid>06c20000-f46d-4bfe-9b93-327023e80000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.949945" etd="2026-06-06T19:48:06" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.220956825" lon="12.943885499">
+			<name>RP-8169-23</name>
+			<extensions>
+				<opencpn:guid>77deffff-7a30-4500-9392-ebd3591dffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="6.121569" etd="2026-06-06T20:26:53" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.296312081" lon="12.880839519">
+			<name>RP-8169-24</name>
+			<extensions>
+				<opencpn:guid>13ef0000-3a48-4f73-b781-afd30a2b0000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="6.036866" etd="2026-06-06T21:10:52" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.381917344" lon="12.808118102">
+			<name>RP-8169-25</name>
+			<extensions>
+				<opencpn:guid>2e6c0000-d89d-4f43-af59-aea573a6ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="6.048783" etd="2026-06-06T22:00:39" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.472244224" lon="12.756822771">
+			<name>RP-8169-26</name>
+			<extensions>
+				<opencpn:guid>63e0ffff-75fa-4ff2-9a62-0b9c25a70000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.694063" etd="2026-06-06T22:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.567051651" lon="12.741091526">
+			<name>RP-8169-27</name>
+			<extensions>
+				<opencpn:guid>09de0000-f03b-443f-aa50-cf0f6445ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.713488" etd="2026-06-06T23:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.650748570" lon="12.722415308">
+			<name>RP-8169-28</name>
+			<extensions>
+				<opencpn:guid>3b2c0000-2610-43eb-9a43-121646ccffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.061546" etd="2026-06-07T00:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.766697655" lon="12.704584163">
+			<name>RP-8169-29</name>
+			<extensions>
+				<opencpn:guid>28360000-213a-46e5-a20f-a3854e67ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="6.983009" etd="2026-06-07T01:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.874588790" lon="12.670546160">
+			<name>RP-8169-30</name>
+			<extensions>
+				<opencpn:guid>382c0000-907b-4532-b79f-d8933e580000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="6.574355" etd="2026-06-07T02:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="55.979939262" lon="12.651391864">
+			<name>RP-8169-31</name>
+			<extensions>
+				<opencpn:guid>1d1d0000-c263-4c66-98c2-3552694fffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="6.353736" etd="2026-06-07T03:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="56.071987952" lon="12.638985209">
+			<name>RP-8169-32</name>
+			<extensions>
+				<opencpn:guid>1d8a0000-6278-4465-a772-8e430d8a0000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.538565" etd="2026-06-07T04:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="56.111348987" lon="12.523334684">
+			<name>RP-8169-33</name>
+			<extensions>
+				<opencpn:guid>24b90000-5b4a-4ccc-8a2c-11d87d9fffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="4.534585" etd="2026-06-07T05:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="56.203585823" lon="12.539347291">
+			<name>RP-8169-34</name>
+			<extensions>
+				<opencpn:guid>332a0000-521a-4f2b-8014-f8dd08a30000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.560015" etd="2026-06-07T06:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="56.266209547" lon="12.400787944">
+			<name>RP-8169-35</name>
+			<extensions>
+				<opencpn:guid>23cc0000-3668-4388-a2b6-949531ee0000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.955508" etd="2026-06-07T07:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="56.354044396" lon="12.441427351">
+			<name>RP-8169-36</name>
+			<extensions>
+				<opencpn:guid>2ddf0000-ded5-41b1-8f12-d969713fffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.440888" etd="2026-06-07T08:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="56.397100381" lon="12.317895243">
+			<name>RP-8169-37</name>
+			<extensions>
+				<opencpn:guid>4409ffff-3232-4b2c-827c-bb9d6b7cffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="4.849666" etd="2026-06-07T09:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="56.480523729" lon="12.341365526">
+			<name>RP-8169-38</name>
+			<extensions>
+				<opencpn:guid>2ec90000-8c9d-4058-8684-3bac64adffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.065580" etd="2026-06-07T10:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="56.561252419" lon="12.387529086">
+			<name>RP-8169-39</name>
+			<extensions>
+				<opencpn:guid>78abffff-c89f-4df9-b16b-d11b33740000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.078994" etd="2026-06-07T11:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="56.622089835" lon="12.296151629">
+			<name>RP-8169-40</name>
+			<extensions>
+				<opencpn:guid>6923ffff-ffb9-4709-a776-058e7e55ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="4.736790" etd="2026-06-07T12:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="56.696386532" lon="12.143955755">
+			<name>RP-8169-41</name>
+			<extensions>
+				<opencpn:guid>2aa40000-90e9-4f7f-b99a-68d4422cffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="6.712827" etd="2026-06-07T13:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="56.815229875" lon="12.075640972">
+			<name>RP-8169-42</name>
+			<extensions>
+				<opencpn:guid>69e8ffff-d633-4817-a53c-9a1350c4ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="7.476274" etd="2026-06-07T14:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="56.910341681" lon="11.961508560">
+			<name>RP-8169-43</name>
+			<extensions>
+				<opencpn:guid>05090000-281e-49f5-a81d-80f9596dffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="6.824923" etd="2026-06-07T15:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="56.999980790" lon="11.856599991">
+			<name>RP-8169-44</name>
+			<extensions>
+				<opencpn:guid>669effff-9dd7-4d27-9a03-ae276806ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="6.380264" etd="2026-06-07T16:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.089718521" lon="11.745251794">
+			<name>RP-8169-45</name>
+			<extensions>
+				<opencpn:guid>29880000-9157-4c76-95d5-225443a3ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="6.496025" etd="2026-06-07T17:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.156453678" lon="11.815437754">
+			<name>RP-8169-46</name>
+			<extensions>
+				<opencpn:guid>7122ffff-749e-4105-89df-23d07644ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.276070" etd="2026-06-07T18:57:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.204888226" lon="11.758215932">
+			<name>RP-8169-47</name>
+			<extensions>
+				<opencpn:guid>49fcffff-df2f-45e1-925f-c4357182ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="4.670238" etd="2026-06-07T19:49:40" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.253243588" lon="11.707134523">
+			<name>RP-8169-48</name>
+			<extensions>
+				<opencpn:guid>04520000-5b8e-49df-b2c2-831d27ed0000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.130776" etd="2026-06-07T20:34:00" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.300311059" lon="11.666472075">
+			<name>RP-8169-49</name>
+			<extensions>
+				<opencpn:guid>0f920000-7422-4277-ad2d-1d1c18910000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.415361" etd="2026-06-07T21:13:05" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.344314659" lon="11.633530409">
+			<name>RP-8169-50</name>
+			<extensions>
+				<opencpn:guid>21da0000-aaeb-47d2-aadc-166c76c9ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.635954" etd="2026-06-07T21:47:37" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.385255262" lon="11.607860241">
+			<name>RP-8169-51</name>
+			<extensions>
+				<opencpn:guid>28e40000-808b-4900-bc77-096434890000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.845364" etd="2026-06-07T22:17:56" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.421334571" lon="11.596822732">
+			<name>RP-8169-52</name>
+			<extensions>
+				<opencpn:guid>3ba30000-08cc-4433-9581-6a323bd10000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.723376" etd="2026-06-07T22:44:33" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.449604572" lon="11.587701481">
+			<name>RP-8169-53</name>
+			<extensions>
+				<opencpn:guid>201e0000-b90f-4690-a6db-ee2d329b0000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.247856" etd="2026-06-07T23:07:33" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.473056204" lon="11.584471688">
+			<name>RP-8169-54</name>
+			<extensions>
+				<opencpn:guid>7384ffff-61b6-4298-b846-97034598ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="5.064239" etd="2026-06-07T23:27:14" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.491585835" lon="11.579979468">
+			<name>RP-8169-55</name>
+			<extensions>
+				<opencpn:guid>071b0000-b0df-46ab-897d-96af28e90000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="4.676994" etd="2026-06-07T23:43:57" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.506603369" lon="11.577192700">
+			<name>RP-8169-56</name>
+			<extensions>
+				<opencpn:guid>6a4bffff-4d9c-44f0-846d-ef076db1ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="4.358117" etd="2026-06-07T23:58:20" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.520448321" lon="11.575157927">
+			<name>RP-8169-57</name>
+			<extensions>
+				<opencpn:guid>6adbffff-efd9-4ff2-8676-1ef21de00000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="4.565924" etd="2026-06-08T00:10:48" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.533013198" lon="11.571303197">
+			<name>RP-8169-58</name>
+			<extensions>
+				<opencpn:guid>733affff-a1cb-40bb-a789-067a19500000</opencpn:guid>
+				<opencpn:rte_properties planned_speed="4.709905" etd="2026-06-08T00:21:45" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.543431590" lon="11.569827552">
+			<name>RP-8169-59</name>
+			<extensions>
+				<opencpn:guid>28fe0000-e4e7-440a-9e6a-2f845a34ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="4.356884" etd="2026-06-08T00:31:29" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.552500922" lon="11.569372484">
+			<name>RP-8169-60</name>
+			<extensions>
+				<opencpn:guid>1b860000-530c-4bc2-92e7-398e5212ffff</opencpn:guid>
+				<opencpn:rte_properties planned_speed="4.260186" etd="2026-06-08T00:40:07" />
+			</extensions>
+		</rtept>
+		<rtept lat="57.554050000" lon="11.575070000">
+			<name>Weather Route Destination</name>
+			<extensions>
+				<opencpn:guid></opencpn:guid>
+				<opencpn:rte_properties planned_speed="0.000000" />
+			</extensions>
+		</rtept>
+	</rte>
+</gpx>
