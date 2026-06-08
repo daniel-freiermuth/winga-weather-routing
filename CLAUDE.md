@@ -155,4 +155,4 @@ Issue titles must follow the format `<ID>: <slogan>` (e.g. `REQ-23: Coast avoida
 
 Do not include a `Status:` line in GitHub issue bodies. The issue's open/closed state carries the status — open means unresolved, closed means done or fixed.
 
-Before creating a new GitHub issue for a requirement or bug, search existing issues for one covering the same topic. If a pre-existing issue exists, it becomes the duplicate: close it with a comment referencing the new canonical issue (`Duplicate of #N`), and point SPEC.md/BUGS.md to the new issue with the proper `<ID>: <slogan>` title.
+Before creating a new GitHub issue for a requirement or bug, search existing issues for one covering the same topic. If a pre-existing issue exists, it becomes the duplicate: add a **comment** to it saying `Duplicate of #N` (never replace its body), close it, and point SPEC.md/BUGS.md to the new issue with the proper `<ID>: <slogan>` title.
