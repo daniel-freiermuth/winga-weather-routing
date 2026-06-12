@@ -390,6 +390,112 @@ For `waveHeight`, interpolation is only shown when **both** adjacent waypoints h
 
 ---
 
+## BUG-61 — Investigation Notes
+
+### Symptom
+
+Standard test (Öregrund → Gotska Sandön) — conditions graph shows no wave height (gap in the green line) between May 24 1800 CEST and May 25 0100 CEST. User reports xygrib shows ~0.5 m waves at those coordinates in the same GRIB file.
+
+### GRIB file structure
+
+`Baltic_Centre_ICON_EU_EWAM_20260524-00.grb2` — 1389 bands, 113×84 grid (0.0625°), covering lat [58.03, 63.22], lon [15.97, 23.03].
+
+**All 7 wave parameters** have 79 hourly time steps (May 24 00:00Z – May 27 06:00Z):
+
+| GRIB_ELEMENT | Description | Bands |
+|---|---|---|
+| HTSGW | Sig. height of combined wind waves + swell | 79 |
+| WVHGT | Sig. height of wind waves | 79 |
+| SWELL | Sig. height of swell | 79 |
+| WVDIR | Wind wave direction | 79 |
+| SWDIR | Swell direction | 79 |
+| WVPER | Wind wave period | 79 |
+| SWPER | Swell period | 79 |
+
+### Fill pattern
+
+**All 7 wave parameters have identical fill values (9999.0) at the same grid cells** — a unified land mask. The Swedish mainland creates a band of 9999 cells that bisects the Öregrund→Gotska Sandön route. The band's latitudinal extent varies by longitude:
+
+| Longitude | Fill band (lat range) | Width |
+|-----------|----------------------|-------|
+| 17.35°E (Gotska Sandön) | 58.09°N – 59.66°N | 1.56° (~94 nm) |
+| 17.5°E | 58.03°N – 59.84°N | 1.81° (~109 nm) |
+| 17.7°E | 58.22°N – 59.47°N (multiple bands) | ~1.25° |
+| 17.9°E | 58.84°N – 59.09°N | 0.25° (~15 nm) |
+| 18.1°E | **no fill — all valid** | 0 |
+| 18.3°E (Öregrund) | 59.41°N – 59.66°N | 0.25° |
+
+Valid data exists north of the band (~59.7°N+) and south of it (~58.8°N– at favourable longitudes). The fill pattern is static across all 79 time steps — same cells, same 9999 value, at every forecast hour.
+
+### Root cause: two issues
+
+**Issue 1 — Single-file selection in `getWave()` (`windprovider.ts:60–73`):**
+
+```javascript
+getWave(lat, lon, t) {
+    const waveFiles = this.sortedFiles.filter(e => e.data?.swhByTime?.size);
+    // ...
+    const f =
+      waveFiles.find(e => coversPoint(e, lat, lon) &&
+        e.meta.timeStart <= tMs && e.meta.timeEnd >= tMs) ??
+      waveFiles.find(e => coversPoint(e, lat, lon)) ??
+      waveFiles[0];
+    return getWaveAt(f.data!, lat, lon, tMs);  // ← returns undefined, no fallback
+  }
+```
+
+The method selects **one** file (Baltic Centre) via a priority chain and returns its result immediately. Even if that file has fill values at the requested position, no other file is tried.
+
+The `Baltic_South_ICON_EU_EWAM_20260606-00.grb2` file has valid HTSGW data at the gap coordinates (0.285 m at Gotska Sandön, 0.355 m at the fill zone midpoint), but it is never consulted because the temporal check excludes it (June 6 > May 24). This is correct per the **Nautical Safety Rule** — using a different forecast as silent fallback is not allowed.
+
+The fix is to iterate through all temporal-matching files and return the first valid result, instead of selecting a single file:
+
+```
+for each temporal-matching file:
+    v = getWaveAt(file, ...)
+    if v !== undefined: return v
+→ return undefined
+```
+
+This would use a Baltic_South file for May 24 if one existed, but would NOT fall back to a different forecast date.
+
+**Issue 2 — Post-hoc fill-value check in `getWaveAt()` (`grib.ts:187–199`):**
+
+```javascript
+const v = bilinear(grid, grib, lat, lon);
+return v >= 100 ? undefined : v;
+```
+
+The `bilinear` function mixes 9999-fill cells with valid cells, then the code checks if the blended result exceeds 100. This works when 9999 values dominate but is fragile — if a fill cell has small bilinear weight, the blended result could slip under 100 and produce a bogus wave height.
+
+Fix: check each of the four interpolation cells individually before computing the weighted result:
+
+```
+grid[i00], grid[i01], grid[i10], grid[i11]
+if any >= 100: return undefined
+→ compute and return bilinear result
+```
+
+### Fix options
+
+| Option | Approach | Effect |
+|--------|----------|--------|
+| A | Per-cell fill check in `getWaveAt` + multi-file iteration in `getWave` | Robust fill detection + fallback to other same-date files |
+| B | Per-cell fill check only | Robust fill detection alone; gap persists without additional GRIB files |
+| C | Multi-file iteration only | Fallback works if same-date subregion files exist |
+| D | Neither — document as data coverage limitation | Close bug; requires provisioning additional GRIB files |
+
+The visible gap on the standard test requires a `Baltic_South_ICON_EU_EWAM_20260524-00.grb2` (or similar) file to provide coverage. The code fix (option A) makes the fallback work when such files exist, but the test-data only has the Centre file for May 24 — so the gap would persist in the test without adding data files.
+
+### Regarding xygrib
+
+The user reports xygrib shows ~0.5 m waves at the gap coordinates. Since all 7 wave parameters have 9999 at those grid cells, this is unexpected. Possible explanations:
+1. xygrib may interpolate across land-masked cells differently (e.g. nearest-neighbour gap-filling)
+2. The user may have checked a nearby coordinate within the valid domain
+3. The user may have checked a different GRIB file
+
+---
+
 ## BUG-60 — Investigation Notes
 
 ### Root cause
