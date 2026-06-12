@@ -20,6 +20,7 @@
 
 | # | Requirement | Status |
 |---|---|---|
+| [~~REQ-100~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/187) | ~~Wind barb redesign: arrowhead at TOWARD tip, no ring on directional barbs, calm symbol (ring + centre dot) for wind below polar minimum TWS.~~ — **done** (confirmed 2026-06-12) |
 | [REQ-97](https://github.com/kristianwiklund/signalk-weather-routing/issues/178) | When a route calculated through intermediate waypoints (REQ-92) is displayed, the conditions graph widget marks each intermediate waypoint's position on the horizontal time axis. | done |
 | [REQ-96](https://github.com/kristianwiklund/signalk-weather-routing/issues/176) | When a calculated route is displayed and the user moves the time scrubber, the route waypoint label and route leg nearest to the scrubber's current time are highlighted on the map (e.g. the waypoint marker changes colour and the corresponding leg is drawn with increased weight or a different colour). Moving the scrubber away de-highlights the previous position. | done |
 | [REQ-95](https://github.com/kristianwiklund/signalk-weather-routing/issues/175) | The scrubber track and the graph data area are the same pixel width and share the same left and right edges on screen. The Y-axis labels and the scrubber label sit outside this shared span. The graph and scrubber are always aligned regardless of window width. | done |
