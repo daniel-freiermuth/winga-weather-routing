@@ -4,6 +4,7 @@
 
 | # | Requirement | Status |
 |---|---|---|
+| [REQ-104](https://github.com/kristianwiklund/signalk-weather-routing/issues/210) | **Original:** «use SI units for internal processing»<br>**Interpretation:** All internal routing and GRIB processing uses SI units as the canonical representation: speed in m/s, distance in metres, angles in radians. Conversion to display units (knots, nm, degrees) happens only at the presentation layer. Currently the backend mixes units — GRIB wind is converted to knots early, polar interpolation uses knots, and route distances are stored in nm. This change makes REQ-99 (unit preferences) simpler: SI values can be passed directly to the SignalK preset `formula` without a knot→m/s pre-step. | open |
 | [REQ-103](https://github.com/kristianwiklund/signalk-weather-routing/issues/209) | **Original:** «make the isochrone drawing a "layer" with an on/off tick button similar to land,wind,wave»<br>**Interpretation:** The isochrone frontier visualisation (progressive dots and polylines drawn during and after routing) becomes a togglable map layer, controlled by a checkbox in the UI alongside the existing land, wind, and wave overlay checkboxes. When unticked, all isochrone graphics are hidden; when ticked, they are shown. The toggle state persists across calculations within the same session. | open |
 | [REQ-99](https://github.com/kristianwiklund/signalk-weather-routing/issues/182) | The plugin reads the display unit preferences configured in SignalK (e.g. via freeboard-sk) and uses them throughout the webapp UI. All values currently shown in fixed units (wind speed in knots, wave height in metres, boat speed in knots, distances in nautical miles) are displayed in the user's preferred units instead. | open |
 | [REQ-98](https://github.com/kristianwiklund/signalk-weather-routing/issues/179) | The routing algorithm treats SignalK regions (e.g. drawn in freeboard-sk and stored in `resources/regions`) as avoidance zones — the route will not pass through them. | open |
@@ -325,6 +326,73 @@ Algorithm quality is not the primary bottleneck. Polar accuracy, wind sensor qua
 
 - Requirements and design decisions are captured here before any code is written.
 - No code without an explicit plan approved by the user.
+
+## REQ-99 — Unit Preferences Investigation Notes
+
+### How SignalK handles units (investigated 2026-06-13, server 2.27.0)
+
+#### Server-side unit preference system
+
+SignalK server 2.27.0 includes a built-in unit preference system — not a plugin, not a freeboard-sk feature.
+
+**Config:** `/home/node/.signalk/unitpreferences/config.json` — stores the active preset name and optional per-user overrides:
+```json
+{ "activePreset": "nautical-metric" }
+```
+
+**Built-in presets:** `imperial-uk`, `imperial-us`, `metric`, `nautical-imperial-uk`, `nautical-imperial-us`, `nautical-metric`.
+
+#### REST API
+
+Mounted at `/signalk/v1/unitpreferences/`. The relevant endpoint for a webapp is:
+
+```
+GET /signalk/v1/unitpreferences/active
+```
+
+Returns the fully-resolved active preset — all categories with `formula`, `inverseFormula`, `symbol`, and `displayFormat` already filled in from the standard unit definitions. Example (nautical-metric, abbreviated):
+
+```json
+{
+  "speed":    { "baseUnit": "m/s", "targetUnit": "kn",       "formula": "value * 1.94384", "symbol": "kn",  "displayFormat": "0.0" },
+  "distance": { "baseUnit": "m",   "targetUnit": "naut-mile", "formula": "value * 0.000540", "symbol": "nmi", "displayFormat": "0.0" },
+  "depth":    { "baseUnit": "m",   "targetUnit": "m",         "displayFormat": "0.0" },
+  "length":   { "baseUnit": "m",   "targetUnit": "m",         "displayFormat": "0.0" }
+}
+```
+
+Under imperial-us the same categories give: speed → mph, distance → mile, depth → foot, length → foot. Wave height (a `depth`-category value) changes to feet in imperial presets.
+
+#### Path-level `/meta` embedding
+
+For standard SignalK paths (e.g. `navigation/speedOverGround`), `GET /signalk/v1/api/vessels/self/<path>/meta` embeds a resolved `displayUnits` object directly in the response. This is populated by the server from the active preset + standard unit definitions. Useful for displaying vessel-data values but **not** applicable to the plugin's own computed values (GRIB wind speed, route distances, wave heights) since those are not stored as SignalK paths.
+
+#### freeboard-sk
+
+freeboard-sk stores its own unit preferences in browser localStorage — not accessible via any SignalK API. The server's `/signalk/v1/unitpreferences/active` is the correct and only accessible source of truth for a plugin webapp.
+
+#### Mapping to displayed values
+
+| Displayed value | Plugin's internal unit (current) | Category | nautical-metric | imperial-us |
+|---|---|---|---|---|
+| Wind speed (TWS) | knots | `speed` | kn | mph |
+| Boat speed | knots | `speed` | kn | mph |
+| Wave height | metres | `depth` | m | ft |
+| Route / leg distance | nm | `distance` | nmi | mi |
+
+#### Current internal unit mismatch
+
+The plugin currently uses knots internally for speed and nm for distance, but the preset `formula` expressions assume SI input (`baseUnit: "m/s"`, `baseUnit: "m"`). A direct application of the preset formula requires either:
+- Converting knots→m/s and nm→m before applying the formula, then displaying with `symbol`, or
+- Implementing REQ-104 (SI units internally) so values are already in SI at display time.
+
+REQ-104 is the cleaner path: it eliminates the double conversion and makes the unit preference integration straightforward.
+
+#### Formula safety
+
+All observed `formula` strings are of the form `value * N`, `value / N`, or `value ± N`. No full expression evaluator is needed — simple substitution handles all cases.
+
+---
 
 ## References
 
