@@ -854,6 +854,9 @@
             if (windTimesLoaded) {
               fetchWindPoints(parseInt(document.getElementById('time-scrubber').value));
             }
+            if (document.getElementById('wave-overlay-toggle').checked) {
+              fetchWavePoints(parseInt(document.getElementById('time-scrubber').value));
+            }
           });
         });
 
