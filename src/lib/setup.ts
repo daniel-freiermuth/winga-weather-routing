@@ -1,4 +1,4 @@
-// Loads pre-built land index files bundled in the package, decompressing to a per-run local cache.
+// Loads pre-built land index files bundled in the package, with optional hires (f-tier) override.
 
 import * as zlib from 'zlib';
 import * as fs from 'fs';
@@ -108,6 +108,31 @@ export function loadBundledDilatedIndex(dataDir: string): LandEdgeIndex {
   return extractAndLoad(
     path.join(bundledDataDir(), 'dilated-edge-index.bin.gz'),
     path.join(dataDir, 'dilated-edge-index.bin'),
+    DILATED_INDEX_MAGIC,
+    DILATED_INDEX_VERSION,
+  );
+}
+
+export function hiresLandAvailable(): boolean {
+  return (
+    fs.existsSync(path.join(bundledDataDir(), 'edge-index-hires.bin.gz')) &&
+    fs.existsSync(path.join(bundledDataDir(), 'dilated-edge-index-hires.bin.gz'))
+  );
+}
+
+export function loadHiresEdgeIndex(dataDir: string): LandEdgeIndex {
+  return extractAndLoad(
+    path.join(bundledDataDir(), 'edge-index-hires.bin.gz'),
+    path.join(dataDir, 'edge-index-hires.bin'),
+    EDGE_INDEX_MAGIC,
+    EDGE_INDEX_VERSION,
+  );
+}
+
+export function loadHiresDilatedIndex(dataDir: string): LandEdgeIndex {
+  return extractAndLoad(
+    path.join(bundledDataDir(), 'dilated-edge-index-hires.bin.gz'),
+    path.join(dataDir, 'dilated-edge-index-hires.bin'),
     DILATED_INDEX_MAGIC,
     DILATED_INDEX_VERSION,
   );

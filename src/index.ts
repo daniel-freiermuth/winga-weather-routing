@@ -12,7 +12,7 @@ import { MultiFileWindProvider } from './lib/windprovider';
 import { parsePolar } from './lib/polar';
 import { buildLandIndex, polygonsInBbox, isPointOnLand } from './lib/landmask';
 import { saveRoute } from './lib/resources';
-import { pluginDataDir, loadBundledEdgeIndex, loadBundledDilatedIndex } from './lib/setup';
+import { pluginDataDir, loadBundledEdgeIndex, loadBundledDilatedIndex, hiresLandAvailable, loadHiresEdgeIndex, loadHiresDilatedIndex } from './lib/setup';
 import { RoutingAlgorithm } from './lib/routing/algorithm';
 import { IsochroneAlgorithm } from './lib/routing/isochrone';
 
@@ -31,6 +31,7 @@ module.exports = (app: any) => {
   let dilatedLandIndex: LandIndex | null = null;       // dilated polygon index — overlay (REQ-42)
   let dilatedEdgeIndex: LandEdgeIndex | null = null;   // dilated edge-tile index — safety margin routing (REQ-39)
   let dilatedIndexReady = false;
+  let hiresActive = false;
   let settings: PluginSettings | null = null;
   let calcStatus: CalculationStatus = { status: 'idle', progress: 0 };
   let pendingRoute: import('./types').RoutePoint[] | null = null;
@@ -104,9 +105,17 @@ module.exports = (app: any) => {
       try {
         app.setPluginStatus('Loading land data...');
         const dataDir = pluginDataDir(app);
-        edgeIndex = loadBundledEdgeIndex(dataDir);
-        landIndex = buildLandIndex(edgeIndex.polygons);
-        dilatedEdgeIndex = loadBundledDilatedIndex(dataDir);
+        if (hiresLandAvailable()) {
+          app.debug('hires (f-tier) land index detected — using high-resolution data');
+          hiresActive = true;
+          edgeIndex = loadHiresEdgeIndex(dataDir);
+          landIndex = buildLandIndex(edgeIndex.polygons);
+          dilatedEdgeIndex = loadHiresDilatedIndex(dataDir);
+        } else {
+          edgeIndex = loadBundledEdgeIndex(dataDir);
+          landIndex = buildLandIndex(edgeIndex.polygons);
+          dilatedEdgeIndex = loadBundledDilatedIndex(dataDir);
+        }
         dilatedLandIndex = buildLandIndex(dilatedEdgeIndex.polygons);
         dilatedIndexReady = true;
       } catch (e: any) {
@@ -407,7 +416,7 @@ module.exports = (app: any) => {
       });
 
       router.get('/status', (_req: Request, res: Response) => {
-        res.json({ ...calcStatus, dilatedIndexReady, polarMinTws: polar?.tws[0] ?? null });
+        res.json({ ...calcStatus, dilatedIndexReady, hiresLandActive: hiresActive, polarMinTws: polar?.tws[0] ?? null });
       });
 
       router.get('/calculation-stream', (req: Request, res: Response) => {
