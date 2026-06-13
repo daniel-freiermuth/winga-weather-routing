@@ -213,7 +213,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           const distNM = effectiveSpeed * dtHours;
           const { lat: newLat, lon: newLon } = destinationPoint(point.lat, point.lon, distNM, hdg);
 
-          if (!wind.coversPoint(newLat, newLon)) { rejectedByGrib++; continue; } // discard candidates outside GRIB domain (BUG-37)
+          if (!wind.coversPointAtTime(newLat, newLon, step)) { rejectedByGrib++; continue; } // discard candidates outside spatiotemporal GRIB domain (BUG-37, BUG-75)
 
           if (edgeIndex) {
             landChecksPerformed++;

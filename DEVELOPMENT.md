@@ -146,7 +146,7 @@ At startup, `src/lib/ensure-gdal-binary.ts` copies the matching binary from the 
 
 1. Bump `version` in `package.json` following [Semantic Versioning](https://semver.org/).
 2. Update `optionalDependencies` in `package.json` to the exact gdal-async version (e.g. `"3.12.3"`) if it changed.
-3. Add an entry to `CHANGELOG.md` under the new version header.
+3. In `CHANGELOG.md`, replace the `## Upcoming` header with the new version number (e.g. `## 0.8.0`).
 4. Commit: `git commit -m "chore: bump version to vX.Y.Z"`
 5. Tag and push:
    ```bash
