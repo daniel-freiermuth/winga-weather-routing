@@ -1,6 +1,6 @@
 # signalk-weather-routing
 
-A SignalK plugin that calculates optimal sailing routes using GRIB2 weather forecasts and the isochrone method. Wind data from OpenSkiron (ICON-EU, 7 km grid). Polar diagrams in ORC/OpenCPN semicolon-delimited CSV format. Land avoidance via GSHHG. Result stored in SignalK `resources/routes` for display in freeboard-sk. Separate Leaflet-based UI served from `public/`.
+A SignalK plugin that calculates optimal sailing routes using GRIB2 weather forecasts and the isochrone method. Meteorolical data from GRIB2 files. Polar diagrams in ORC/OpenCPN semicolon-delimited CSV format. Land avoidance via GSHHG. Result stored in SignalK `resources/routes` for use in other applications. Leaflet-based UI.
 
 ## Code Quality Principles
 
@@ -18,7 +18,7 @@ All code is TypeScript. Use strict type checking; avoid `any`. Validate external
 
 ## Performance
 
-The plugin runs on Raspberry Pi 3–5, often on battery. The isochrone inner loop (per-point × per-heading × per-time-step) is the hot path — keep it allocation-free. Rules:
+The plugin is intended to run on a Raspberry Pi 3–5, often on battery. The isochrone inner loop (per-point × per-heading × per-time-step) is the hot path — keep it allocation-free. Rules:
 
 - Guard `debug()` arguments — wrap with `debug.enabled &&` to avoid eager evaluation.
 - Build objects in their final shape on hot paths (consistent key order for V8 hidden classes).
@@ -36,7 +36,7 @@ Format: `<type>(<scope>): <subject>` — type = feat|fix|docs|refactor|test|chor
 
 ## Feature Branch Rule
 
-Every new feature or bug fix is developed on its own branch. Exception: if the planning discussion explicitly concludes that two or more items must be implemented together (shared logic, mutual dependency, or atomic correctness requirement), they may share a branch — that decision must be stated in the plan before any code is written.
+Every new feature or bug fix is developed on its own branch. Exceptions: (a) if the planning discussion explicitly concludes that two or more items must be implemented together (shared logic, mutual dependency, or atomic correctness requirement), they may share a branch — that decision must be stated in the plan before any code is written. (b) Docs-only changes may be committed directly to "main". 
 
 Branch naming: `feature/<REQ-N>-short-description` or `fix/<BUG-N>-short-description`.
 
@@ -103,10 +103,11 @@ Examples of assumptions that caused real bugs in this project:
 - Using the GRIB bbox as the land overlay query boundary (BUG-14) — violated REQ-17
 - Stride sampling and size filtering on land polygons (BUG-12) — violated REQ-17
 - Assuming the package was published to npm — caused wrong installation instructions in README
+- Assuming that the grib data was incorrect (BUG-65)
 
 ## Bug During Implementation Rule
 
-When a bug is discovered while testing an implementation that has not yet been confirmed working, do not immediately log it as a separate bug. Instead, ask: should this be logged as a separate bug, or should work continue on the current implementation? Log separately only if the user says so.
+When a bug is discovered while testing an implementation that has not yet been confirmed working, do not immediately log it as a separate bug. Instead, ask: should this be logged as a separate bug, or should work continue on the current implementation? Log separately only if the user says so. If a bug anyways is logged separately, it shall be kept. 
 
 ## Bug Report Rule
 
@@ -165,10 +166,14 @@ SPEC.md and BUGS.md each maintain two tables: one for open items (status `open`)
 
 ## GitHub Issue Rule
 
+
 When a new requirement is added to SPEC.md or a new bug is added to BUGS.md, create a corresponding GitHub issue with the same ID and text. When the text of an existing entry is updated in either file, update the corresponding GitHub issue with the same information at the time of the next commit.
 
 Issue titles must follow the format `<ID>: <slogan>` (e.g. `REQ-23: Coast avoidance toggle`, `BUG-10: Start on land gives misleading error`). Each entry in SPEC.md and BUGS.md must include a link to its GitHub issue.
 
 Do not include a `Status:` line in GitHub issue bodies. The issue's open/closed state carries the status — open means unresolved, closed means done or fixed.
+Issues must be labelled: 'bug' for bugs, 'enhancement' for new features.
 
-Before creating a new GitHub issue for a requirement or bug, search existing issues for one covering the same topic. If a pre-existing issue exists, it becomes the duplicate: add a **comment** to it saying `Duplicate of #N` (never replace its body), close it, and point SPEC.md/BUGS.md to the new issue with the proper `<ID>: <slogan>` title.
+Before creating a new GitHub issue for a requirement or bug, search existing issues for one covering the same topic. Retrieve all open issues from github before creating a new github issue, and check if the issue already exist. If it exists, update it as necessary including its headline and link it to the documentation in the repo. 
+
+If two identical issues are present in github, this applies to the newest issue: it becomes the duplicate: add a **comment** to it saying `Duplicate of #N` (never replace its body), close it, and point SPEC.md/BUGS.md to the new issue with the proper `<ID>: <slogan>` title.
