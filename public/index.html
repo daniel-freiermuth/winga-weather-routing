@@ -231,7 +231,7 @@
     <div class="section">
       <div class="section-title">Layers</div>
       <label class="layer-toggle">
-        <input type="checkbox" id="land-toggle"> Land overlay
+        <input type="checkbox" id="land-toggle"> <span id="land-toggle-label">Land overlay</span>
       </label>
       <label class="layer-toggle">
         <input type="checkbox" id="wind-overlay-toggle" checked> Wind overlay
@@ -1945,6 +1945,7 @@ const gridBounds = L.latLngBounds(
         const r = await apiFetch(`${API}/status`);
         const j = await r.json();
         if (j.polarMinTws != null) polarMinTws = j.polarMinTws;
+        if (j.hiresLandActive) document.getElementById('land-toggle-label').textContent = 'Land overlay (hires)';
         if (j.dilatedIndexReady) {
           dilatedIndexReady = true;
           document.getElementById('safety-margin-building').style.display = 'none';

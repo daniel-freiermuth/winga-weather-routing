@@ -51,7 +51,7 @@ The land index (GSHHG coastlines) is bundled — no download is needed at instal
 
 By default the plugin uses the GSHHG **h** (high) resolution tier (~1 km coastlines). Full-resolution **f**-tier coastlines (~100 m) are available from [weather-routing-hires-land-data](https://github.com/kristianwiklund/weather-routing-hires-land-data).
 
-To activate: copy `edge-index-hires.bin.gz` and `dilated-edge-index-hires.bin.gz` from that repository into the plugin's `data/` directory alongside the standard index files, then restart SignalK. The plugin detects the files automatically and switches to f-tier land avoidance with no further configuration.
+To activate: copy `edge-index-hires.bin.gz` and `dilated-edge-index-hires.bin.gz` from that repository into the plugin's `data/` directory alongside the standard index files, then restart SignalK. The plugin detects the files automatically and switches to f-tier land avoidance with no further configuration. When active, the "Land overlay" checkbox in the sidebar is labelled "Land overlay (hires)".
 
 Open **Server → Plugin Config → Weather Routing** in the SignalK admin UI.
 

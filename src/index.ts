@@ -31,6 +31,7 @@ module.exports = (app: any) => {
   let dilatedLandIndex: LandIndex | null = null;       // dilated polygon index — overlay (REQ-42)
   let dilatedEdgeIndex: LandEdgeIndex | null = null;   // dilated edge-tile index — safety margin routing (REQ-39)
   let dilatedIndexReady = false;
+  let hiresActive = false;
   let settings: PluginSettings | null = null;
   let calcStatus: CalculationStatus = { status: 'idle', progress: 0 };
   let pendingRoute: import('./types').RoutePoint[] | null = null;
@@ -106,6 +107,7 @@ module.exports = (app: any) => {
         const dataDir = pluginDataDir(app);
         if (hiresLandAvailable()) {
           app.debug('hires (f-tier) land index detected — using high-resolution data');
+          hiresActive = true;
           edgeIndex = loadHiresEdgeIndex(dataDir);
           landIndex = buildLandIndex(edgeIndex.polygons);
           dilatedEdgeIndex = loadHiresDilatedIndex(dataDir);
@@ -414,7 +416,7 @@ module.exports = (app: any) => {
       });
 
       router.get('/status', (_req: Request, res: Response) => {
-        res.json({ ...calcStatus, dilatedIndexReady, polarMinTws: polar?.tws[0] ?? null });
+        res.json({ ...calcStatus, dilatedIndexReady, hiresLandActive: hiresActive, polarMinTws: polar?.tws[0] ?? null });
       });
 
       router.get('/calculation-stream', (req: Request, res: Response) => {
