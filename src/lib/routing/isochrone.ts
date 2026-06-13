@@ -124,6 +124,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     let lastFrontier: IsochronePoint[] | null = null;
     let lastRejectedByLand = 0;
     let lastRejectedByPolar = 0;
+    let lastRejectedByGrib = 0;
 
     for (let step = startTimeIdx; step < wind.times.length - 1; step++) {
       const stepStart = performance.now();
@@ -137,6 +138,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       let landChecksPerformed = 0;
       let rejectedByPolar = 0;
       let rejectedByLand = 0;
+      let rejectedByGrib = 0;
       let coneDisabledCount = 0;
 
       const t0frontier = performance.now();
@@ -211,7 +213,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           const distNM = effectiveSpeed * dtHours;
           const { lat: newLat, lon: newLon } = destinationPoint(point.lat, point.lon, distNM, hdg);
 
-          if (!wind.coversPoint(newLat, newLon)) continue; // discard candidates outside GRIB domain (BUG-37)
+          if (!wind.coversPoint(newLat, newLon)) { rejectedByGrib++; continue; } // discard candidates outside GRIB domain (BUG-37)
 
           if (edgeIndex) {
             landChecksPerformed++;
@@ -250,6 +252,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
       lastRejectedByLand = rejectedByLand;
       lastRejectedByPolar = rejectedByPolar;
+      lastRejectedByGrib = rejectedByGrib;
 
       const t0prune = performance.now();
       isochrone = pruneToFrontier(candidates, start.lat, start.lon, sectorSize);
@@ -258,7 +261,16 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       if (isochrone.length > 0) lastFrontier = isochrone;
 
       if (isochrone.length === 0) {
-        const reason: FailureReason = lastRejectedByLand >= lastRejectedByPolar ? 'land' : 'wind';
+        const reason: FailureReason =
+          lastRejectedByGrib > lastRejectedByLand && lastRejectedByGrib > lastRejectedByPolar
+            ? 'grib_exhausted'
+            : lastRejectedByLand > lastRejectedByPolar
+              ? 'land'
+              : 'wind';
+        const reasonText = (r: FailureReason) =>
+          r === 'land' ? 'land blocks all paths' :
+          r === 'grib_exhausted' ? 'frontier reached GRIB boundary' :
+          'wind too adverse or light';
         if (lastFrontier !== null) {
           const closest = lastFrontier.reduce((best, p) =>
             haversineNM(p.lat, p.lon, end.lat, end.lon) < haversineNM(best.lat, best.lon, end.lat, end.lon) ? p : best
@@ -266,11 +278,11 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           const dist = Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon));
           return {
             route: backtrack(closest, wind, false),
-            warning: `No reachable positions at step ${stepsCompleted + 1} (${reason === 'land' ? 'land blocks all paths' : 'wind too adverse or light'}) — partial route shown (${dist} nm from destination)`,
+            warning: `No reachable positions at step ${stepsCompleted + 1} (${reasonText(reason)}) — partial route shown (${dist} nm from destination)`,
           };
         }
         throw new RoutingError(
-          `No reachable positions at step ${step - startTimeIdx + 1} — ${reason === 'land' ? 'land blocks all paths' : 'wind too adverse or light to make progress'}`,
+          `No reachable positions at step ${step - startTimeIdx + 1} — ${reasonText(reason)}${reason === 'wind' ? ' to make progress' : ''}`,
           reason,
         );
       }
