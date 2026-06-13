@@ -4,7 +4,6 @@
 
 | # | Description |
 |---|---|
-| [BUG-78](https://github.com/kristianwiklund/signalk-weather-routing/issues/240) | README is missing on the npm registry page for v0.7.0. The tarball includes README.md (15.2 kB) but the registry `readme` field is empty — likely caused by the interrupted publish attempts before the successful one. |
 | [BUG-77](https://github.com/kristianwiklund/signalk-weather-routing/issues/239) | npm publish fails with HTTP 403 "You may not perform that action with these credentials" when the publish workflow runs on tag push. The NPM_TOKEN secret is set in GitHub but the token is rejected by the registry. |
 | [BUG-76](https://github.com/kristianwiklund/signalk-weather-routing/issues/238) | The CI workflow does not gate the Publish workflow. When a version tag is pushed, both workflows run in parallel — CI does `build + test` and Publish does `build + publish` simultaneously. CI was intended to be a quality gate before publishing; currently a broken build can be published before CI reports failure. Additionally, CI fires on tag pushes as well as branch pushes, duplicating the build work on every release. |
 | [BUG-75](https://github.com/kristianwiklund/signalk-weather-routing/issues/225) | Press the "run test" button with all test GRIBs (May 24 and June 6) active — the system routes part of the route outside the boundary of the May 24 GRIB and uses the June 6 GRIB instead. |
@@ -14,6 +13,7 @@
 
 | # | Description |
 |---|---|
+| [~~BUG-78~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/240) | ~~README missing on npm registry for v0.7.0.~~ — **not needed** (propagation delay; README appeared within minutes of publish; confirmed 2026-06-13) |
 | [~~BUG-73~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/218) | ~~Route failure error message always said "land blocks all paths" regardless of actual cause.~~ — **fixed** (reason determination changed from `lastRejectedByLand >= lastRejectedByPolar` to a strict-majority comparison; ties and all-zero now resolve to `wind`; added `rejectedByGrib` counter for GRIB-domain-boundary collapses; confirmed 2026-06-13) |
 | [~~BUG-22~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | ~~Activating the land overlay checkbox during a routing calculation does not show the land overlay.~~ — **fixed** (accepted behavior; land overlay checkbox is now disabled/greyed out during active calculation and re-enabled on completion; confirmed 2026-06-13) |
 | [~~BUG-74~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/219) | ~~Conditions graph falsely shows zero boat speed at the start of the route.~~ — **fixed** (seed/departure IsochronePoint now emits `boatSpeed: undefined`; frontend builds boat-speed polyline with contiguous-segment pattern skipping absent values, matching the wave-height approach; confirmed 2026-06-13) |
