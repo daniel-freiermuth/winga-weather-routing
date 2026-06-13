@@ -41,6 +41,7 @@ function makeEntry(grib: GribData): GribFileEntry {
       timeStart: grib.times[0],
       timeEnd: grib.times[grib.times.length - 1],
       nTimes: grib.times.length,
+      referenceTime: grib.times[0],
     },
     data: grib,
   };
@@ -495,7 +496,7 @@ test('calculate: REQ-72 frontier collapse after step 1 returns partial route wit
     v10: [new Float32Array(nPoints).fill(1), new Float32Array(nPoints).fill(5), new Float32Array(nPoints).fill(5)],
   };
   const entry: GribFileEntry = {
-    meta: { path: 'test.grib2', mtime: 0, latMin: 40, latMax: 42, lonMin: 10, lonMax: 12, latStep: 1, lonStep: 1, timeStart: t0, timeEnd: t2, nTimes: 3 },
+    meta: { path: 'test.grib2', mtime: 0, latMin: 40, latMax: 42, lonMin: 10, lonMax: 12, latStep: 1, lonStep: 1, timeStart: t0, timeEnd: t2, nTimes: 3, referenceTime: t0 },
     data: grib,
   };
   const wind = new MultiFileWindProvider([entry]);
@@ -572,7 +573,7 @@ test('calculate: REQ-83 wait-for-wind keeps frontier alive across calm step', as
     v10: [new Float32Array(nPoints).fill(0), new Float32Array(nPoints).fill(3), new Float32Array(nPoints).fill(3)],
   };
   const entry: GribFileEntry = {
-    meta: { path: 'test.grib2', mtime: 0, latMin: 40, latMax: 42, lonMin: 10, lonMax: 12, latStep: 1, lonStep: 1, timeStart: t0, timeEnd: t2, nTimes: 3 },
+    meta: { path: 'test.grib2', mtime: 0, latMin: 40, latMax: 42, lonMin: 10, lonMax: 12, latStep: 1, lonStep: 1, timeStart: t0, timeEnd: t2, nTimes: 3, referenceTime: t0 },
     data: grib,
   };
   const wind = new MultiFileWindProvider([entry]);

@@ -39,6 +39,7 @@ function makeEntry(grib: GribData, mtime: number, path_ = 'test.grib2'): GribFil
       timeStart: grib.times[0],
       timeEnd: grib.times[grib.times.length - 1],
       nTimes: grib.times.length,
+      referenceTime: grib.times[0],
     },
     data: grib,
   };
