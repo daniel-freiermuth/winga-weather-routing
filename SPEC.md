@@ -22,6 +22,7 @@
 
 | # | Requirement | Status |
 |---|---|---|
+| [~~REQ-105~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/214) | ~~**Original:** «When building/installing the commit id or the tag id is added as a small text at the bottom of the settings sidebar»<br>**Interpretation:** The build process embeds the current git commit SHA (short) or tag name into the plugin. The webapp displays this version identifier as small, low-contrast text at the bottom of the left sidebar (settings panel).~~ — **done** (confirmed 2026-06-13) |
 | [~~REQ-102~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/200) | ~~Wave height raster overlay (canvas implementation): canvas-based raster via `L.imageOverlay`, HTSGW data, blue-to-red gradient, transparent below 0.2 m, configurable `waveOverlayMaxM`, legend, driven by time scrubber and file checkboxes.~~ — **done** (confirmed 2026-06-12) |
 | [~~REQ-101~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/195) | ~~Wave height colour raster overlay: transparent below 20 cm, blue-to-red scale, configurable red-end upper bound in plugin config.~~ — **done** (confirmed 2026-06-12) |
 | [~~REQ-100~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/187) | ~~Wind barb redesign: arrowhead at TOWARD tip, no ring on directional barbs, calm symbol (ring + centre dot) for wind below polar minimum TWS.~~ — **done** (confirmed 2026-06-12) |
