@@ -2,6 +2,10 @@
 
 import * as nodepath from 'node:path';
 import { Router, Request, Response } from 'express';
+
+// Side-effect: copies gdal-async .node binary from optional dep — must run before ./lib/grib
+import './lib/ensure-gdal-binary';
+
 import { GribFileEntry, GribInfoResponse, PolarData, LandIndex, LandEdgeIndex, CalculationStatus, PluginSettings, RoutePoint, LatLon } from './types';
 import { loadGrib, scanGribDir, readGribMeta } from './lib/grib';
 import { MultiFileWindProvider } from './lib/windprovider';

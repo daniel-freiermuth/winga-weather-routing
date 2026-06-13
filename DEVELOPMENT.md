@@ -116,11 +116,29 @@ docker restart signalk-server
 
 ## CI/CD (GitHub Actions)
 
-Two workflows run automatically:
+Three workflows run automatically:
 
 **CI** (`.github/workflows/ci.yml`) — triggers on every push and every pull request targeting `main`. Runs `npm ci`, `npm run build`, and `npm test` on Node.js 24 (ubuntu-latest). No manual action required.
 
-**Publish** (`.github/workflows/publish.yml`) — triggers when a version tag (`v*`) is pushed. Builds `gdal-async` natively on both `x64` (ubuntu-latest) and `arm64` (ubuntu-24.04-arm) runners, merges both prebuilt binaries into the package, then publishes to npm. Arm64 binaries are built natively on GitHub's ARM64 hosted runners — no cross-compilation or emulation needed.
+**Build** (`.github/workflows/build.yml`) — manual trigger (`workflow_dispatch`). Builds `gdal-async` from source on both `x64` (ubuntu-latest) and `arm64` (ubuntu-24.04-arm) runners for both Node.js 22 and Node.js 24, assembles the four ABIs into sub-packages (`@kristianwiklund/wr-gdal-linux-x64`, `@kristianwiklund/wr-gdal-linux-arm64`), packs the plugin tarball, and uploads it as an artifact. Useful for pre-release verification.
+
+**Publish** (`.github/workflows/publish.yml`) — triggers when a version tag (`v*`) is pushed. Same build matrix as Build, then publishes both sub-packages to npm first, followed by the main `signalk-weather-routing` package. Arm64 binaries are built natively on GitHub's ARM64 hosted runners — no cross-compilation or emulation needed.
+
+### Architecture
+
+The plugin ships its `gdal-async` native binary via platform-specific optional dependencies:
+
+```
+signalk-weather-routing          (thin main package, ~2 MB)
+  dependencies:    gdal-async, jsts
+  optionalDeps:
+    @kristianwiklund/wr-gdal-linux-x64    [os:linux, cpu:x64]
+    @kristianwiklund/wr-gdal-linux-arm64  [os:linux, cpu:arm64]
+```
+
+Each sub-package contains prebuilt `.node` binaries for both Node.js 22 (ABI v127) and Node.js 24 (ABI v137). npm automatically skips non-matching `os`/`cpu` at install time — x64 users never download arm64 binaries and vice versa.
+
+At startup, `src/lib/ensure-gdal-binary.ts` copies the matching binary from the optional dependency into `gdal-async`'s expected binding path (`lib/binding/{node_abi}-{platform}-{arch}/gdal.mod.node`). This is a one-time ~50 MB file copy; subsequent restarts are instant (existence check).
 
 ### Publishing a new version
 
@@ -132,6 +150,6 @@ Two workflows run automatically:
    git tag vX.Y.Z
    git push origin main --tags
    ```
-5. The publish workflow fires automatically. It builds `gdal-async` native binaries for both `x64` and `arm64`, merges them into the plugin package, and publishes to npmjs.com under `signalk-weather-routing`.
+5. The publish workflow fires automatically. It builds `gdal-async` native binaries for both `x64` and `arm64` × both Node ABIs (22 + 24), publishes sub-packages `@kristianwiklund/wr-gdal-linux-x64` and `@kristianwiklund/wr-gdal-linux-arm64` at the same version, then publishes `signalk-weather-routing`.
 
 The repository must have an `NPM_TOKEN` secret configured in GitHub → Settings → Secrets and variables → Actions.

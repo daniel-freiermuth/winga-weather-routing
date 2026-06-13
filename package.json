@@ -39,7 +39,10 @@
   "peerDependencies": {
     "@signalk/server-api": ">=2.0.0"
   },
-  "bundledDependencies": ["gdal-async"],
+  "optionalDependencies": {
+    "@kristianwiklund/wr-gdal-linux-x64": "^1.0.0",
+    "@kristianwiklund/wr-gdal-linux-arm64": "^1.0.0"
+  },
   "dependencies": {
     "gdal-async": "^3.9.0",
     "jsts": "^2.12.1"
