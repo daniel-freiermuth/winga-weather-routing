@@ -32,6 +32,14 @@ See [CHANGELOG](CHANGELOG.md) for the full feature history.
 
 The full specification — implemented requirements, open backlog, and design decisions — is in [SPEC.md](SPEC.md). To request a new feature or report a bug, [open an issue on GitHub](https://github.com/kristianwiklund/signalk-weather-routing/issues/new).
 
+### Hardware Specs
+
+Not massive:
+
+- I develop on a 2-core Intel(R) Celeron(R) N4505 @ 2.00GHz NUC - a _not very fast_ computer
+- Tested on a Raspberry Pi 3 Model B Rev 1.2 - I thought it would be hilariously slow but at least routes within the Baltic works reasonably. The U/I is a bit sluggish, but the routing is okay. 
+
+
 ## Setup and configuration
 
 Install from the **SignalK App Store** (Server → Appstore → Available) and restart SignalK.
