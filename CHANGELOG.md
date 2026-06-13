@@ -1,5 +1,9 @@
 # Changelog
 
+## Upcoming
+
+- Fix routing with multiple GRIB files: frontier now stops at the spatial boundary of the file that is temporally valid for the current step, instead of silently using wind data from a different file's time period (BUG-75)
+
 ## 0.7.3
 
 - Fix ARM64 startup: binary filename is `gdal.node`, not `gdal.mod.node`
