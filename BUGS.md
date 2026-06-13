@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-68](https://github.com/kristianwiklund/signalk-weather-routing/issues/207) | GitHub code scanning alerts appeared related to the CI/CD workflow added in REQ-58. |
 | [BUG-63](https://github.com/kristianwiklund/signalk-weather-routing/issues/NEW) | The wave overlay does not disappear when the corresponding GRIB file is unticked. |
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
 
