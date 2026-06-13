@@ -8,5 +8,9 @@
   "licenses": [
     { "type": "MIT", "url": "https://opensource.org/licenses/MIT" }
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kristianwiklund/signalk-weather-routing.git"
+  },
   "files": ["binding/", "LICENSES/"]
 }
