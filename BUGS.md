@@ -76,6 +76,42 @@
 
 ---
 
+## BUG-68 — Investigation Notes
+
+### Alerts
+
+Two GitHub code scanning alerts (rule `actions/missing-workflow-permissions`, severity: warning):
+
+| Alert | File | Message |
+|---|---|---|
+| #1 | `.github/workflows/ci.yml` | Workflow does not contain permissions |
+| #2 | `.github/workflows/publish.yml` | Workflow does not contain permissions |
+
+### Root cause
+
+Neither workflow declares an explicit `permissions` block. Without one, the `GITHUB_TOKEN` is granted its default permissions — which include write access to contents, issues, PRs, and more — broader than either workflow needs.
+
+### Required permissions
+
+**`ci.yml`** — only checks out code and runs build/test steps; npm operations use no GitHub token at all.  
+Minimum: `contents: read`
+
+**`publish.yml`** — checks out code and publishes to npm via `NODE_AUTH_TOKEN` (an npm token, not `GITHUB_TOKEN`); GITHUB_TOKEN is not used at all by `npm publish`.  
+Minimum: `contents: read`
+
+### Fix
+
+Add the following block at the workflow level in each file (before the `jobs:` key):
+
+```yaml
+permissions:
+  contents: read
+```
+
+This is the least-privilege setting for both workflows and resolves both alerts.
+
+---
+
 ## BUG-67 — Investigation Notes
 
 ### Package and origin
