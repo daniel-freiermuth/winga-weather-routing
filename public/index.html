@@ -221,6 +221,9 @@
       <label class="layer-toggle">
         <input type="checkbox" id="wave-overlay-toggle"> Wave overlay
       </label>
+      <label class="layer-toggle">
+        <input type="checkbox" id="isochrone-toggle" checked> Isochrones
+      </label>
     </div>
 
     <div class="section">
@@ -409,7 +412,7 @@
     let highlightLegLayer = null;
     let prevHighlightWpIdx = -1;
     const ISOCHRONE_COLOURS = ['#000000', '#4477ff', '#8833cc', '#cc3333'];
-    let isochroneLayers = [];
+    let isochroneLayerGroup = L.layerGroup().addTo(map);
 
     // Unit conversion helpers: plugin-internal units (kn, m, nmi) ↔ SignalK preset display units.
     const _toSI   = { speed: v => v * 0.514444,  depth: v => v, distance: v => v * 1852.001 };
@@ -1005,12 +1008,10 @@
             setStatus('', `Calculating… ${j.progress}%`);
             if (j.frontier?.length) {
               const pts = sortByBearing(j.frontier.map(([lat, lon]) => [lat, lon]), startLatLon);
-              const colour = ISOCHRONE_COLOURS[isochroneLayers.length % ISOCHRONE_COLOURS.length];
+              const colour = ISOCHRONE_COLOURS[isochroneLayerGroup.getLayers().length % ISOCHRONE_COLOURS.length];
               const segments = splitByAngularGap(pts, startLatLon, ISOCHRONE_GAP_THRESHOLD_DEG);
               for (const seg of segments) {
-                isochroneLayers.push(
-                  L.polyline(seg, { color: colour, weight: 1.0, opacity: 0.6, interactive: false }).addTo(map)
-                );
+                L.polyline(seg, { color: colour, weight: 1.0, opacity: 0.6, interactive: false }).addTo(isochroneLayerGroup);
               }
             }
           } else if (j.type === 'done') {
@@ -1060,8 +1061,7 @@
     }
 
     function clearIsochrones() {
-      isochroneLayers.forEach(l => map.removeLayer(l));
-      isochroneLayers = [];
+      isochroneLayerGroup.clearLayers();
     }
 
     function windBarbSvg(tws, windDir, color = '#333') {
@@ -1814,6 +1814,14 @@ const gridBounds = L.latLngBounds(
       } else {
         legend.style.display = 'none';
         if (waveOverlayLayer) { map.removeLayer(waveOverlayLayer); waveOverlayLayer = null; }
+      }
+    });
+
+    document.getElementById('isochrone-toggle').addEventListener('change', (e) => {
+      if (e.target.checked) {
+        isochroneLayerGroup.addTo(map);
+      } else {
+        map.removeLayer(isochroneLayerGroup);
       }
     });
 

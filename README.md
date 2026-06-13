@@ -151,6 +151,10 @@ When the loaded GRIB files contain SWH (significant wave height) bands — as in
 
 OpenSkiron ICON-EU EWAM files are combined files containing atmospheric wind data and ocean wave data on separate grids. The plugin extracts each grid's native parameters — including the correct data-point coordinates — and renders the canvas in Web Mercator coordinates to match Leaflet's map projection, so the wave overlay is accurately positioned on the chart at all latitudes.
 
+### Isochrone overlay
+
+The isochrone frontier lines drawn during and after route calculation form a separate toggleable layer. Use the **Isochrones** checkbox in the Layers section to show or hide them without affecting any other overlay or the calculated route itself. The toggle is on by default.
+
 ### Conditions graph
 
 A graph below the map shows wind speed, wave height, and boat speed along the calculated route over time. The graph and the time scrubber above it span the same horizontal extent — the left and right edges are aligned at any window width. Click the graph to expand it to fullscreen. Click again or press Escape to return to normal. Boat speed is plotted from the first calculated step; the departure point itself has no computed speed and is not shown on the boat speed line.
