@@ -15,7 +15,7 @@ export function ensureGdalBinary(): boolean {
   const platform = process.platform;
 
   // gdal-async and the sub-packages both use node-v{abi}-{platform}-{arch} as the dir name
-  const bindingRel = path.join('binding', `node-v${abi}-${platform}-${arch}`, 'gdal.mod.node');
+  const bindingRel = path.join('binding', `node-v${abi}-${platform}-${arch}`, 'gdal.node');
   const destPath = path.join(gdalAsyncLibDir(), bindingRel);
 
   if (fs.existsSync(destPath)) return true;
