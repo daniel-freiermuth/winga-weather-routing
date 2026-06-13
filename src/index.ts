@@ -12,7 +12,7 @@ import { MultiFileWindProvider } from './lib/windprovider';
 import { parsePolar } from './lib/polar';
 import { buildLandIndex, polygonsInBbox, isPointOnLand } from './lib/landmask';
 import { saveRoute } from './lib/resources';
-import { pluginDataDir, loadBundledEdgeIndex, loadBundledDilatedIndex } from './lib/setup';
+import { pluginDataDir, loadBundledEdgeIndex, loadBundledDilatedIndex, hiresLandAvailable, loadHiresEdgeIndex, loadHiresDilatedIndex } from './lib/setup';
 import { RoutingAlgorithm } from './lib/routing/algorithm';
 import { IsochroneAlgorithm } from './lib/routing/isochrone';
 
@@ -104,9 +104,16 @@ module.exports = (app: any) => {
       try {
         app.setPluginStatus('Loading land data...');
         const dataDir = pluginDataDir(app);
-        edgeIndex = loadBundledEdgeIndex(dataDir);
-        landIndex = buildLandIndex(edgeIndex.polygons);
-        dilatedEdgeIndex = loadBundledDilatedIndex(dataDir);
+        if (hiresLandAvailable()) {
+          app.debug('hires (f-tier) land index detected — using high-resolution data');
+          edgeIndex = loadHiresEdgeIndex(dataDir);
+          landIndex = buildLandIndex(edgeIndex.polygons);
+          dilatedEdgeIndex = loadHiresDilatedIndex(dataDir);
+        } else {
+          edgeIndex = loadBundledEdgeIndex(dataDir);
+          landIndex = buildLandIndex(edgeIndex.polygons);
+          dilatedEdgeIndex = loadBundledDilatedIndex(dataDir);
+        }
         dilatedLandIndex = buildLandIndex(dilatedEdgeIndex.polygons);
         dilatedIndexReady = true;
       } catch (e: any) {
