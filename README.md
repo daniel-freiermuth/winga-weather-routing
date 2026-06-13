@@ -113,6 +113,8 @@ Click **Reload GRIB directory** to pick up newly downloaded files without restar
 
 Enabled by default. The router will not cross land. Uncheck to disable for open-ocean routes where land avoidance is unnecessary.
 
+The **Land overlay** checkbox in the Layers section is disabled (greyed out) while a route calculation is in progress and re-enabled when it completes. Toggling the land overlay during an active calculation is not supported.
+
 **Safety margin (0.5 NM):** Dilates the coastline outward by 0.5 NM, closing passages and anchorages narrower than that distance. Useful when the standard land mask leaves the route uncomfortably close to shore or through passages the algorithm cannot thread accurately.
 
 #### Motor

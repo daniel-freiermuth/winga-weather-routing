@@ -526,6 +526,7 @@
     const startCoords  = document.getElementById('start-coords');
     const endCoords    = document.getElementById('end-coords');
     const calcBtn      = document.getElementById('calculate');
+    const landToggle   = document.getElementById('land-toggle');
     const statusBox    = document.getElementById('status-box');
     const progressWrap = document.getElementById('progress-bar-wrap');
     const progressBar  = document.getElementById('progress-bar');
@@ -923,6 +924,7 @@
       document.getElementById('conditions-panel').style.display = 'none';
       hideFailurePopup();
       calcBtn.disabled = true;
+      landToggle.disabled = true; landToggle.style.opacity = '0.4';
       progressWrap.style.display = 'block';
       progressBar.style.width = '0';
       setStatus('', 'Connecting…');
@@ -935,7 +937,7 @@
         await openCalcStream();
       } catch(e) {
         setStatus('error', `Could not open event stream: ${e.message}`);
-        calcBtn.disabled = false;
+        calcBtn.disabled = false; landToggle.disabled = false; landToggle.style.opacity = '';
         return;
       }
 
@@ -971,13 +973,13 @@
         if (j.error) {
           if (calcStream) { calcStream.close(); calcStream = null; }
           setStatus('error', j.error);
-          calcBtn.disabled = false;
+          calcBtn.disabled = false; landToggle.disabled = false; landToggle.style.opacity = '';
           return;
         }
       } catch(e) {
         if (calcStream) { calcStream.close(); calcStream = null; }
         setStatus('error', String(e));
-        calcBtn.disabled = false;
+        calcBtn.disabled = false; landToggle.disabled = false; landToggle.style.opacity = '';
         return;
       }
 
@@ -1018,7 +1020,7 @@
             stream.close(); calcStream = null;
             progressBar.style.width = '100%';
             setStatus('done', 'Route calculated.');
-            calcBtn.disabled = false;
+            calcBtn.disabled = false; landToggle.disabled = false; landToggle.style.opacity = '';
             document.getElementById('save-route-btn').style.display = 'block';
             fetchAndDrawRoute();
           } else if (j.type === 'warning') {
@@ -1026,7 +1028,7 @@
             progressBar.style.width = '100%';
             setStatus('done', `Partial route: ${j.warning}`);
             showFailurePopup(j.warning, true);
-            calcBtn.disabled = false;
+            calcBtn.disabled = false; landToggle.disabled = false; landToggle.style.opacity = '';
             document.getElementById('save-route-btn').style.display = 'block';
             fetchAndDrawRoute();
           } else if (j.type === 'error') {
@@ -1039,7 +1041,7 @@
             const errMsg = (j.error ?? 'Unknown error') + (reasonText ? ` — ${reasonText}` : '');
             setStatus('error', errMsg);
             showFailurePopup(errMsg, false);
-            calcBtn.disabled = false;
+            calcBtn.disabled = false; landToggle.disabled = false; landToggle.style.opacity = '';
             progressWrap.style.display = 'none';
           }
         };
@@ -1053,7 +1055,7 @@
           } else {
             calcStream = null;
             setStatus('error', 'Lost connection to calculation stream');
-            calcBtn.disabled = false;
+            calcBtn.disabled = false; landToggle.disabled = false; landToggle.style.opacity = '';
             progressWrap.style.display = 'none';
           }
         };
