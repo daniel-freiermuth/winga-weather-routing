@@ -4,7 +4,6 @@
 
 | # | Description |
 |---|---|
-| [BUG-67](https://github.com/kristianwiklund/signalk-weather-routing/issues/206) | A new Dependabot alert (#3, severity: low) appeared on the default branch after the REQ-58 GitHub Actions workflows were merged. |
 | [BUG-63](https://github.com/kristianwiklund/signalk-weather-routing/issues/NEW) | The wave overlay does not disappear when the corresponding GRIB file is unticked. |
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
 
@@ -12,6 +11,7 @@
 
 | # | Description |
 |---|---|
+| [~~BUG-67~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/206) | ~~Dependabot alert #3 (esbuild path traversal, low) appeared after REQ-58 merge.~~ — **fixed** (esbuild updated from 0.28.0 to 0.28.1 in lockfile; also cleared alert #4, a high-severity Deno module RCE in the same package; both confirmed fixed by GitHub 2026-06-13) |
 | [~~BUG-58~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/188) | ~~`interpolateBoatSpeed` clamps wind speed to the polar's minimum TWS column when TWS is below that column, so e.g. 3 kn of wind returns the same boat speed as 6 kn of wind. This is physically wrong — the boat cannot sail at 5+ kn in 3 kn of wind.~~ — **fixed** (early return of 0 when `twsKnots < polar.tws[0]`, matching OpenCPN's `POLAR_SPEED_WIND_TOO_LIGHT` behaviour; confirmed 2026-06-13) |
 | [~~BUG-64~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/202) | ~~Check and act on GitHub security scans (dependabot, code scanning alerts).~~ — **not needed** (`tar@7.5.9` is bundled inside gdal-async's own `bundledDependencies` via `@mapbox/node-pre-gyp`; npm `overrides` cannot reach doubly-bundled subtrees and no newer gdal-async or @mapbox/node-pre-gyp exists. The vulnerable code path — node-pre-gyp using tar to extract remote binaries — is dead code: SignalK installs with `--ignore-scripts` and the prebuilt gdal-async binary is already bundled in the tarball. Dependabot alerts #1 and #2 dismissed as `not_used`; confirmed 2026-06-12) |
 | [~~BUG-66~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/198) | ~~Check that the same coordinate mistakes as BUG-65 are not present in the wind overlay / weather data.~~ — **not needed** (wave troubleshooting findings confirmed the BUG-65 issues were specific to the wave canvas raster: mixed-grid only affects discipline=10 HTSGW, and Mercator-Y row spacing only applies to the canvas image overlay; wind arrows are plotted as individual markers at explicit lat/lon points and are unaffected by both issues; confirmed 2026-06-12) |
