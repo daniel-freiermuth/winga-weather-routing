@@ -832,11 +832,21 @@
           const color = C64_PALETTE[i % C64_PALETTE.length];
           const start = f.timeStart ? f.timeStart.slice(0,16).replace('T',' ') : '?';
           const end   = f.timeEnd   ? f.timeEnd.slice(0,16).replace('T',' ')   : '?';
+          let runLine = '';
+          if (f.referenceTime) {
+            const refDate = new Date(f.referenceTime);
+            const refFmt = refDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+                           refDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const ageH = (Date.now() - refDate.getTime()) / 3_600_000;
+            const ageColor = ageH > 24 ? '#f38ba8' : ageH > 12 ? '#fe640b' : '#6c7086';
+            runLine = `<div style="padding-left:22px;font-size:10px;color:${ageColor}">` +
+                      `Run: ${refFmt} (${Math.round(ageH)}h ago)</div>`;
+          }
           return `<label style="display:flex;align-items:center;gap:6px;cursor:pointer">` +
             `<input type="checkbox" class="grib-file-toggle" data-file-index="${i}" checked ` +
             `style="accent-color:${color};cursor:pointer">` +
             `<span style="color:${color};font-size:11px">${f.nTimes} steps: ${start} &rarr; ${end}</span>` +
-            `</label>`;
+            `</label>${runLine}`;
         }).join('');
 
         // Wire checkbox toggle: show/hide the bounding box rectangle

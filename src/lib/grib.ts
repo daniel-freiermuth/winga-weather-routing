@@ -33,6 +33,7 @@ export async function readGribMeta(filePath: string): Promise<GribFileMeta> {
 
     const bandCount = ds.bands.count();
     const timeMs = new Set<number>();
+    let referenceTimeMs: number | undefined;
 
     for (let i = 1; i <= bandCount; i++) {
       const band = ds.bands.get(i);
@@ -42,6 +43,10 @@ export async function readGribMeta(filePath: string): Promise<GribFileMeta> {
       const vtStr = md['GRIB_VALID_TIME'];
       if (!vtStr) continue;
       timeMs.add(parseInt(vtStr, 10) * 1000);
+      if (referenceTimeMs === undefined) {
+        const refStr = md['GRIB_REF_TIME'];
+        if (refStr) referenceTimeMs = parseInt(refStr, 10) * 1000;
+      }
     }
 
     const sortedMs = Array.from(timeMs).sort((a, b) => a - b);
@@ -54,6 +59,7 @@ export async function readGribMeta(filePath: string): Promise<GribFileMeta> {
       timeStart: new Date(sortedMs[0]),
       timeEnd: new Date(sortedMs[sortedMs.length - 1]),
       nTimes: sortedMs.length,
+      referenceTime: new Date(referenceTimeMs ?? sortedMs[0]),
     };
   } finally {
     ds.close();

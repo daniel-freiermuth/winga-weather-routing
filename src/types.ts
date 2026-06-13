@@ -23,6 +23,7 @@ export interface GribFileMeta {
   timeStart: Date;
   timeEnd: Date;
   nTimes: number;
+  referenceTime: Date;  // model run time (GRIB_REF_TIME of first wind band)
 }
 
 // One entry per GRIB file; data is null until lazy-loaded at calculation time.
