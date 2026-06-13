@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-67](https://github.com/kristianwiklund/signalk-weather-routing/issues/206) | A new Dependabot alert (#3, severity: low) appeared on the default branch after the REQ-58 GitHub Actions workflows were merged. |
 | [BUG-63](https://github.com/kristianwiklund/signalk-weather-routing/issues/NEW) | The wave overlay does not disappear when the corresponding GRIB file is unticked. |
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
 
