@@ -69,6 +69,8 @@ These settings control the isochrone algorithm. The defaults work well for most 
 
 **Test buttons:** When `hideTestButtons` is set to `false`, three test buttons appear in the webapp: **Run test at Öregrund**, **Helsinki test**, and **Gothenburg test**. Each button pre-fills the routing form with a predefined start point, destination, and departure time and starts the calculation immediately. Intended for development and validation.
 
+**Build version:** The git commit SHA or tag is shown as small dimmed text at the very bottom of the settings sidebar. It is embedded at build time and is useful for diagnostics and support.
+
 ## Usage
 
 Open the webapp at `http://<your-signalk-host>:3000/signalk-weather-routing/`.

@@ -1,5 +1,6 @@
 dist/
 node_modules/
+public/buildinfo.json
 *.tgz
 obsolete because claude did wrong/
 .claude/
