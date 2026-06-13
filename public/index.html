@@ -180,6 +180,24 @@
     #modal-save-btn  { background: #89b4fa; color: #1e1e2e; }
     #modal-cancel-btn { background: #313244; color: #cdd6f4; }
 
+    #disclaimer-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.8); z-index: 10002;
+      align-items: center; justify-content: center;
+    }
+    #disclaimer-overlay.visible { display: flex; }
+    #disclaimer-box {
+      background: #2a2f45; border: 1px solid #f9a825; border-radius: 8px;
+      padding: 24px; max-width: 480px; width: calc(100% - 48px); color: #cdd6f4;
+    }
+    #disclaimer-box h2 { margin: 0 0 14px; font-size: 15px; color: #f9a825; }
+    #disclaimer-box p  { margin: 0 0 10px; font-size: 12px; line-height: 1.5; }
+    #disclaimer-box p:last-of-type { margin-bottom: 18px; }
+    #disclaimer-ok {
+      display: block; width: 100%; padding: 8px; background: #89b4fa;
+      border: none; border-radius: 4px; color: #1e2230; font-size: 13px; cursor: pointer;
+    }
+
     #wave-legend { position: absolute; bottom: 8px; right: 8px; background: rgba(30,30,46,0.85); border-radius: 4px; padding: 4px 8px; z-index: 1000; display: none; flex-direction: column; gap: 2px; font-size: 10px; color: #cdd6f4; }
     #wave-legend-bar { width: 120px; height: 10px; border-radius: 2px; background: linear-gradient(to right, #00f, #0ff, #0f0, #ff0, #f00); }
     #wave-legend-labels { display: flex; justify-content: space-between; }
@@ -339,6 +357,20 @@
       </div>
     </div>
   </div>
+  <div id="disclaimer-overlay">
+    <div id="disclaimer-box">
+      <h2>Safety disclaimer</h2>
+      <p>This is an experimental plugin. Calculated routes have not been validated
+         by sailing them and <strong>may cross land or shallow water</strong>.</p>
+      <p>Weather forecasts change. The route calculated now may not reflect
+         conditions at departure time. Always obtain up-to-date forecasts
+         and check for NOTAMs and local hazards.</p>
+      <p>This plugin <strong>does not replace good seamanship</strong>, a qualified
+         navigator, or certified navigation software. Use is entirely at your
+         own risk.</p>
+      <button id="disclaimer-ok">I understand — continue</button>
+    </div>
+  </div>
   <div id="failure-popup">
     <span id="failure-popup-msg"></span>
     <button id="failure-popup-close">×</button>
@@ -380,6 +412,15 @@
   </script>
   <script>
     const API = '/plugins/signalk-weather-routing';
+
+    const DISCLAIMER_KEY = 'wr-disclaimer-v1';
+    const disclaimerOverlay = document.getElementById('disclaimer-overlay');
+    const disclaimerOk = document.getElementById('disclaimer-ok');
+    if (!localStorage.getItem(DISCLAIMER_KEY)) disclaimerOverlay.classList.add('visible');
+    disclaimerOk.addEventListener('click', () => {
+      localStorage.setItem(DISCLAIMER_KEY, '1');
+      disclaimerOverlay.classList.remove('visible');
+    });
 
     const map = L.map('map').setView([0, 0], 2);
     map.createPane('windBarbPane').style.zIndex = '350';
