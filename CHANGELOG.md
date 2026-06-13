@@ -1,13 +1,81 @@
 # Changelog
 
-## 1.0.0
+## 0.7.0
 
-First App Store release. All implemented requirements up to this point are included.
+Visual improvements and polish.
 
-- Added GitHub Actions CI workflow (build + test on every push/PR) and publish workflow (npm publish on version tag).
+- GRIB model run timestamp shown per file in sidebar (amber > 12 h old, red > 24 h old)
+- Map click shows wind speed/direction and wave height from active overlays
+- Isochrones are now a toggleable layer (Layers section checkbox)
+- Land overlay checkbox is disabled (greyed out) during active route calculation
+- Conditions graph dual-axis layout fixed when wind speed m/s mode is enabled
+- Conditions graph no longer shows a false zero boat speed at the departure point
+- Wave overlay now clears immediately when its GRIB file is unticked
+- Route failure popup shows the correct cause (wind / land / GRIB boundary)
+
+## 0.6.0
+
+Settings, diagnostics, unit preferences, and App Store preparation.
+
+- Unit preferences: speed, distance, and depth follow the active SignalK unit preset throughout the UI; a per-plugin `windSpeedMs` option overrides wind speed display to m/s
+- Git commit SHA displayed as small text at the bottom of the settings sidebar
+- All isochrone algorithm parameters (heading step, sector size, arrival radius, cone angle, etc.) are now configurable as plugin settings with documented defaults
+- GitHub Actions CI workflow: build and test on every push and pull request
+- GitHub Actions publish workflow: publishes to npm on version tag push
+- App Store metadata: icon, screenshots, category keyword
+
+## 0.5.0
+
+UI enrichment, overlays, and route management.
+
+- Conditions graph below the map: wind speed, wave height, and boat speed along the route over time; click to fullscreen
+- Wave height raster overlay (blue-to-red colour scale, configurable upper bound)
+- GRIB wind overlay with time scrubber; wind barb redesign (arrowhead toward wind, calm symbol for light wind)
+- Each GRIB file has a checkbox — uncheck to exclude from routing and remove its bounding box
+- Time scrubber highlights the nearest route waypoint and leg
+- Conditions graph aligned with scrubber; graph marks intermediate waypoints
+- Departure from a saved SignalK route or waypoint via dropdown
+- Route through intermediate waypoints: select a saved route to constrain the path
+- Explicit route save dialog (name prompt before saving to `resources/routes`)
+- Test buttons (Öregrund, Helsinki, Gothenburg) controllable via plugin setting
+
+## 0.4.0
+
+Routing quality and robustness.
+
+- Per-position directional cone: cone is disabled for frontier points where the direct path to the destination crosses land, allowing escape from enclosed harbours and archipelagos
+- Maximum heading change per step (120°) prevents single-step reversals
+- Top-2 candidates per bearing sector preserves channel-threading paths alongside open-water candidates
+- Motor fallback: configurable threshold and motor speed; triggers when polar speed falls below the threshold
+- Wait-for-wind: frontier points with no viable headings stay in place for one step rather than being discarded
+- Maximum wind speed and maximum wave height routing constraints
+- Coarse pre-pass removed — measured 0% heading skip rate; pure overhead eliminated
+- Partial route displayed when the frontier collapses, showing how far the algorithm got
+
+## 0.3.0
+
+Land avoidance overhaul and bundled coastline data.
+
+- Safety margin (0.5 NM): dilated-union land index closes passages narrower than the algorithm's resolution; separate layer shown in the land overlay when active
+- Pre-built GSHHG high-resolution coastline indices bundled in the package — no download at install or runtime
+- Build script (`prepare-land-data.py`) for regenerating indices from GSHHG source
+
+## 0.2.0
+
+Algorithm improvements and performance.
+
+- Edge-tile spatial index: O(k) segment land checks replacing O(n) full polygon scan — ~1000× faster land avoidance
+- T_bound bounding heuristic: discards frontier points that cannot improve on the best known arrival time
+- Per-step timing breakdown logged for profiling
 
 ## 0.1.0
 
-Initial release: isochrone routing, GRIB2 wind + wave, GSHHG land avoidance,
-polar diagram support, routes saved to SignalK resources/routes (enabling use
-in e.g. freeboard-sk).
+Initial release.
+
+- Isochrone routing optimised for time-to-destination
+- GRIB2 wind data from OpenSkiron ICON-EU (7 km grid)
+- GSHHG high-resolution coastline land avoidance
+- ORC/OpenCPN polar diagram support
+- Routes saved to SignalK `resources/routes`
+- Leaflet webapp: map, live isochrone rendering, route with wind barbs and ETAs
+- Server-sent events for live calculation progress
