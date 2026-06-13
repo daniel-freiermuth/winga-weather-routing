@@ -111,7 +111,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       time: wind.times[startTimeIdx],
       heading: 0, twa: 0,
       tws: windSpeedKnots(seedVec.u, seedVec.v),
-      boatSpeed: 0,
+      boatSpeed: undefined,
       windDir: windDirection(seedVec.u, seedVec.v),
       stepCalcMs: 0,
       parent: undefined,
