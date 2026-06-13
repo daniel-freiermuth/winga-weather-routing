@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-69](https://github.com/kristianwiklund/signalk-weather-routing/issues/208) | Five branches have commits ahead of main with no open PRs: `fix/BUG-46-grib-domain-departure` (1), `fix/BUG-47-seed-point-wind-data` (1), `feature/REQ-92-route-waypoint-routing` (2), `feature/REQ-96-REQ-97-scrubber-highlight` (4), `feature/REQ-58-publish-to-appstore` (7). BUG-46 and BUG-47 are unmerged routing correctness fixes. |
 | [BUG-63](https://github.com/kristianwiklund/signalk-weather-routing/issues/NEW) | The wave overlay does not disappear when the corresponding GRIB file is unticked. |
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
 
