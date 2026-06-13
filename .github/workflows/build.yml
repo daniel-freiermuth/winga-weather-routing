@@ -1,11 +1,8 @@
-name: Publish
+name: Build
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   build-gdal:
@@ -40,7 +37,7 @@ jobs:
           path: node_modules/gdal-async/lib/binding/
           if-no-files-found: error
 
-  publish:
+  pack:
     needs: [build-gdal]
     runs-on: ubuntu-latest
     steps:
@@ -48,7 +45,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
 
       - run: npm ci --ignore-scripts
 
@@ -70,4 +66,11 @@ jobs:
 
       - run: npm run build
       - run: npm test
-      - run: npm publish --provenance --access public
+
+      - name: Package tarball
+        run: npm pack
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signalk-weather-routing-tgz
+          path: "*.tgz"

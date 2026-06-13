@@ -118,9 +118,9 @@ docker restart signalk-server
 
 Two workflows run automatically:
 
-**CI** (`.github/workflows/ci.yml`) — triggers on every push and every pull request targeting `main`. Runs `npm ci`, `npm run build`, and `npm test` on Node.js 22. No manual action required.
+**CI** (`.github/workflows/ci.yml`) — triggers on every push and every pull request targeting `main`. Runs `npm ci`, `npm run build`, and `npm test` on Node.js 24 (ubuntu-latest). No manual action required.
 
-**Publish** (`.github/workflows/publish.yml`) — triggers when a version tag (`v*`) is pushed. Builds and publishes the package to npm.
+**Publish** (`.github/workflows/publish.yml`) — triggers when a version tag (`v*`) is pushed. Builds `gdal-async` natively on both `x64` (ubuntu-latest) and `arm64` (ubuntu-24.04-arm) runners, merges both prebuilt binaries into the package, then publishes to npm. Arm64 binaries are built natively on GitHub's ARM64 hosted runners — no cross-compilation or emulation needed.
 
 ### Publishing a new version
 
@@ -132,6 +132,6 @@ Two workflows run automatically:
    git tag vX.Y.Z
    git push origin main --tags
    ```
-5. The publish workflow fires automatically. The package appears on npmjs.com under `signalk-weather-routing`.
+5. The publish workflow fires automatically. It builds `gdal-async` native binaries for both `x64` and `arm64`, merges them into the plugin package, and publishes to npmjs.com under `signalk-weather-routing`.
 
 The repository must have an `NPM_TOKEN` secret configured in GitHub → Settings → Secrets and variables → Actions.
