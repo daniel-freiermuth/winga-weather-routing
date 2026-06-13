@@ -1783,17 +1783,33 @@ const gridBounds = L.latLngBounds(
     });
 
     map.on('click', (e) => {
-      if (allWavePoints.length === 0 || !document.getElementById('wave-overlay-toggle').checked) return;
       const { lat, lng } = e.latlng;
-      const nearest = allWavePoints.find(p => {
-        const dLat = Math.abs(p.lat - lat);
-        const dLon = Math.abs(p.lon - lng);
-        return dLat < 0.04 && dLon < 0.04 && p.waveHeight != null;
-      });
-      if (nearest) {
+      const lines = [];
+
+      // Wind section — shown when wind overlay is active
+      if (allWindPoints.length > 0 && document.getElementById('wind-overlay-toggle').checked) {
+        const wp = allWindPoints.find(p => Math.abs(p.lat - lat) < 0.04 && Math.abs(p.lon - lng) < 0.04);
+        if (wp) {
+          const twsKn = Math.sqrt(wp.u * wp.u + wp.v * wp.v) * 1.94384;
+          const twsFmt = _fmt(twsKn, 'speed', windSpeedMs);
+          const dir = Math.round(((Math.atan2(-wp.u, -wp.v) * 180 / Math.PI) + 360) % 360);
+          lines.push(`Wind: ${twsFmt.num} ${twsFmt.sym} from ${dir}°T`);
+        }
+      }
+
+      // Wave section — shown when wave overlay is active
+      if (allWavePoints.length > 0 && document.getElementById('wave-overlay-toggle').checked) {
+        const wp = allWavePoints.find(p => Math.abs(p.lat - lat) < 0.04 && Math.abs(p.lon - lng) < 0.04 && p.waveHeight != null);
+        if (wp) {
+          const waveFmt = _fmt(wp.waveHeight, 'depth');
+          lines.push(`Wave: ${waveFmt.num} ${waveFmt.sym}`);
+        }
+      }
+
+      if (lines.length > 0) {
         L.popup()
           .setLatLng([lat, lng])
-          .setContent(`Wave: ${nearest.waveHeight.toFixed(2)} m at (${nearest.lat.toFixed(3)},${nearest.lon.toFixed(3)})<br>Clicked: (${lat.toFixed(3)},${lng.toFixed(3)})`)
+          .setContent(lines.join('<br>'))
           .openOn(map);
       }
     });

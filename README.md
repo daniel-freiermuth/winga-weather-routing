@@ -151,6 +151,10 @@ When the loaded GRIB files contain SWH (significant wave height) bands — as in
 
 OpenSkiron ICON-EU EWAM files are combined files containing atmospheric wind data and ocean wave data on separate grids. The plugin extracts each grid's native parameters — including the correct data-point coordinates — and renders the canvas in Web Mercator coordinates to match Leaflet's map projection, so the wave overlay is accurately positioned on the chart at all latitudes.
 
+### Map click info
+
+Clicking anywhere on the map shows a popup with data from all active overlays at that point. If the **Wind overlay** is active the popup includes wind speed (in the active unit) and meteorological direction (°T). If the **Wave height** overlay is active it includes significant wave height. If neither overlay is active or no data is found within ~4 km of the click, no popup appears.
+
 ### Isochrone overlay
 
 The isochrone frontier lines drawn during and after route calculation form a separate toggleable layer. Use the **Isochrones** checkbox in the Layers section to show or hide them without affecting any other overlay or the calculated route itself. The toggle is on by default.
