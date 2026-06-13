@@ -120,9 +120,9 @@ Three workflows run automatically:
 
 **CI** (`.github/workflows/ci.yml`) — triggers on every push and every pull request targeting `main`. Runs `npm ci`, `npm run build`, and `npm test` on Node.js 24 (ubuntu-latest). No manual action required.
 
-**Build** (`.github/workflows/build.yml`) — manual trigger (`workflow_dispatch`). Builds `gdal-async` from source on both `x64` (ubuntu-latest) and `arm64` (ubuntu-24.04-arm) runners for both Node.js 22 and Node.js 24, assembles the four ABIs into sub-packages (`@kristianwiklund/wr-gdal-linux-x64`, `@kristianwiklund/wr-gdal-linux-arm64`), packs the plugin tarball, and uploads it as an artifact. Useful for pre-release verification.
+**Build** (`.github/workflows/build.yml`) — manual trigger (`workflow_dispatch`). Builds `gdal-async` from source on both `x64` (ubuntu-latest) and `arm64` (ubuntu-24.04-arm) runners for both Node.js 22 and Node.js 24, assembles the four ABIs into sub-packages, packs the plugin tarball, and uploads it as an artifact. Useful for pre-release verification.
 
-**Publish** (`.github/workflows/publish.yml`) — triggers when a version tag (`v*`) is pushed. Same build matrix as Build, then publishes both sub-packages to npm first, followed by the main `signalk-weather-routing` package. Arm64 binaries are built natively on GitHub's ARM64 hosted runners — no cross-compilation or emulation needed.
+**Publish** (`.github/workflows/publish.yml`) — triggers when a version tag (`v*`) is pushed. Downloads prebuilt `gdal-async` binaries from the `kristianwiklund/wr-gdal-async-prebuilt` GitHub Release matching the resolved `gdal-async` version, then publishes both sub-packages to npm, runs tests, and publishes the main `signalk-weather-routing` package. No native build step on the publish path — binaries must already exist in `wr-gdal-async-prebuilt` before tagging.
 
 ### Architecture
 
@@ -142,14 +142,17 @@ At startup, `src/lib/ensure-gdal-binary.ts` copies the matching binary from the 
 
 ### Publishing a new version
 
+**Prerequisite:** prebuilt gdal-async binaries must exist in [`kristianwiklund/wr-gdal-async-prebuilt`](https://github.com/kristianwiklund/wr-gdal-async-prebuilt) for the exact `gdal-async` version locked in `package-lock.json`. If `gdal-async` has not changed since the last release, the existing release is reused automatically. If `gdal-async` was updated, trigger the **Build gdal-async binaries** workflow in that repo first (set `gdal_async_version` to the new version) and wait for the release to appear before proceeding.
+
 1. Bump `version` in `package.json` following [Semantic Versioning](https://semver.org/).
-2. Add an entry to `CHANGELOG.md` under the new version header.
-3. Commit: `git commit -m "chore: bump version to vX.Y.Z"`
-4. Tag and push:
+2. Update `optionalDependencies` in `package.json` to the exact gdal-async version (e.g. `"3.12.3"`) if it changed.
+3. Add an entry to `CHANGELOG.md` under the new version header.
+4. Commit: `git commit -m "chore: bump version to vX.Y.Z"`
+5. Tag and push:
    ```bash
    git tag vX.Y.Z
    git push origin main --tags
    ```
-5. The publish workflow fires automatically. It builds `gdal-async` native binaries for both `x64` and `arm64` × both Node ABIs (22 + 24), publishes sub-packages `@kristianwiklund/wr-gdal-linux-x64` and `@kristianwiklund/wr-gdal-linux-arm64` at the same version, then publishes `signalk-weather-routing`.
+6. The publish workflow fires automatically. It downloads prebuilt binaries from `wr-gdal-async-prebuilt`, publishes sub-packages `@kristianwiklund/wr-gdal-linux-x64` and `@kristianwiklund/wr-gdal-linux-arm64` (versioned at the gdal-async version), runs tests, then publishes `signalk-weather-routing`.
 
 The repository must have an `NPM_TOKEN` secret configured in GitHub → Settings → Secrets and variables → Actions.
