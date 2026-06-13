@@ -23,6 +23,8 @@ See [CHANGELOG](CHANGELOG.md) for the full feature history.
 - A GRIB2 weather forecast file (e.g. from [OpenSkiron](https://openskiron.org/en/icon-gribs))
 - A polar diagram file in ORC/OpenCPN CSV format
 
+The full specification — implemented requirements, open backlog, and design decisions — is in [SPEC.md](SPEC.md). To request a new feature or report a bug, [open an issue on GitHub](https://github.com/kristianwiklund/signalk-weather-routing/issues/new).
+
 ## Installation
 
 Install from the **SignalK App Store** (Server → Appstore → Available) and restart SignalK.
