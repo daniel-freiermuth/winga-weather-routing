@@ -75,4 +75,13 @@ export class MultiFileWindProvider implements WindProvider {
   coversPoint(lat: number, lon: number): boolean {
     return this.sortedFiles.some(e => coversPoint(e, lat, lon));
   }
+
+  coversPointAtTime(lat: number, lon: number, timeIdx: number): boolean {
+    const tMs = this.times[timeIdx].getTime();
+    return this.sortedFiles.some(e =>
+      coversPoint(e, lat, lon) &&
+      e.meta.timeStart.getTime() <= tMs &&
+      e.meta.timeEnd.getTime() >= tMs
+    );
+  }
 }

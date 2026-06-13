@@ -38,6 +38,7 @@ export interface WindProvider {
   getWind(lat: number, lon: number, timeIdx: number): WindVector;
   getWave(lat: number, lon: number, t: Date): number | undefined;
   coversPoint(lat: number, lon: number): boolean;
+  coversPointAtTime(lat: number, lon: number, timeIdx: number): boolean;
   getFilePathForPoint(lat: number, lon: number, timeIdx: number): string;
 }
 

@@ -137,6 +137,33 @@ test('MultiFileWindProvider: getWind falls back to spatial-only match when no fi
   assert.ok(typeof wind.v === 'number', 'should return a number via spatial fallback');
 });
 
+test('MultiFileWindProvider: coversPointAtTime rejects point covered spatially by wrong-time file (BUG-75)', () => {
+  const may24 = new Date('2026-05-24T00:00:00Z');
+  const may25 = new Date('2026-05-25T00:00:00Z');
+  const jun6  = new Date('2026-06-06T00:00:00Z');
+  const jun7  = new Date('2026-06-07T00:00:00Z');
+  // May GRIB covers lat 40–42, lon 10–12
+  const gMay = makeGrib({ latMin: 40, lonMin: 10, times: [may24, may25] });
+  // June GRIB covers lat 40–42, lon 13–15 (spatially non-overlapping extension)
+  const gJun = makeGrib({ latMin: 40, lonMin: 13, times: [jun6,  jun7]  });
+  const provider = new MultiFileWindProvider([
+    makeEntry(gMay, 1000, 'may.grib2'),
+    makeEntry(gJun, 2000, 'jun.grib2'),
+  ]);
+  // timeIdx 0 is May 24 in the merged timeline
+  const mayIdx = provider.times.findIndex(t => t.getTime() === may24.getTime());
+  // Point at lon 14 is inside June GRIB spatially but June GRIB doesn't cover May time
+  assert.strictEqual(provider.coversPointAtTime(41, 14, mayIdx), false,
+    'point covered only by the June GRIB must not be considered valid at a May time step');
+  // Point at lon 11 is inside May GRIB — should be valid at May time
+  assert.strictEqual(provider.coversPointAtTime(41, 11, mayIdx), true,
+    'point covered by the May GRIB should be valid at a May time step');
+  // Point at lon 14 IS valid at a June time index
+  const junIdx = provider.times.findIndex(t => t.getTime() === jun6.getTime());
+  assert.strictEqual(provider.coversPointAtTime(41, 14, junIdx), true,
+    'point covered by the June GRIB should be valid at a June time step');
+});
+
 test('MultiFileWindProvider: getWave returns undefined when no file has swh data', () => {
   const g = makeGrib({});
   const provider = new MultiFileWindProvider([makeEntry(g, 1000)]);
