@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.3
+
+- Fix ARM64 startup: binary filename is `gdal.node`, not `gdal.mod.node`
+
 ## 0.7.2
 
 - Fix ARM64 binary copy failure on startup: `ensure-gdal-binary` now uses the correct binding directory name (`node-v{abi}-{platform}-{arch}`) and destination path (removed spurious double `lib/` segment)
