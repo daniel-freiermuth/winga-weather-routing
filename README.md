@@ -25,15 +25,11 @@ See [CHANGELOG](CHANGELOG.md) for the full feature history.
 
 The full specification — implemented requirements, open backlog, and design decisions — is in [SPEC.md](SPEC.md). To request a new feature or report a bug, [open an issue on GitHub](https://github.com/kristianwiklund/signalk-weather-routing/issues/new).
 
-## Installation
+## Setup and configuration
 
 Install from the **SignalK App Store** (Server → Appstore → Available) and restart SignalK.
 
 The land index (GSHHG coastlines) is bundled — no download is needed at install or runtime.
-
-For development builds, see [DEVELOPMENT.md](DEVELOPMENT.md).
-
-## Configuration
 
 Open **Server → Plugin Config → Weather Routing** in the SignalK admin UI.
 
@@ -46,7 +42,7 @@ Open **Server → Plugin Config → Weather Routing** in the SignalK admin UI.
 
 ### Algorithm tuning
 
-These settings control the isochrone algorithm. The defaults work well for most use cases.
+The defaults work well for most use cases.
 
 | Setting | Default | Description |
 |---|---|---|
@@ -58,17 +54,17 @@ These settings control the isochrone algorithm. The defaults work well for most 
 | `coneDisableLookaheadNm` | 100 NM | How far ahead to check for land when deciding whether to disable the cone for a given frontier point. |
 | `maxHeadingChange` | 120° | Maximum course change allowed between consecutive timesteps, preventing unrealistic zig-zagging. |
 
-### UI settings
+### Display settings
 
 | Setting | Default | Description |
 |---|---|---|
-| `hideTestButtons` | true | When enabled, hides the Run test / Helsinki test / Gothenburg test buttons in the webapp. |
-| `waveOverlayMaxM` | 3.0 | Upper bound of the wave height colour scale. Heights >= this value appear red. Affects both the colour gradient in the wave overlay and the legend label. |
 | `windSpeedMs` | false | When enabled, wind speed is displayed and entered in m/s throughout the webapp, overriding the SignalK unit preference for wind speed. All other values (boat speed, wave height, distances) continue to follow the active SignalK unit preset. |
+| `waveOverlayMaxM` | 3.0 | Upper bound of the wave height colour scale. Heights >= this value appear red. Affects both the colour gradient in the wave overlay and the legend label. |
+| `hideTestButtons` | true | Hides the Run test / Helsinki test / Gothenburg test buttons. Set to `false` to expose them for development and validation. |
 
-**Test buttons:** When `hideTestButtons` is set to `false`, three test buttons appear in the webapp: **Run test at Öregrund**, **Helsinki test**, and **Gothenburg test**. Each button pre-fills the routing form with a predefined start point, destination, and departure time and starts the calculation immediately. Intended for development and validation.
+**Build version:** The git commit SHA or tag is shown as small dimmed text at the very bottom of the settings sidebar, useful for diagnostics and support.
 
-**Build version:** The git commit SHA or tag is shown as small dimmed text at the very bottom of the settings sidebar. It is embedded at build time and is useful for diagnostics and support.
+For development builds, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Usage
 
