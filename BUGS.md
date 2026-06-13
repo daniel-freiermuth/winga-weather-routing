@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-75](https://github.com/kristianwiklund/signalk-weather-routing/issues/225) | Press the "run test" button with all test GRIBs (May 24 and June 6) active — the system routes part of the route outside the boundary of the May 24 GRIB and uses the June 6 GRIB instead. |
 | [BUG-58](https://github.com/kristianwiklund/signalk-weather-routing/issues/188) | `interpolateBoatSpeed` clamps wind speed to the polar's minimum TWS column when TWS is below that column, so e.g. 3 kn of wind returns the same boat speed as 6 kn of wind. This is physically wrong — the boat cannot sail at 5+ kn in 3 kn of wind. **Troubleshooting:** A fix was implemented (return 0 when `twsKnots < polar.tws[0]`, commit `92f194f`, merged as `11f149e`) but caused a routing regression: the standard Öregrund→Gotska Sandön test took a completely different path — north around Åland instead of through Ålandförträngningen. Root cause hypothesis: the GRIB wind in Ålandförträngningen is near the polar's minimum TWS (likely just below 6 kn for the test forecast), so returning 0 speed for those points kills all frontier points in the passage and forces the router to find an alternative route with stronger wind. The fix was reverted (`6575ad8`). A correct fix must handle the near-minimum case without discarding viable frontier points — e.g. by only returning 0 for TWS values significantly below the polar minimum, or by preserving the clamp for values within a small tolerance of the minimum. |
 
 ## Fixed Bugs
