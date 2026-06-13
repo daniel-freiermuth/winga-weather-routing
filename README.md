@@ -19,7 +19,7 @@ See [CHANGELOG](CHANGELOG.md) for the full feature history.
 
 ## Requirements
 
-- SignalK server >= 2.0.0 (Node.js >= 18)
+- SignalK server >= 2.0.0
 - A GRIB2 weather forecast file (e.g. from [OpenSkiron](https://openskiron.org/en/icon-gribs))
 - A polar diagram file in ORC/OpenCPN CSV format
 
