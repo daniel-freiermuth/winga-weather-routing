@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.2
+
+- Fix ARM64 binary copy failure on startup: `ensure-gdal-binary` now uses the correct binding directory name (`node-v{abi}-{platform}-{arch}`) and destination path (removed spurious double `lib/` segment)
+
 ## 0.7.1
 
 ARM64 (Raspberry Pi) support.
