@@ -310,6 +310,8 @@
     </div>
 
     <div id="status-box">Ready</div>
+
+    <div id="build-version" style="font-size:10px;color:#585b70;text-align:center;padding:8px 0 4px;user-select:text"></div>
   </div>
 
   <div id="graph-tooltip"></div>
@@ -701,6 +703,13 @@
         waveOverlayMaxM = cfg.configuration.waveOverlayMaxM;
         document.getElementById('wave-legend-max').textContent = waveOverlayMaxM + ' m';
       }
+      try {
+        const bi = await fetch('./buildinfo.json');
+        if (bi.ok) {
+          const { version } = await bi.json();
+          document.getElementById('build-version').textContent = version;
+        }
+      } catch { /* not available in dev without a build step */ }
     }
 
     document.getElementById('departure-resource').addEventListener('change', (e) => {

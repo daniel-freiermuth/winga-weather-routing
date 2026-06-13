@@ -21,6 +21,7 @@
   "license": "Apache-2.0",
   "main": "dist/index.js",
   "scripts": {
+    "prebuild": "node scripts/inject-buildinfo.js",
     "build": "tsc",
     "watch": "tsc --watch",
     "prepublishOnly": "tsc",
