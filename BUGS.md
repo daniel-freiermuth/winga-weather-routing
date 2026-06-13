@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-78](https://github.com/kristianwiklund/signalk-weather-routing/issues/240) | README is missing on the npm registry page for v0.7.0. The tarball includes README.md (15.2 kB) but the registry `readme` field is empty — likely caused by the interrupted publish attempts before the successful one. |
 | [BUG-77](https://github.com/kristianwiklund/signalk-weather-routing/issues/239) | npm publish fails with HTTP 403 "You may not perform that action with these credentials" when the publish workflow runs on tag push. The NPM_TOKEN secret is set in GitHub but the token is rejected by the registry. |
 | [BUG-76](https://github.com/kristianwiklund/signalk-weather-routing/issues/238) | The CI workflow does not gate the Publish workflow. When a version tag is pushed, both workflows run in parallel — CI does `build + test` and Publish does `build + publish` simultaneously. CI was intended to be a quality gate before publishing; currently a broken build can be published before CI reports failure. Additionally, CI fires on tag pushes as well as branch pushes, duplicating the build work on every release. |
 | [BUG-75](https://github.com/kristianwiklund/signalk-weather-routing/issues/225) | Press the "run test" button with all test GRIBs (May 24 and June 6) active — the system routes part of the route outside the boundary of the May 24 GRIB and uses the June 6 GRIB instead. |
