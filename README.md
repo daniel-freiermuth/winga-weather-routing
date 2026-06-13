@@ -1,10 +1,11 @@
 # signalk-weather-routing
 
-**Experimental — read before use.**
-
-- Calculated routes have not been validated by sailing them and **may cross land or shallow water**.
-- Weather forecasts change. The route calculated now may not reflect conditions at departure time. Always obtain up-to-date forecasts and check for NOTAMs and local hazards.
-- This plugin **does not replace good seamanship**, a qualified navigator, or certified navigation software. Use is entirely at your own risk.
+> [!CAUTION]
+> ⚠️ **Experimental — read before use.** ⚠️
+>
+> - Calculated routes have not been validated by sailing them and **may cross land or shallow water**.
+> - Weather forecasts change. The route calculated now may not reflect conditions at departure time. Always obtain up-to-date forecasts and check for NOTAMs and local hazards.
+> - This plugin **does not replace good seamanship**, a qualified navigator, or certified navigation software. Use is entirely at your own risk.
 
 Bug reports and improvement proposals are welcome.
 
