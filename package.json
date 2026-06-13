@@ -1,6 +1,6 @@
 {
   "name": "signalk-weather-routing",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Weather routing plugin for SignalK using GRIB2 forecasts and isochrone algorithm",
   "author": "Kristian Wiklund",
   "homepage": "https://github.com/kristianwiklund/signalk-weather-routing",
@@ -40,8 +40,8 @@
     "@signalk/server-api": ">=2.0.0"
   },
   "optionalDependencies": {
-    "@kristianwiklund/wr-gdal-linux-x64": "^1.0.0",
-    "@kristianwiklund/wr-gdal-linux-arm64": "^1.0.0"
+    "@kristianwiklund/wr-gdal-linux-x64": "3.12.3",
+    "@kristianwiklund/wr-gdal-linux-arm64": "3.12.3"
   },
   "dependencies": {
     "gdal-async": "^3.9.0",

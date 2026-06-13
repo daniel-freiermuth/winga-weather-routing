@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1
+
+ARM64 (Raspberry Pi) support.
+
+- Plugin now starts correctly on linux/arm64 (Raspberry Pi 3/4/5) — prebuilt gdal-async native binaries are distributed as optional npm packages `@kristianwiklund/wr-gdal-linux-x64` and `@kristianwiklund/wr-gdal-linux-arm64`, covering Node 22 and Node 24
+- Binaries are sourced from `kristianwiklund/wr-gdal-async-prebuilt` and published alongside the main plugin on each release
+
 ## 0.7.0
 
 Visual improvements and polish.
