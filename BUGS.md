@@ -77,6 +77,34 @@
 
 ---
 
+## BUG-69 — Investigation Notes
+
+### Method
+
+For each of the five branches, `git diff main...branch` was used to see what each branch added relative to its divergence point from main. Then the key identifiers from each diff were grepped against the current `main` working tree to determine whether the same code is present.
+
+### Findings per branch
+
+| Branch | Commits ahead | Key diff identifier | Present on main? |
+|---|---|---|---|
+| `fix/BUG-46-grib-domain-departure` | 1 | `coversDeparture` / "outside GRIB" error | **Yes** — `index.ts:291` has the same check, different wording |
+| `fix/BUG-47-seed-point-wind-data` | 1 | `seedWind` variable name | **Yes** — `isochrone.ts:108` has `seedVec` doing the same thing |
+| `feature/REQ-92-route-waypoint-routing` | 2 | `waypoints`, `routeWaypoints`, `waypointRoutes` | **Yes** — 9 matches in `index.ts`, 15 in `public/index.html` |
+| `feature/REQ-96-REQ-97-scrubber-highlight` | 4 | `updateScrubberHighlight`, `wp-highlight`, `intermediateIdxs` | **Yes** — 10 matches in `public/index.html` |
+| `feature/REQ-58-publish-to-appstore` | 7 | `version: 1.0.0`, `wr-icon-128px`, `route-to-route-demo` | **Yes** — version is 1.0.0, both assets in `package.json` |
+
+### Root cause
+
+All five branches are **squash-merge relics**. When a PR is merged with squash, GitHub creates a new commit on `main` whose content matches the branch diff but whose commit hash is unrelated to any of the original branch commits. The original branch commits therefore remain unreachable from `main` in git's DAG — making the branch appear "ahead" — even though the code is fully present on main.
+
+`git log main..branch` counts commit objects, not code. A branch ahead by N commits does not mean N commits of missing work; it means N original commits that were squash-merged as a different commit.
+
+### Verdict
+
+No missing code. All five branches are stale squash-merge ancestors. BUG-69 is a false alarm — the anomaly is in the git commit graph, not in the delivered code. Classification: **not needed**.
+
+---
+
 ## BUG-68 — Investigation Notes
 
 ### Alerts
