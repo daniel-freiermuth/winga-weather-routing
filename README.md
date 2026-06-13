@@ -4,6 +4,8 @@
 
 A SignalK plugin that calculates time-optimal sailing routes using GRIB2 weather forecasts and the isochrone method.
 
+![logo](wr-icon-128px.png)
+
 ## Features
 
 - Isochrone routing optimised for time-to-destination
