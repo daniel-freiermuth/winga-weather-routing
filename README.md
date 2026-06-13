@@ -68,6 +68,7 @@ These settings control the isochrone algorithm. The defaults work well for most 
 |---|---|---|
 | `hideTestButtons` | true | When enabled, hides the Run test / Helsinki test / Gothenburg test buttons in the webapp. |
 | `waveOverlayMaxM` | 3.0 | Upper bound of the wave height colour scale. Heights >= this value appear red. Affects both the colour gradient in the wave overlay and the legend label. |
+| `windSpeedMs` | false | When enabled, wind speed is displayed and entered in m/s throughout the webapp, overriding the SignalK unit preference for wind speed. All other values (boat speed, wave height, distances) continue to follow the active SignalK unit preset. |
 
 **Test buttons:** When `hideTestButtons` is set to `false`, three test buttons appear in the webapp: **Run test at Öregrund**, **Helsinki test**, and **Gothenburg test**. Each button pre-fills the routing form with a predefined start point, destination, and departure time and starts the calculation immediately. Intended for development and validation.
 
@@ -118,10 +119,10 @@ Enabled by default. The router will not cross land. Uncheck to disable for open-
 
 Two fields must both be set to enable motoring:
 
-- **Motor below _ kn**: The boat-speed threshold. When the polar-computed speed for a heading falls below this value, the motor kicks in instead.
-- **Motor speed _ kn**: The speed used when motoring.
+- **Motor below _ (unit)**: The boat-speed threshold. When the polar-computed speed for a heading falls below this value, the motor kicks in instead.
+- **Motor speed _ (unit)**: The speed used when motoring.
 
-Leave either field empty to disable the motor entirely. Example: set "Motor below 3 kn, speed 5 kn" to motor at 5 kn whenever the polar predicts less than 3 kn of boat speed — covering light-wind patches and unfavourable angles.
+The unit label reflects the active SignalK unit preference (e.g. kn, mph, km/h). Leave either field empty to disable the motor entirely. Example: set "Motor below 3 kn, speed 5 kn" to motor at 5 kn whenever the polar predicts less than 3 kn of boat speed — covering light-wind patches and unfavourable angles.
 
 #### Wait for wind
 
@@ -131,8 +132,8 @@ Without this option, a frontier point with no viable headings is simply dropped 
 
 #### Max wind and max wave
 
-- **Max wind (kn):** Candidate positions where the forecasted wind speed exceeds this value are discarded. The router will not route through that area regardless of time savings. Leave empty for no limit.
-- **Max wave (m):** Candidate positions where the significant wave height exceeds this value are discarded. Only applied when wave data (SWH bands) is present in the loaded GRIB file — OpenSkiron ICON-EU EWAM files include both wind and wave bands. Leave empty for no limit.
+- **Max wind:** Candidate positions where the forecasted wind speed exceeds this value are discarded. The router will not route through that area regardless of time savings. The unit shown (kn, m/s, mph, …) follows the active unit preference, or m/s when `windSpeedMs` is enabled. Leave empty for no limit.
+- **Max wave:** Candidate positions where the significant wave height exceeds this value are discarded. Only applied when wave data (SWH bands) is present in the loaded GRIB file — OpenSkiron ICON-EU EWAM files include both wind and wave bands. The unit shown follows the active unit preference. Leave empty for no limit.
 
 ### Wind overlay
 

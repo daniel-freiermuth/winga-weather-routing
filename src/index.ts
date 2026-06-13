@@ -161,6 +161,12 @@ module.exports = (app: any) => {
           description: 'When enabled, the Run test / Helsinki test / Gothenburg test buttons are hidden in the webapp.',
           default: true,
         },
+        windSpeedMs: {
+          type: 'boolean',
+          title: 'Display wind speed in m/s',
+          description: 'When enabled, wind speed is displayed and entered in m/s everywhere in the webapp, overriding the SignalK unit preference.',
+          default: false,
+        },
         headingStep: {
           type: 'number',
           title: 'Heading step (degrees)',
