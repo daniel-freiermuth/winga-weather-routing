@@ -171,6 +171,16 @@ The colored bar beneath the graph shows which GRIB file provided the weather dat
 
 When the route was calculated through intermediate waypoints (via the **Route waypoints** dropdown), thin dashed vertical lines mark each intermediate waypoint's position on the time axis, labelled WP1, WP2, etc.
 
+### Route failure notifications
+
+When route calculation fails, a popup appears on the map describing the cause:
+
+- **All available paths are blocked by land** — the frontier was stopped by the coastline on all headings
+- **Wind is too light or adverse to make progress under sail** — no heading produced enough boat speed (after polar and motor evaluation) to advance the frontier
+- **Destination not reached before the forecast period ends** — the GRIB forecast ran out before the destination was reached, or the frontier reached the edge of the GRIB coverage area
+
+A partial route is shown when some progress was made before failure, so you can see how far the algorithm got.
+
 ## Polar diagram format
 
 Standard ORC/OpenCPN semicolon-delimited CSV. The first row is a header with TWS values; subsequent rows start with a TWA value followed by boat speeds:
