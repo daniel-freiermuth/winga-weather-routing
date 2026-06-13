@@ -160,9 +160,15 @@ If implementing a verification, test, or validation task would require introduci
 
 A GitHub issue must not be closed unless the fix or implementation has been confirmed solved — either by explicit user confirmation or by automated testing/validation. Closing an issue solely because the code was written is not sufficient.
 
-## Two-Table Rule
+## Three-Table Rule
 
-SPEC.md and BUGS.md each maintain two tables: one for open items (status `open`) and one for closed items (status `done`, `fixed`, `superseded`, or `not needed`). Rows are sorted by ID number within each table. A row is moved from the Open table to the Closed table only in the confirmation commit (Phase 2 of the Commit Rule) — never in the implementation commit.
+SPEC.md and BUGS.md each maintain three tables:
+
+1. **Open** — items not yet implemented or fixed (status `open`)
+2. **Won't Fix / Won't Implement** — items that will not be worked on; the decision is recorded here so it is not lost
+3. **Closed** — items confirmed done (status `done`, `fixed`, `superseded`, or `not needed`)
+
+Rows are sorted by ID number within each table. A row is moved from the Open table to either Won't Fix/Won't Implement or Closed only in the confirmation commit (Phase 2 of the Commit Rule) — never in the implementation commit.
 
 ## GitHub Issue Rule
 
