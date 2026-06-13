@@ -226,7 +226,7 @@
     <div class="section">
       <div class="section-title">Routing Options</div>
       <label class="layer-toggle" id="safety-margin-wrap" style="display:none">
-        <input type="checkbox" id="safety-margin-toggle"> Safety margin (0.5 NM)
+        <input type="checkbox" id="safety-margin-toggle"> Safety margin (<span id="safety-margin-dist">0.5 NM</span>)
       </label>
       <div id="safety-margin-building">Building safety margin dataset (<span id="safety-margin-pct">0</span>%)…</div>
       <label class="layer-toggle">
@@ -414,6 +414,8 @@
     // Unit conversion helpers: plugin-internal units (kn, m, nmi) ↔ SignalK preset display units.
     const _toSI   = { speed: v => v * 0.514444,  depth: v => v, distance: v => v * 1852.001 };
     const _fromSI = { speed: v => v * 1.94384,   depth: v => v, distance: v => v / 1852.001 };
+    // 'nmi' follows SignalK's own symbol for nautical miles (IEEE / US GPO standard).
+    // ICAO uses 'NM'; IHO uses 'M'. We match SignalK to stay consistent across the system.
     const _fallbackSym = { speed: 'kn', depth: 'm', distance: 'nmi' };
 
     function _evalFormula(formula, value) {
@@ -759,6 +761,8 @@
       document.getElementById('max-wind-label').textContent    = `Max wind (${windSym}, empty = no limit)`;
       document.getElementById('max-wave-label').textContent    = `Max wave (${depthSym}, empty = no limit)`;
       document.getElementById('wave-legend-max').textContent   = `${_fmt(waveOverlayMaxM, 'depth').num} ${depthSym}`;
+      const smFmt = _fmt(0.5, 'distance');
+      document.getElementById('safety-margin-dist').textContent = `${smFmt.num} ${smFmt.sym}`;
       try {
         const bi = await fetch('./buildinfo.json');
         if (bi.ok) {
