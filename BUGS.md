@@ -99,6 +99,28 @@ All five branches are **squash-merge relics**. When a PR is merged with squash, 
 
 `git log main..branch` counts commit objects, not code. A branch ahead by N commits does not mean N commits of missing work; it means N original commits that were squash-merged as a different commit.
 
+### All 35 branches investigated
+
+The same `git log main..branch` count was run across all branches. Every branch except `feature/REQ-86-grib-wind-overlay` (0 commits ahead) shows commits ahead of main:
+
+| Commits ahead | Branch |
+|---|---|
+| 13 | `feature/REQ-95-graph-time-axis` |
+| 10 | `fix/BUG-46-47-38-sprint4` |
+| 7 | `feature/REQ-58-publish-to-appstore` |
+| 6 | `sprint5` |
+| 5 | `feature/REQ-80-expose-tuneables` |
+| 4 | `feature/REQ-96-REQ-97-scrubber-highlight`, `feature/REQ-101-wave-overlay` |
+| 3 | `fix/BUG-54-wind-overlay-density`, `fix/BUG-35-36-sprint6` |
+| 2 | `fix/BUG-60-conditions-graph-axis-offset`, `fix/BUG-58-polar-light-air`, `fix/BUG-55-readme-gaps`, `fix/BUG-53-cone-distance`, `fix/BUG-50-59-conditions-graph-wave-height`, `feature/S7-A-ui-polish`, `feature/REQ-92-route-waypoint-routing`, `feature/REQ-87-wind-overlay-toggle`, `feature/REQ-82-83-84-motor-threshold-wait-for-wind`, `feature/REQ-58-npm-publish`, `feature/REQ-58-github-actions-ci`, `feature/REQ-58-appstore-prep`, `feature/REQ-100-wind-barb-redesign`, `feat/REQ-70-71-72-failure-diagnostics` |
+| 1 | `fix/BUG-64-dependabot-tar`, `fix/BUG-57-motor-nogo-zone`, `fix/BUG-47-seed-point-wind-data`, `fix/BUG-46-grib-domain-departure`, `docs/add-req-93-94`, `docs/add-req-88-92` |
+
+All are squash-merge relics. The commit counts reflect the size of the original branch before it was squash-merged into main as a single PR commit.
+
+### Why only 5 were initially flagged
+
+The initial selection used `git branch -vv` output. The 5 branches were selected because they showed no remote tracking branch (`[origin/...]` absent) or were ahead of their own remote tracking branch — both are surface signals of locally-modified or never-pushed work. The other 29 branches, all showing `[origin/branch: in sync]`, were not flagged even though they are equally ahead of `main`. This was an error in the investigation method: tracking-branch sync status is not the same as merge status when squash merges are in use.
+
 ### Verdict
 
 No missing code. All five branches are stale squash-merge ancestors. BUG-69 is a false alarm — the anomaly is in the git commit graph, not in the delivered code. Classification: **not needed**.
