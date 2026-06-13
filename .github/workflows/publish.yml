@@ -59,12 +59,26 @@ jobs:
           cp -r tmp/arm64/node24/binding/* packages/wr-gdal-linux-arm64/binding/
 
       - name: Publish x64 sub-package
-        run: cd packages/wr-gdal-linux-x64 && npm publish --access public --provenance
+        run: |
+          GDAL_ASYNC_VERSION=$(node -p "require('./node_modules/gdal-async/package.json').version")
+          PKG="@kristianwiklund/wr-gdal-linux-x64"
+          if npm view "${PKG}@${GDAL_ASYNC_VERSION}" version 2>/dev/null; then
+            echo "${PKG}@${GDAL_ASYNC_VERSION} already published — skipping"
+          else
+            cd packages/wr-gdal-linux-x64 && npm publish --access public --provenance
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish arm64 sub-package
-        run: cd packages/wr-gdal-linux-arm64 && npm publish --access public --provenance
+        run: |
+          GDAL_ASYNC_VERSION=$(node -p "require('./node_modules/gdal-async/package.json').version")
+          PKG="@kristianwiklund/wr-gdal-linux-arm64"
+          if npm view "${PKG}@${GDAL_ASYNC_VERSION}" version 2>/dev/null; then
+            echo "${PKG}@${GDAL_ASYNC_VERSION} already published — skipping"
+          else
+            cd packages/wr-gdal-linux-arm64 && npm publish --access public --provenance
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
