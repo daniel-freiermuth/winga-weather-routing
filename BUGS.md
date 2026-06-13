@@ -75,6 +75,41 @@
 
 ---
 
+## BUG-67 — Investigation Notes
+
+### Package and origin
+
+`esbuild` 0.28.0 is a transitive **dev** dependency, pulled in by `tsx@4.22.3` (the TypeScript test runner). tsx declares `"esbuild": "~0.28.0"` in its own `package.json`; that range resolves to 0.28.0 in the lockfile.
+
+### Vulnerability (GHSA-g7r4-m6w7-qqqr)
+
+Path traversal in esbuild's **development server** (`--servedir` mode). When requests containing backslash sequences (`..\\..\\`) are sent, `path.Clean()` (POSIX-only) fails to normalise them, allowing the server to escape the configured `servedir` root and serve arbitrary files. Fixed in esbuild 0.28.1.
+
+**Scope: Windows only.** The bug requires the Windows filesystem to interpret `\` as a directory separator. It does not affect POSIX systems.
+
+### Code path analysis
+
+esbuild is invoked by tsx solely as a **bundler/transpiler backend** — it is called programmatically to transpile TypeScript on the fly. The vulnerable code path (`--servedir` HTTP server) is never started. Confirming:
+
+- No project script invokes `esbuild` directly (verified in `package.json` scripts and `src/`).
+- The plugin itself runs on Linux (Docker container, Raspberry Pi target). No Windows environment is in scope.
+- `esbuild` is a `devDependency`; it is absent from the published npm package.
+
+### Verdict
+
+The vulnerable code path is dead: the dev server is never started, and the project never runs on Windows. Classification: **not_used**, same as BUG-64 alerts #1 and #2.
+
+### Fix options
+
+| Option | Action | Notes |
+|---|---|---|
+| A | Dismiss alert #3 as `not_used` on GitHub | No code change; alert closes |
+| B | Update lockfile to esbuild 0.28.1 | `npm update esbuild` in container; tsx `~0.28.0` accepts 0.28.1; eliminates alert and keeps lockfile current |
+
+Option B is low-risk and clears the alert permanently. Option A requires no code change.
+
+---
+
 ## BUG-51 — Investigation Notes
 
 ### Root cause
