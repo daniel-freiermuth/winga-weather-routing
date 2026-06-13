@@ -8,20 +8,12 @@ A SignalK plugin that calculates time-optimal sailing routes using GRIB2 weather
 
 ## Features
 
-- Isochrone routing optimised for time-to-destination
-- Wind data from GRIB2 files (tested with [OpenSkiron](https://openskiron.org/en/icon-gribs) ICON-EU, 7 km grid)
-- Polar diagrams in ORC/OpenCPN semicolon-delimited CSV format
-- Automatic land avoidance using [GSHHG](https://www.soest.hawaii.edu/pwessel/gshhsg/) high-resolution coastlines
-- Optional 0.5 NM safety margin that closes narrow passages below the algorithm's resolution
-- Motor fallback: configurable boat-speed threshold and engine speed
-- Wait-for-wind: frontier points survive calm patches rather than being discarded
-- Max wind speed and max wave height routing constraints
+- Time-optimal isochrone routing using GRIB2 weather forecasts
+- Automatic land avoidance using [GSHHG](https://www.soest.hawaii.edu/pwessel/gshhg/) high-resolution coastlines
+- Wind and wave overlays on the map with a time scrubber and conditions graph
 - Routes saved to SignalK `resources/routes` — visible in freeboard-sk automatically
-- GRIB wind overlay on the map with a time scrubber to step through forecast timesteps
-- GRIB wave height overlay (colour raster) on the map, using SWH bands from EWAM files
-- Routing through intermediate waypoints: select a saved SignalK route to constrain the path
-- Leaflet-based webapp with live isochrone rendering during calculation
-- Performance target: Raspberry Pi 3–5; tested on Intel NUC
+
+See [CHANGELOG](CHANGELOG.md) for the full feature history.
 
 ![Weather routing webapp](screenshot2.jpg)
 
