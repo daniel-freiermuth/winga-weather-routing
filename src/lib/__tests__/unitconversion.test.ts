@@ -6,19 +6,19 @@ import { evalFormula, fmt, parseUnit, toDisplay, toSI, fromSI, type UnitPrefs } 
 
 // Representative SignalK unit preset shapes
 const nauticalMetric: UnitPrefs = {
-  speed:    { formula: 'value / 0.514444', inverseFormula: 'value * 0.514444', symbol: 'kn',  displayFormat: '1' },
-  depth:    { formula: 'value * 1',        inverseFormula: 'value / 1',        symbol: 'm',   displayFormat: '1' },
-  distance: { formula: 'value / 1852.001', inverseFormula: 'value * 1852.001', symbol: 'nmi', displayFormat: '2' },
+  speed:    { formula: 'value / 0.514444', inverseFormula: 'value * 0.514444', symbol: 'kn',  displayFormat: '0.0' },
+  depth:    { formula: 'value * 1',        inverseFormula: 'value / 1',        symbol: 'm',   displayFormat: '0.0' },
+  distance: { formula: 'value / 1852.001', inverseFormula: 'value * 1852.001', symbol: 'nmi', displayFormat: '0.00' },
 };
 
 const imperialUs: UnitPrefs = {
-  speed: { formula: 'value * 2.23694', inverseFormula: 'value / 2.23694', symbol: 'mph', displayFormat: '4' },
-  depth: { formula: 'value * 3.28084', inverseFormula: 'value / 3.28084', symbol: 'ft',  displayFormat: '4' },
+  speed: { formula: 'value * 2.23694', inverseFormula: 'value / 2.23694', symbol: 'mph', displayFormat: '0.0000' },
+  depth: { formula: 'value * 3.28084', inverseFormula: 'value / 3.28084', symbol: 'ft',  displayFormat: '0.0000' },
 };
 
 const metric: UnitPrefs = {
-  speed:    { formula: 'value * 3.6',     inverseFormula: 'value / 3.6',     symbol: 'km/h', displayFormat: '4' },
-  distance: { formula: 'value / 1000',    inverseFormula: 'value * 1000',    symbol: 'km',   displayFormat: '4' },
+  speed:    { formula: 'value * 3.6',     inverseFormula: 'value / 3.6',     symbol: 'km/h', displayFormat: '0.0000' },
+  distance: { formula: 'value / 1000',    inverseFormula: 'value * 1000',    symbol: 'km',   displayFormat: '0.0000' },
 };
 
 // --- evalFormula ---

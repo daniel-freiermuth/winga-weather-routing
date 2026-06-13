@@ -435,7 +435,10 @@
       const p = unitPrefs?.[category];
       if (!p?.formula) return { num: value.toFixed(1), sym: _fallbackSym[category] };
       const raw = _evalFormula(p.formula, _toSI[category](value));
-      return { num: raw.toFixed(parseInt(p.displayFormat ?? '1')), sym: p.symbol };
+      const fmtStr = p.displayFormat ?? '';
+      const dot = fmtStr.indexOf('.');
+      const decimals = dot >= 0 ? fmtStr.length - dot - 1 : 0;
+      return { num: raw.toFixed(decimals), sym: p.symbol };
     }
 
     function _parse(displayVal, category, forceMs = false) {
@@ -742,7 +745,7 @@
 
       try {
         const up = await fetch('/signalk/v1/unitpreferences/active');
-        if (up.ok) unitPrefs = await up.json();
+        if (up.ok) unitPrefs = (await up.json()).categories;
       } catch { /* offline or not supported — fall back to kn/m/nmi */ }
 
       const speedSym    = _fmt(0, 'speed').sym;

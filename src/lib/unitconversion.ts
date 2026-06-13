@@ -64,7 +64,10 @@ export function fmt(value: number, category: Category, prefs: UnitPrefs | null, 
     return { num: value.toFixed(1), sym: FALLBACK_SYMBOL[category] };
   }
   const raw = evalFormula(p.formula, toSI[category](value));
-  return { num: raw.toFixed(parseInt(p.displayFormat ?? '1')), sym: p.symbol };
+  const fmtStr = p.displayFormat ?? '';
+  const dot = fmtStr.indexOf('.');
+  const decimals = dot >= 0 ? fmtStr.length - dot - 1 : 0;
+  return { num: raw.toFixed(decimals), sym: p.symbol };
 }
 
 // Convert display-unit value back to internal units.
