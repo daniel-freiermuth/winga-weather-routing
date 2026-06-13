@@ -33,9 +33,11 @@ A SignalK plugin that calculates time-optimal sailing routes using GRIB2 weather
 
 ## Installation
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for build and install instructions.
+Install from the **SignalK App Store** (Server → Appstore → Available) and restart SignalK.
 
-The land index is bundled with the package — no download is needed at install or runtime.
+The land index (GSHHG coastlines) is bundled — no download is needed at install or runtime.
+
+For development builds, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Configuration
 
@@ -99,7 +101,7 @@ The **Route waypoints** dropdown (below the departure section) lists all routes 
 
 The algorithm calculates each leg independently (start → wp1 → wp2 → … → destination) and concatenates the results into a single route.
 
-Selecting a route in this dropdown overrides any manually placed start/end markers. Manually placing start or end on the map (or selecting a departure resource for REQ-62) resets this dropdown.
+Selecting a route in this dropdown overrides any manually placed start/end markers. Manually placing start or end on the map resets this dropdown.
 
 ### GRIB files
 
