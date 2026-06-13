@@ -4,7 +4,6 @@
 
 | # | Description |
 |---|---|
-| [BUG-69](https://github.com/kristianwiklund/signalk-weather-routing/issues/208) | Five branches have commits ahead of main with no open PRs: `fix/BUG-46-grib-domain-departure` (1), `fix/BUG-47-seed-point-wind-data` (1), `feature/REQ-92-route-waypoint-routing` (2), `feature/REQ-96-REQ-97-scrubber-highlight` (4), `feature/REQ-58-publish-to-appstore` (7). BUG-46 and BUG-47 are unmerged routing correctness fixes. |
 | [BUG-63](https://github.com/kristianwiklund/signalk-weather-routing/issues/NEW) | The wave overlay does not disappear when the corresponding GRIB file is unticked. |
 | [BUG-22](https://github.com/kristianwiklund/signalk-weather-routing/issues/81) | Activating the land overlay checkbox during a routing calculation does not show the land overlay. |
 
@@ -12,6 +11,7 @@
 
 | # | Description |
 |---|---|
+| [~~BUG-69~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/208) | ~~Five branches appeared to have commits ahead of main with no open PRs.~~ — **not needed** (all are squash-merge relics or post-PR continuation branches whose work was incorporated into main via separate PRs; no unmerged code found; investigation exposed a squash-merge history problem — switch to regular merges going forward; confirmed 2026-06-13) |
 | [~~BUG-68~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/207) | ~~GitHub code scanning alerts appeared related to the CI/CD workflow added in REQ-58.~~ — **fixed** (`permissions: contents: read` added to both `ci.yml` and `publish.yml`; alerts cleared, confirmed 2026-06-13) |
 | [~~BUG-67~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/206) | ~~Dependabot alert #3 (esbuild path traversal, low) appeared after REQ-58 merge.~~ — **fixed** (esbuild updated from 0.28.0 to 0.28.1 in lockfile; also cleared alert #4, a high-severity Deno module RCE in the same package; both confirmed fixed by GitHub 2026-06-13) |
 | [~~BUG-58~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/188) | ~~`interpolateBoatSpeed` clamps wind speed to the polar's minimum TWS column when TWS is below that column, so e.g. 3 kn of wind returns the same boat speed as 6 kn of wind. This is physically wrong — the boat cannot sail at 5+ kn in 3 kn of wind.~~ — **fixed** (early return of 0 when `twsKnots < polar.tws[0]`, matching OpenCPN's `POLAR_SPEED_WIND_TOO_LIGHT` behaviour; confirmed 2026-06-13) |
@@ -121,9 +121,30 @@ All are squash-merge relics. The commit counts reflect the size of the original 
 
 The initial selection used `git branch -vv` output. The 5 branches were selected because they showed no remote tracking branch (`[origin/...]` absent) or were ahead of their own remote tracking branch — both are surface signals of locally-modified or never-pushed work. The other 29 branches, all showing `[origin/branch: in sync]`, were not flagged even though they are equally ahead of `main`. This was an error in the investigation method: tracking-branch sync status is not the same as merge status when squash merges are in use.
 
+### Branch post-merge evolution (feature/REQ-86-grib-wind-overlay)
+
+GitHub's tree view shows commits made after PR #159 was merged (2026-06-08T19:58:08Z):
+
+| Commit | Subject |
+|--------|---------|
+| `0bd8a46` | BUG-54: wind overlay samples at GRIB native resolution |
+| `ad09b11` | REQ-87: wind overlay on/off checkbox |
+| `331baaf` | docs: add REQ-88 through REQ-92 from sailing advisor review |
+| `fb467f7` | docs: add REQ-93 and REQ-94 |
+
+All four commits are present in `main` with the same hashes — incorporated via non-squash merges through separate PRs #163, #164, #170, #173. The branch tip `fb467f7` is reachable from main; `git log main..feature/REQ-86-grib-wind-overlay` returns 0 commits ahead. The branch is fully absorbed into main.
+
+`feature/REQ-101-wave-overlay` shows the same pattern: reused for two PRs (#199 BUG-65, #201 REQ-101), with additional post-merge confirmation commits on the branch.
+
+### Connection to squash merge
+
+The opaque history is a direct consequence of squash merging. With squash merge, original branch commits are not in main's ancestry, so git cannot distinguish "this commit was squash-merged" from "this commit is genuinely unmerged." Regular merges preserve the commit graph — merged commits become reachable from main, and any post-merge additions to the branch are immediately visible as genuinely unmerged.
+
+Decision: switch to regular merges (`gh pr merge --merge`) for all future PRs. CLAUDE.md updated accordingly.
+
 ### Verdict
 
-No missing code. All five branches are stale squash-merge ancestors. BUG-69 is a false alarm — the anomaly is in the git commit graph, not in the delivered code. Classification: **not needed**.
+No missing code. All stale branches are squash-merge relics or post-PR continuation branches whose work was subsequently merged via separate PRs. BUG-69 is a false alarm — the anomaly is in the git commit graph, not in the delivered code. Classification: **not needed**.
 
 ---
 

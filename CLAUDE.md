@@ -40,7 +40,7 @@ Every new feature or bug fix is developed on its own branch. Exception: if the p
 
 Branch naming: `feature/<REQ-N>-short-description` or `fix/<BUG-N>-short-description`.
 
-A new branch must always be created from the latest `main` **after** the previous sprint's PR has been merged. Never continue committing on an old branch after its PR is merged — the squash merge on main and the original commits on the branch diverge, causing conflicts on the next PR. The correct sequence is:
+A new branch must always be created from the latest `main` **after** the previous sprint's PR has been merged. Never continue committing on an old branch after its PR is merged — once merged, all future work must start from a new branch off main. The correct sequence is:
 
 ```
 git checkout main && git pull
@@ -62,7 +62,7 @@ Do this as the first action of every new sprint or feature, before writing any c
 
 ## PR and Merge Rule
 
-Once implementation is confirmed working and both the Phase 1 and Phase 2 commits are done, immediately create a PR and merge it — do not wait for a separate instruction. Close the corresponding GitHub issues after the merge.
+Once implementation is confirmed working and both the Phase 1 and Phase 2 commits are done, immediately create a PR and merge it — do not wait for a separate instruction. Use `gh pr merge --merge` (regular merge commit). Never use `--squash` — squash merges create a new commit hash on main unrelated to the branch's history, making it impossible to use git history to reliably detect unmerged work. Close the corresponding GitHub issues after the merge.
 
 ## User Documentation Rule
 
