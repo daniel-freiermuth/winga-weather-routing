@@ -807,3 +807,147 @@ This is consistent with the user's observation: "the entire wave data for the en
 **Why the pixel-center fix had no effect:** the Mercator error (~85 km) completely dominates the pixel-center correction (~2.8 km). The pixel-center fix is correct but immaterial compared to this bug.
 
 **Fix required:** build the canvas in Mercator-projected coordinates. Each canvas row must correspond to an equal increment of Mercator Y, not an equal increment of latitude. Then when Leaflet stretches it linearly in Mercator space the data appears at correct positions. The canvas bounds must be expressed in lat (SW/NE corners) as before, but the per-pixel lat→row mapping must use `mercY(lat)` instead of `(lat - latMin) / latStep`.
+
+---
+
+## BUG-79 — Investigation Notes
+
+### Scope of gdal-async usage
+
+`gdal-async` is used in **only one source file**: `src/lib/grib.ts`. All other files (landmask.ts, setup.ts, polar.ts, geo.ts, algorithm.ts, isochrone.ts, index.ts) are independent of it. The gdal-async API surface used:
+
+| API | Use | Replaceable? |
+|-----|-----|-------------|
+| `gdal.openAsync(path)` | Open GRIB2 file | Yes — pure JS section parser |
+| `ds.geoTransform` | Read geotransform (origin, pixel size) | Yes — parse GRIB Section 3 (Grid Definition) |
+| `ds.rasterSize` | Read raster dimensions | Yes — parse GRIB Section 3 |
+| `ds.bands.count()` / `ds.bands.get(i)` | Iterate bands | Yes — parse sequential GRIB messages |
+| `band.getMetadata()` | Extract GRIB_ELEMENT, GRIB_VALID_TIME, etc. | Yes — parse GRIB Section 1 (Identification) + Section 4 (Product Definition) |
+| `(band.pixels as any).readAsync(...)` → `Float32Array` | Read decoded pixel data | **Hard part** — requires JPEG2000 decompression for OpenSkiron ICON-EU files |
+| `(gdal.vsimem as any).copy(buffer, path)` | Write to virtual filesystem | Trivially replaceable with in-memory `Buffer` |
+| `extractDisciplineMessages()` | **Already pure JS** — manual GRIB2 header parsing | No change needed |
+
+**Key finding: gdal-async is a GRIB2+JPEG2000 decoder, not a general GIS tool.** No GDAL warp, reprojection, vector operations, or shapefile reading is performed at runtime. The shapefile/GSHHG handling is done by an offline Python build script (`scripts/prepare-land-data.py` using Fiona/Shapely), not by gdal-async.
+
+### What makes replacement hard
+
+The OpenSkiron ICON-EU GRIB2 files use:
+- **JPEG2000 compression** (Section 5 template 5.40) — the data values are stored as a lossless JPEG2000 codestream
+- **Complex packing + spatial differencing** (template 5.3) — also used by ICON-EU
+- **Rotated latitude/longitude grid** (Grid Definition Template 3.1, or 3.32768 for Arakawa E-grid) — the grid uses a rotated pole, so raw lat/lon pairs must be computed from the rotated coordinates
+- **Mixed-grid files** — atmospheric wind (0.0625° regular lat/lon) and ocean wave (0.1°×0.05° EWAM) grids in the same file; currently handled by the already-pure-JS `extractDisciplineMessages()` function
+
+Any replacement must handle all of these.
+
+### Alternatives investigated
+
+#### A. Full-stack GRIB2 parsers (complete gdal-async replacement)
+
+| Package | Type | JPEG2000 | Rotated Grid | Complex Pack. | Status |
+|---|---|---|---|---|---|
+| **@trkbt10/grib2-wasm** | WASM (MoonBit) | ✅ native WASM decoder | ✅ (GDT 3.1) | ✅ (2,3,40,41) | ✅ **Active 2026**, 0★ |
+| **grib2class** (archmoj) | Pure JS | ✅ via jpx.js (PDF.js) | ✅ partial (GDT 3.1 only) | ✅ | ❌ Unmaintained 2020 |
+| **grib-js** (gmerciel/rjw57) | Pure JS | ❌ raw bytes only | ❌ | ❌ simple only | ⚠️ Section parser, no decode |
+| **vgrib2** (veech) | Pure TS | ❌ raw bytes only | ❌ (GDT 3.0 only) | ❌ simple only | ❌ Unmaintained 2021 |
+
+**`@trkbt10/grib2-wasm`** looked promising on paper (WASM, handles JPEG2000 and rotated grids) but **is not viable in its current state**:
+- **Not published on npm** — `npm install @trkbt10/grib2-wasm` returns 404; no prebuilt WASM binary in the repository
+- **Cannot build from source** — requires MoonBit compiler; `moon update` segfaults; registry dependencies (`moonbitlang/x`, `gmlewis/io`, `gmlewis/flate`, `gmlewis/zlib`, `trkbt10/jpeg2000`) fail to resolve
+- **0 stars, 0 forks, no releases** — project is at a very early stage; source language (MoonBit) is a niche competitor to Rust/WASM with minimal community adoption
+- The TypeScript wrapper and API design are good, but the project is not yet ready for production use as a dependency
+
+**`grib2class`** (archmoj, npm: `grib2class@1.0.7`, MIT) is a pure-JS GRIB2 parser that:
+- Handles simple packing (5.0), complex packing (5.2), complex + spatial differencing (5.3), and JPEG2000 (5.40) — **JPEG2000 via jpx.js** (Mozilla PDF.js fork, injected as external decoder)
+- Handles rotated lat/lon (GDT 3.1) partially; GDT 3.32768 (Arakawa E-grid) is recognised by name but parameters are not read
+- Has zero npm dependencies
+- Is unmaintained since 2020 (hackathon-grade code) but the core logic is small and could be forked
+
+**`grib-js`** (gmerciel, npm: `grib-js@1.0.0`, MIT) is a fork of `rjw57/grib.js` that:
+- Added complex packing + spatial differencing (5.3) data decoder — **does handle template 5.3**
+- **Does NOT handle JPEG2000** (5.40) — raw bytes only
+- **Does NOT handle rotated lat/lon** (GDT 3.1) — only templates 0, 10, 20, 30, 40, 90
+- Good as a metadata/section parser but insufficient as a full replacement
+
+#### B. JPEG2000 decoders (components for composable approach)
+
+| Package | Type | License | Size | Notes |
+|---|---|---|---|---|
+| **`jpeg2000`** (runk) | Pure JS (PDF.js fork) | Apache-2.0 | ~9KB | Zero deps, works Node+browser, accepts raw codestream, actively maintained |
+| **`@cornerstonejs/codec-openjpeg`** | WASM (OpenJPEG) | MIT | ~600KB | Fastest decode, standalone WASM build, medical-imaging context |
+| **`@abasb75/jpeg2000-decoder`** | WASM (OpenJPEG) | Unknown | — | No GitHub repo found, risky |
+
+The `jpeg2000` (runk) package is the most practical JPEG2000 decoder for a composable approach: pure JS, no native or WASM dependencies, simple API (`JpxImage.parse(codestream)`), Apache-2.0 license, 4,218 weekly downloads.
+
+#### C. Composable pure-JS pipeline (recommended approach)
+
+A zero-native-dependency pipeline can be built from three components:
+
+```
+grib2class (section parser + data unpacking)
+  + jpeg2000 (runk, JPEG2000 codestream decoder)
+  ← or use only grib-js section parser + manual rotated-grid handling + jpeg2000
+```
+
+Both approaches:
+- Work on ARM64 (Raspberry Pi) with zero native code
+- Have no `node-gyp` or WASM binary requirements
+- Can be installed with `--ignore-scripts` (SignalK constraint)
+
+The main implementation work is:
+1. Fork/adapt `grib2class` or `grib-js` to extract Section 3 grid parameters and Section 4/5 metadata
+2. Feed the JPEG2000 codestream from Section 5/7 to `jpeg2000` decoder for template 5.40
+3. Handle rotated lat/lon coordinate computation (GDT 3.1) — non-rotated formula is straightforward; rotated requires applying the south-pole rotation to each lat/lon pair
+4. Handle the mixed-grid file structure (already done in `extractDisciplineMessages()`)
+
+#### D. Build gdal-async from source on ARM64 (alternative approach)
+
+gdal-async does not ship prebuilt binaries for linux-arm64 (Raspberry Pi), but it **can** be built from source:
+```
+npm install gdal-async --build-from-source
+```
+This requires a C++ toolchain and the GDAL dev libraries on the RPi. The resulting `gdal.node` binary can be bundled in the plugin tarball, similar to how the x64 binary is currently bundled. This avoids any code change in `grib.ts` but adds a build step on an ARM64 machine.
+
+#### E. Shapefile readers (not directly needed at runtime)
+
+The project already handles GSHHG shapefile reading offline via Python. For reference, pure JS alternatives exist:
+- **shpjs** — mature pure-JS shapefile→GeoJSON parser (811★, 48 releases since 2013)
+- **shapefile** (mbostock) — streaming parser (802★, mature but unmaintained)
+- **polygon-clipping** — pure JS boolean polygon ops (Martinez-Rueda-Feito, 1.5M weekly downloads)
+
+These are relevant if the land mask pipeline were ever ported to TypeScript, but not needed for BUG-79.
+
+#### F. SignalK ecosystem
+
+No existing SignalK plugin uses a pure-JS GRIB2 parser. The closest is `signalk-windjs-plugin` which spawns a Java subprocess running `grib2json.jar` — not viable for ARM64 (requires JRE) and fundamentally the same native-dependency problem. No other SignalK plugin provides a reusable GRIB parsing module.
+
+### Recommendation
+
+**Short-term: build gdal-async from source on an ARM64 machine and bundle the binary.** This is the lowest-risk path — zero code changes in `grib.ts`, proven architecture, and the only new cost is a one-time build on a Raspberry Pi (or cross-compilation in CI). The binary is then bundled in `bundledDependencies` as before.
+
+**Medium-term: migrate to a pure-JS composable pipeline.** The most viable package combination is:
+
+| Role | Package | Reason |
+|------|---------|--------|
+| GRIB2 section parsing | `grib-js` (gmerciel) or fork | Covers Sections 0–6 including complex packing (5.3) |
+| JPEG2000 decode | `jpeg2000` (runk) | Pure JS, Apache-2.0, 0 deps, works on all platforms |
+| Rotated grid math | Manual (small `geo.ts` addition) | Simple spherical rotation of lat/lon coords |
+
+This eliminates the `bundledDependencies` hack and the `--ignore-scripts` concern entirely, and makes the plugin platform-agnostic.
+
+**`@trkbt10/grib2-wasm`** is worth re-evaluating once it is published on npm with a prebuilt WASM binary, but it is not production-ready today.
+
+### Target platform architecture summary
+
+| Device | CPU | Arch | OS | Node | gdal-async binary? |
+|--------|-----|------|----|------|-------------------|
+| RPi 3/4/5 | Cortex-A53/A72/A76 | **arm64** (aarch64) | Raspberry Pi OS 64-bit | 22 or 24 (24 recommended) | ❌ — no prebuilt |
+| Desktop/server | x86-64 | **x64** | Linux/macOS/Windows | 22 or 24 | ✅ — prebuilt present |
+| Cerbo GX (MK1/2) | Allwinner A20, dual Cortex-A7 | **armv7l** (32-bit) | Venus OS (Yocto) | 20 (fixed, Venus OS 3.70) | ❌ — no prebuilt |
+
+Key findings:
+- **RPi 3/4/5 must run 64-bit OS** with Node 24. Node.js 24 dropped armv7 support entirely, so 32-bit RPi OS is no longer an option for SignalK. SignalK docs: *"64-bit Raspberry Pi OS is installed on the device (Pi 3, 4 or 5 required). Node.js 24 does not support 32-bit ARM (armv7)."*
+- **Cerbo GX is armv7 (32-bit)** with a weak dual-core Cortex-A7 @ 960 MHz, 1 GB RAM. Venus OS ships Node 20. SignalK's CI runs a dedicated armv7 job using `node:20-bookworm-slim` with QEMU — failures are advisory/non-blocking.
+- `gdal-async` on npm ships prebuilt `.node` binaries for linux-x64, darwin-x64, darwin-arm64, win32-x64 — **not** for linux-arm64 or linux-armv7.
+- **Building gdal-async from source on arm64 is possible** (it uses prebuildify/node-gyp) but requires `g++`, `make`, `python3`, and PROJ/GDAL dev headers. On Venus OS (Cerbo), build tools are available via `opkg` but the CPU is slow (~50 MIPS, half of a Pi 4). Node 20 on armv7 is also below SignalK's current minimum (Node 22), making Cerbo GX a low-priority target for this plugin.
+
+*(End of investigation notes — 2026-06-13)*

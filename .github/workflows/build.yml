@@ -6,7 +6,7 @@ permissions:
 
 jobs:
   build-gdal:
-    name: gdal-async (${{ matrix.arch }})
+    name: gdal-async (${{ matrix.arch }}, Node ${{ matrix.node-version }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -14,14 +14,22 @@ jobs:
         include:
           - arch: x64
             runner: ubuntu-latest
+            node-version: '22'
+          - arch: x64
+            runner: ubuntu-latest
+            node-version: '24'
           - arch: arm64
             runner: ubuntu-24.04-arm
+            node-version: '22'
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            node-version: '24'
 
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: ${{ matrix.node-version }}
 
       - run: npm install --ignore-scripts
 
@@ -33,7 +41,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: gdal-binary-${{ matrix.arch }}
+          name: gdal-binary-${{ matrix.arch }}-node${{ matrix.node-version }}
           path: node_modules/gdal-async/lib/binding/
           if-no-files-found: error
 
@@ -46,23 +54,51 @@ jobs:
         with:
           node-version: '24'
 
-      - run: npm ci --ignore-scripts
+      - run: npm install --ignore-scripts
 
       - uses: actions/download-artifact@v4
         with:
-          name: gdal-binary-x64
-          path: tmp/x64
-
+          name: gdal-binary-x64-node22
+          path: tmp/x64/node22
       - uses: actions/download-artifact@v4
         with:
-          name: gdal-binary-arm64
-          path: tmp/arm64
+          name: gdal-binary-x64-node24
+          path: tmp/x64/node24
+      - uses: actions/download-artifact@v4
+        with:
+          name: gdal-binary-arm64-node22
+          path: tmp/arm64/node22
+      - uses: actions/download-artifact@v4
+        with:
+          name: gdal-binary-arm64-node24
+          path: tmp/arm64/node24
 
-      - name: Merge prebuilt binaries into gdal-async
+      - name: Assemble sub-packages
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+
+          for pkg in packages/wr-gdal-linux-*; do
+            # Version sync
+            (cd "$pkg" && npm version "$VERSION" --no-git-tag-version)
+            # GDAL license attribution (MIT/X11)
+            cp -r LICENSES "$pkg/"
+          done
+
+          # x64: copy both ABI binaries
+          mkdir -p packages/wr-gdal-linux-x64/binding
+          cp -r tmp/x64/node22/* packages/wr-gdal-linux-x64/binding/
+          cp -r tmp/x64/node24/* packages/wr-gdal-linux-x64/binding/
+
+          # arm64: copy both ABI binaries
+          mkdir -p packages/wr-gdal-linux-arm64/binding
+          cp -r tmp/arm64/node22/* packages/wr-gdal-linux-arm64/binding/
+          cp -r tmp/arm64/node24/* packages/wr-gdal-linux-arm64/binding/
+
+      - name: Install x64 binary for test runner
         run: |
           mkdir -p node_modules/gdal-async/lib/binding
-          cp -r tmp/x64/* node_modules/gdal-async/lib/binding/
-          cp -r tmp/arm64/* node_modules/gdal-async/lib/binding/
+          cp -r tmp/x64/node22/* node_modules/gdal-async/lib/binding/
+          cp -r tmp/x64/node24/* node_modules/gdal-async/lib/binding/
 
       - run: npm run build
       - run: npm test

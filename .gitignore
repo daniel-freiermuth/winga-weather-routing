@@ -10,3 +10,6 @@ data/gshhg-*.zip
 data/_tmp_shp/
 data/*.bin
 !data/*.bin.gz
+
+# Sub-package binary artifacts — built in CI, not committed
+packages/*/binding/

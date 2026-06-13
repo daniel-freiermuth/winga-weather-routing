@@ -1,0 +1,12 @@
+{
+  "name": "@kristianwiklund/wr-gdal-linux-x64",
+  "version": "1.0.0",
+  "description": "Prebuilt gdal-async native binary for linux-x64 (Node 22+24)",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "license": "Apache-2.0",
+  "licenses": [
+    { "type": "MIT", "url": "https://opensource.org/licenses/MIT" }
+  ],
+  "files": ["binding/", "LICENSES/"]
+}
