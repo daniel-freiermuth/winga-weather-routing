@@ -854,6 +854,9 @@
             if (windTimesLoaded) {
               fetchWindPoints(parseInt(document.getElementById('time-scrubber').value));
             }
+            if (document.getElementById('wave-overlay-toggle').checked) {
+              fetchWavePoints(parseInt(document.getElementById('time-scrubber').value));
+            }
           });
         });
 
@@ -1130,10 +1133,18 @@
 
     async function fetchWavePoints(timeIdx) {
       const params = new URLSearchParams({ timeIdx });
+      let anyEnabled = false;
       gribInfoFiles.forEach((f, i) => {
         const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
-        if (!cb || cb.checked) params.append('path', f.path);
+        if (!cb || cb.checked) { params.append('path', f.path); anyEnabled = true; }
       });
+      // No GRIB files are active — clear overlay immediately; don't hit the backend
+      // (backend with no path params returns all files, not an empty result)
+      if (!anyEnabled) {
+        allWavePoints = [];
+        if (waveOverlayLayer) { map.removeLayer(waveOverlayLayer); waveOverlayLayer = null; }
+        return;
+      }
       const r = await apiFetch(`${API}/wave-grid?${params}`);
       if (!r.ok) return;
       const { points, latMin, latMax, lonMin, lonMax, latStep, lonStep } = await r.json();
