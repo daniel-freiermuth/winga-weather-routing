@@ -4,10 +4,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-function gdalAsyncRoot(): string {
-  const main = require.resolve('gdal-async');
-  // main points to gdal-async/lib/gdal.js; root is one level up
-  return path.resolve(main, '..');
+function gdalAsyncLibDir(): string {
+  // require.resolve('gdal-async') → gdal-async/lib/gdal.js; dirname → gdal-async/lib/
+  return path.dirname(require.resolve('gdal-async'));
 }
 
 export function ensureGdalBinary(): boolean {
@@ -15,19 +14,17 @@ export function ensureGdalBinary(): boolean {
   const arch = process.arch;
   const platform = process.platform;
 
-  const nodeAbi = `node-v${abi}`;
-  const binaryRel = path.join('lib', 'binding', nodeAbi, 'gdal.mod.node');
-  const destPath = path.join(gdalAsyncRoot(), binaryRel);
+  // gdal-async and the sub-packages both use node-v{abi}-{platform}-{arch} as the dir name
+  const bindingRel = path.join('binding', `node-v${abi}-${platform}-${arch}`, 'gdal.mod.node');
+  const destPath = path.join(gdalAsyncLibDir(), bindingRel);
 
   if (fs.existsSync(destPath)) return true;
 
   const subPkg = `@kristianwiklund/wr-gdal-${platform}-${arch}`;
-  const subBinaryRel = path.join('binding', nodeAbi, 'gdal.mod.node');
-
   let srcPath: string;
   try {
     const subPkgJson = require.resolve(path.join(subPkg, 'package.json'));
-    srcPath = path.join(path.dirname(subPkgJson), subBinaryRel);
+    srcPath = path.join(path.dirname(subPkgJson), bindingRel);
   } catch {
     return false;
   }

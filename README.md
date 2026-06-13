@@ -29,6 +29,7 @@ See [CHANGELOG](CHANGELOG.md) for the full feature history.
 - SignalK server >= 2.0.0
 - A GRIB2 weather forecast file (e.g. from [OpenSkiron](https://openskiron.org/en/icon-gribs))
 - A polar diagram file in ORC/OpenCPN CSV format
+- Platform: linux/x64 or linux/arm64 (Raspberry Pi 3/4/5, Node 22 or 24)
 
 The full specification — implemented requirements, open backlog, and design decisions — is in [SPEC.md](SPEC.md). To request a new feature or report a bug, [open an issue on GitHub](https://github.com/kristianwiklund/signalk-weather-routing/issues/new).
 
