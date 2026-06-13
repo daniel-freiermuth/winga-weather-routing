@@ -606,7 +606,7 @@ module.exports = (app: any) => {
                 heading: Math.round(p.heading),
                 twa: Math.round(p.twa),
                 tws: Math.round(p.tws * 10) / 10,
-                boatSpeed: Math.round(p.boatSpeed * 10) / 10,
+                ...(p.boatSpeed !== undefined ? { boatSpeed: Math.round(p.boatSpeed * 10) / 10 } : {}),
                 legCalcMs: p.legCalcMs,
                 ...(p.waveHeight !== undefined ? { waveHeight: Math.round(p.waveHeight * 100) / 100 } : {}),
                 ...(p.gribFilePath !== undefined ? { gribFile: p.gribFilePath } : {}),

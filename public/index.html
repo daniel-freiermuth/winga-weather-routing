@@ -1429,7 +1429,7 @@ const gridBounds = L.latLngBounds(
 
       // Scale: compute display-unit values for both axes
       const twsDisplayVals    = meta.map(m => _toDisplay(m.tws ?? 0, 'speed', windSpeedMs));
-      const boatDisplayVals   = meta.map(m => _toDisplay(m.boatSpeed ?? 0, 'speed'));
+      const boatDisplayVals   = meta.map(m => m.boatSpeed != null ? _toDisplay(m.boatSpeed, 'speed') : null);
       const twsStep5           = windSpeedMs ? 2 : 5;   // m/s steps of 2; kn steps of 5
       const maxTwsDisp         = Math.ceil(Math.max(...twsDisplayVals) / twsStep5) * twsStep5 || twsStep5;
       const maxBoatDisp        = Math.ceil(Math.max(...boatDisplayVals) / 5) * 5 || 5;
@@ -1509,8 +1509,25 @@ const gridBounds = L.latLngBounds(
       // Wind speed line — plotted against yWind (m/s axis when windSpeedMs, else shared)
       el.push(`<path d="${meta.map((m,i) => (i===0?'M':'L')+xOf(i)+','+yWind(twsDisplayVals[i])).join(' ')}" fill="none" stroke="#89b4fa" stroke-width="2" stroke-linejoin="round"/>`);
 
-      // Boat speed line — always plotted against yLeft (preset speed scale)
-      el.push(`<path d="${meta.map((m,i) => (i===0?'M':'L')+xOf(i)+','+yLeft(boatDisplayVals[i])).join(' ')}" fill="none" stroke="#fab387" stroke-width="2" stroke-linejoin="round"/>`);
+      // Boat speed line — separate path per contiguous block of valid data (skips null at seed point)
+      {
+        let segStart = -1;
+        for (let i = 0; i <= meta.length; i++) {
+          const hasData = i < meta.length && boatDisplayVals[i] != null;
+          if (hasData && segStart === -1) {
+            segStart = i;
+          } else if (!hasData && segStart !== -1) {
+            if (i - segStart >= 2) {
+              const pts = [];
+              for (let j = segStart; j < i; j++) {
+                pts.push((j === segStart ? 'M' : 'L') + xOf(j) + ',' + yLeft(boatDisplayVals[j]));
+              }
+              el.push(`<path d="${pts.join(' ')}" fill="none" stroke="#fab387" stroke-width="2" stroke-linejoin="round"/>`);
+            }
+            segStart = -1;
+          }
+        }
+      }
 
       // Wave height line — separate path per contiguous block of valid data
       if (hasWave) {
@@ -1542,7 +1559,7 @@ const gridBounds = L.latLngBounds(
         const d = new Date(m.time);
 
         el.push(`<circle cx="${x}" cy="${yWind(twsDisplayVals[i])}" r="3" fill="#89b4fa"/>`);
-        el.push(`<circle cx="${x}" cy="${yLeft(boatDisplayVals[i])}" r="3" fill="#fab387"/>`);
+        if (boatDisplayVals[i] != null) el.push(`<circle cx="${x}" cy="${yLeft(boatDisplayVals[i])}" r="3" fill="#fab387"/>`);
         if (hasWave && m.waveHeight != null) {
           el.push(`<circle cx="${x}" cy="${yWave(m.waveHeight)}" r="3" fill="#a6e3a1"/>`);
         }

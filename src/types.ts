@@ -91,7 +91,7 @@ export interface IsochronePoint {
   heading: number;
   twa: number;
   tws: number;
-  boatSpeed: number;
+  boatSpeed?: number; // undefined on the seed (departure) point which has no computed speed
   windDir: number;
   stepCalcMs: number; // wall-clock ms to compute the isochrone step that created this point
   gribFilePath?: string;
@@ -105,7 +105,7 @@ export interface RoutePoint {
   heading: number;
   twa: number;        // degrees, 0–180
   tws: number;        // knots
-  boatSpeed: number;  // knots
+  boatSpeed?: number; // knots; undefined on the departure waypoint
   windDir: number;    // meteorological: degrees FROM which wind blows, 0–360
   legCalcMs: number;  // wall-clock ms the algorithm spent computing this leg; 0 for start and destination
   waveHeight?: number; // significant wave height (m), present when swh data available in GRIB
