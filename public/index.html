@@ -448,9 +448,12 @@
     let waveOverlayMaxM = 3.0;
     let currentOverlayLayer = null;
     let allCurrentPoints = [];
+    let currentBoundsLayer = null;
+    let currentEnabled = true;
     let unitPrefs = null;
     let windSpeedMs = false;
-    let windTimes = [];
+    let windTimes = [];       // unified time axis (wind + current), sorted
+    let windTimesCount = 0;   // number of entries that are wind-native (for clamping overlay calls)
     let windTimesLoaded = false;
     let routeLayer = null;
     let windBarbLayer = null;
@@ -843,6 +846,7 @@
     function clearGribBoundsLayers() {
       for (const l of gribBoundsLayers) { if (l) map.removeLayer(l); }
       gribBoundsLayers = [];
+      if (currentBoundsLayer) { map.removeLayer(currentBoundsLayer); currentBoundsLayer = null; }
     }
 
     async function loadGribInfo() {
@@ -929,29 +933,64 @@
         // Current files section
         const currentInfoEl = document.getElementById('current-info');
         if (j.currentFiles && j.currentFiles.length > 0) {
+          const CURRENT_COLOR = '#89dceb';
           let html = '<div style="font-size:10px;color:#a6adc8;margin-bottom:4px">Ocean current</div>';
           for (const f of j.currentFiles) {
-            const name = f.path.split('/').pop();
+            const start = f.timeStart ? f.timeStart.slice(0,16).replace('T',' ') : '?';
+            const end   = f.timeEnd   ? f.timeEnd.slice(0,16).replace('T',' ')   : '?';
+            let runLine = '';
             if (f.referenceTime) {
               const refDate = new Date(f.referenceTime);
               const refFmt = refDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
                              refDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
               const ageH = (Date.now() - refDate.getTime()) / 3_600_000;
               const ageColor = ageH > 24 ? '#f38ba8' : ageH > 12 ? '#fe640b' : '#6c7086';
-              html += `<div style="font-size:11px;color:#cdd6f4">${name}</div>`;
-              html += `<div style="font-size:10px;color:${ageColor};margin-bottom:4px">Run: ${refFmt} (${Math.round(ageH)}h ago)</div>`;
-            } else {
-              html += `<div style="font-size:11px;color:#cdd6f4;margin-bottom:4px">${name}</div>`;
+              runLine = `<div style="padding-left:22px;font-size:10px;color:${ageColor}">` +
+                        `Run: ${refFmt} (${Math.round(ageH)}h ago)</div>`;
             }
+            html += `<label style="display:flex;align-items:center;gap:6px;cursor:pointer">` +
+              `<input type="checkbox" id="current-file-toggle" style="accent-color:${CURRENT_COLOR};cursor:pointer" checked>` +
+              `<span style="color:${CURRENT_COLOR};font-size:11px">${f.nTimes} steps: ${start} &rarr; ${end}</span>` +
+              `</label>${runLine}`;
+            // Draw bbox
+            if (currentBoundsLayer) { map.removeLayer(currentBoundsLayer); }
+            currentBoundsLayer = L.rectangle(
+              [[f.latMin, f.lonMin], [f.latMax, f.lonMax]],
+              { color: CURRENT_COLOR, weight: 2, fill: false, dashArray: '6 4' }
+            ).addTo(map);
           }
           html += '<div style="font-size:10px;color:#6c7086;margin-top:2px">Note: tidal streams are not modelled in ocean current GRIBs.</div>';
           currentInfoEl.innerHTML = html;
           currentInfoEl.style.display = 'block';
-          // Fetch initial current overlay points using departure time as reference
+
+          // Wire checkbox
+          currentEnabled = true;
+          document.getElementById('current-file-toggle').addEventListener('change', e => {
+            currentEnabled = e.target.checked;
+            if (currentEnabled) {
+              if (!currentBoundsLayer && j.currentFiles[0]) {
+                const f = j.currentFiles[0];
+                currentBoundsLayer = L.rectangle(
+                  [[f.latMin, f.lonMin], [f.latMax, f.lonMax]],
+                  { color: CURRENT_COLOR, weight: 2, fill: false, dashArray: '6 4' }
+                ).addTo(map);
+              }
+              const scrubberVal = parseInt(document.getElementById('time-scrubber').value);
+              const refMs = windTimes[scrubberVal] ? new Date(windTimes[scrubberVal]).getTime() : Date.now();
+              fetchCurrentPoints(refMs);
+            } else {
+              if (currentBoundsLayer) { map.removeLayer(currentBoundsLayer); currentBoundsLayer = null; }
+              allCurrentPoints = [];
+              if (currentOverlayLayer) { map.removeLayer(currentOverlayLayer); currentOverlayLayer = null; }
+            }
+          });
+
+          // Fetch initial current overlay points
           const scrubberVal = parseInt(document.getElementById('time-scrubber').value);
           const refMs = windTimes[scrubberVal] ? new Date(windTimes[scrubberVal]).getTime() : Date.now();
           fetchCurrentPoints(refMs);
         } else {
+          currentEnabled = true;
           currentInfoEl.style.display = 'none';
           allCurrentPoints = [];
           if (currentOverlayLayer) { map.removeLayer(currentOverlayLayer); currentOverlayLayer = null; }
@@ -1053,6 +1092,7 @@
                 return !cb || cb.checked;
               })
               .map(f => f.path),
+            useCurrentGrib: currentEnabled,
             options: {
               motorBelowKn: _parse(parseFloat(document.getElementById('motor-below-kn').value) || 0, 'speed')              || undefined,
               motorSpeedKn: _parse(parseFloat(document.getElementById('motor-speed-kn').value) || 0, 'speed')              || undefined,
@@ -1199,7 +1239,7 @@
     }
 
     async function fetchWindPoints(timeIdx) {
-      const params = new URLSearchParams({ timeIdx });
+      const params = new URLSearchParams({ timeIdx: Math.min(timeIdx, windTimesCount - 1) });
       gribInfoFiles.forEach((f, i) => {
         const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
         if (!cb || cb.checked) params.append('path', f.path);
@@ -1227,7 +1267,7 @@
     }
 
     async function fetchWavePoints(timeIdx) {
-      const params = new URLSearchParams({ timeIdx });
+      const params = new URLSearchParams({ timeIdx: Math.min(timeIdx, windTimesCount - 1) });
       let anyEnabled = false;
       gribInfoFiles.forEach((f, i) => {
         const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
@@ -1424,10 +1464,24 @@ const gridBounds = L.latLngBounds(
       const r = await apiFetch(`${API}/wind-times`);
       if (!r.ok) return;
       const { times } = await r.json();
-      windTimes = times;
+      windTimesCount = times.length;
+
+      // Merge current times into a unified sorted axis
+      let unified = [...times];
+      try {
+        const rc = await apiFetch(`${API}/current-times`);
+        if (rc.ok) {
+          const { times: cTimes } = await rc.json();
+          const windSet = new Set(times);
+          for (const t of cTimes) { if (!windSet.has(t)) unified.push(t); }
+          unified.sort();
+        }
+      } catch (_) { /* current-times unavailable; wind-only scrubber */ }
+
+      windTimes = unified;
       const scrubber = document.getElementById('time-scrubber');
       scrubber.min = 0;
-      scrubber.max = times.length - 1;
+      scrubber.max = unified.length - 1;
       scrubber.value = 0;
       document.getElementById('time-scrubber-panel').style.display = 'flex';
       windTimesLoaded = true;

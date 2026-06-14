@@ -374,9 +374,11 @@ module.exports = (app: any) => {
           let route: RoutePoint[];
           let warning: string | undefined;
 
+          const activeCurrentProvider = req.body.useCurrentGrib === false ? null : currentProvider;
+
           if (waypoints.length === 0) {
             const result = await algorithm.calculate(
-              wind, currentProvider, polar, activeIndex, req.body,
+              wind, activeCurrentProvider, polar, activeIndex, req.body,
               (pct, frontier) => {
                 calcStatus = { status: 'calculating', progress: pct, frontier };
                 pushSse({ type: 'progress', progress: pct, frontier });
@@ -401,7 +403,7 @@ module.exports = (app: any) => {
               const progressTop = (i + 1) / segCount;
 
               const segResult = await algorithm.calculate(
-                wind, currentProvider, polar, activeIndex,
+                wind, activeCurrentProvider, polar, activeIndex,
                 { ...req.body, start: segStart, end: segEnd, departureTime: segDepartureTime },
                 (pct, frontier) => {
                   const mapped = progressBase * 100 + pct * (progressTop - progressBase);
@@ -486,6 +488,11 @@ module.exports = (app: any) => {
         }
         const wind = new MultiFileWindProvider(gribFiles as GribFileEntry[]);
         res.json({ times: wind.times.map(t => t.toISOString()) });
+      });
+
+      router.get('/current-times', (_req: Request, res: Response) => {
+        if (!currentProvider) return void res.json({ times: [] });
+        res.json({ times: currentProvider.times.map(t => t.toISOString()) });
       });
 
       router.get('/wind-grid', (_req: Request, res: Response) => {

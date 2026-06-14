@@ -171,7 +171,7 @@ OpenSkiron ICON-EU EWAM files are combined files containing atmospheric wind dat
 
 ### Ocean current support
 
-The plugin supports ocean current GRIB2 files from [RTOFS](https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/) (NOAA, free) and [CMEMS](https://marine.copernicus.eu/) (Copernicus, free registration). Place any current GRIB file in the same `gribDir` as the wind files — the plugin detects it automatically by its GRIB metadata (UOGRD/VOGRD bands at ocean surface level) and applies the interpolated current vectors to the routing algorithm.
+The plugin supports ocean current GRIB2 files from [RTOFS](https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/) (NOAA, free, global), [BSH](https://www.bsh.de/EN/DATA/Predictions/Currents/Surface_currents_for_sailors/surface_currents_for_sailors_node.html) (German Federal Maritime and Hydrographic Agency, free, European waters), and [CMEMS](https://marine.copernicus.eu/) (Copernicus, free registration, global). Place any current GRIB file in the same `gribDir` as the wind files — the plugin detects it automatically by its GRIB metadata (UOGRD/VOGRD bands at ocean surface level) and applies the interpolated current vectors to the routing algorithm.
 
 When a current file is loaded:
 - The **GRIB Forecast** panel shows a "Ocean current" section listing the file with its model run age in the same amber/red staleness scheme as wind files.
