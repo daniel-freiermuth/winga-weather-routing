@@ -87,6 +87,7 @@
       background: #313244; color: #cdd6f4; white-space: nowrap;
     }
     .marker-btn.active { background: #89b4fa; color: #1e1e2e; }
+    .marker-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
     button#calculate {
       width: 100%; padding: 10px; border-radius: 6px; cursor: pointer; border: none;
@@ -368,6 +369,7 @@
         <button class="marker-btn" id="btn-start">Set on map</button>
         <span class="coord-value" id="start-coords">&#8212;</span>
       </div>
+      <button class="marker-btn" id="btn-vessel-position" disabled title="Vessel position not available">Use vessel position</button>
       <select id="departure-resource" style="display:none">
         <option value="">— set from resources —</option>
       </select>
@@ -529,6 +531,8 @@
     let startLatLon = null;
     let endLatLon = null;
     let placing = null;
+    let vesselPosition = null;
+    let vesselPositionWs = null;
     let routeWaypoints = [];       // intermediate {lat,lon} points from a selected SignalK route
     let routeWaypointMarkers = []; // Leaflet markers for those intermediate points
     let waypointRoutes = [];       // [{ label, coords: [[lon,lat],...] }] from SignalK resources
@@ -800,6 +804,7 @@
     loadDepartureResources();
     loadWaypointRoutes();
     loadConfig();
+    connectVesselPositionStream();
 
     async function apiFetch(url, options = {}) {
       const res = await fetch(url, { ...options, credentials: 'include' });
@@ -1000,6 +1005,49 @@
       startCoords.textContent = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
       startMarker.setLatLng([lat, lon]).addTo(map);
       e.target.value = '';  // reset so the same item can be re-selected
+      clearRouteWaypoints();
+      updateCalcButton();
+    });
+
+    function connectVesselPositionStream() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${proto}//${location.host}/signalk/v1/stream?subscribe=none`);
+      vesselPositionWs = ws;
+      ws.onopen = () => {
+        ws.send(JSON.stringify({
+          context: 'vessels.self',
+          subscribe: [{ path: 'navigation.position', period: 1000 }],
+        }));
+      };
+      ws.onmessage = (e) => {
+        try {
+          const delta = JSON.parse(e.data);
+          for (const update of delta.updates ?? []) {
+            for (const v of update.values ?? []) {
+              if (v.path === 'navigation.position' && v.value) {
+                vesselPosition = { lat: v.value.latitude, lon: v.value.longitude };
+                document.getElementById('btn-vessel-position').disabled = false;
+                document.getElementById('btn-vessel-position').title = 'Set start to vessel position';
+              }
+            }
+          }
+        } catch { /* ignore parse errors */ }
+      };
+      ws.onclose = () => {
+        vesselPosition = null;
+        document.getElementById('btn-vessel-position').disabled = true;
+        document.getElementById('btn-vessel-position').title = 'Vessel position not available';
+        vesselPositionWs = null;
+        setTimeout(connectVesselPositionStream, 5000);
+      };
+    }
+
+    document.getElementById('btn-vessel-position').addEventListener('click', () => {
+      if (!vesselPosition) return;
+      const { lat, lon } = vesselPosition;
+      startLatLon = { lat, lon };
+      startCoords.textContent = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+      startMarker.setLatLng([lat, lon]).addTo(map);
       clearRouteWaypoints();
       updateCalcButton();
     });

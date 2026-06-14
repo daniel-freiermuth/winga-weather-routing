@@ -13,3 +13,6 @@ data/*.bin
 
 # Sub-package binary artifacts — built in CI, not committed
 packages/*/binding/
+
+# opencode session marker (not for the repo)
+.opencode/confirmed
