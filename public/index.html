@@ -957,11 +957,12 @@
 
     async function loadGribInfo() {
       try {
-        const r = await apiFetch(`${API}/grib-info`);
+        const r = await apiFetch(`${API}/grib-info`, { cache: 'no-store' });
         const j = await r.json();
 
         clearGribBoundsLayers();
 
+        const currentInfoEl = document.getElementById('current-info');
         const hasWindFiles = j.files && j.files.length > 0;
         const hasCurrentFiles = j.currentFiles && j.currentFiles.length > 0;
 
@@ -970,6 +971,9 @@
           gribInfo.innerHTML = j.gribDir
             ? `<span>No GRIB files found in</span><br>${j.gribDir}`
             : '<span>No GRIB directory configured</span>';
+          currentInfoEl.style.display = 'none';
+          const removeOldBtn = document.getElementById('remove-old-gribs-btn');
+          removeOldBtn.style.display = 'none';
           showGribWarning(j.failedFiles ?? []);
           updateCalcButton();
           return;
@@ -1018,21 +1022,6 @@
             `</div>${runLine}`;
         }).join('');
 
-        // Wire remove button via event delegation
-        gribInfo.addEventListener('click', e => {
-          const btn = e.target.closest('.grib-remove-btn');
-          if (!btn) return;
-          const filePath = btn.dataset.filePath;
-          const name = filePath.split('/').pop();
-          showConfirm('Archive GRIB file', `Move "${name}" to the archive folder?`, async () => {
-            await apiFetch(`${API}/archive-grib-file`, {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ path: filePath }),
-            });
-            loadGribInfo();
-          });
-        });
-
         // Wire checkbox toggle: show/hide the bounding box rectangle
         gribInfo.querySelectorAll('.grib-file-toggle').forEach(cb => {
           cb.addEventListener('change', () => {
@@ -1057,7 +1046,6 @@
         });
 
         // Current files section
-        const currentInfoEl = document.getElementById('current-info');
         if (j.currentFiles && j.currentFiles.length > 0) {
           const CURRENT_COLOR = '#89dceb';
           let html = '<div style="font-size:10px;color:#a6adc8;margin-bottom:4px">Ocean current</div>';
@@ -1092,21 +1080,6 @@
           html += '<div style="font-size:10px;color:#6c7086;margin-top:2px">Note: tidal streams are not modelled in ocean current GRIBs.</div>';
           currentInfoEl.innerHTML = html;
           currentInfoEl.style.display = 'block';
-
-          // Wire current-file remove buttons
-          currentInfoEl.addEventListener('click', e => {
-            const btn = e.target.closest('.grib-remove-btn');
-            if (!btn) return;
-            const filePath = btn.dataset.filePath;
-            const name = filePath.split('/').pop();
-            showConfirm('Archive GRIB file', `Move "${name}" to the archive folder?`, async () => {
-              await apiFetch(`${API}/archive-grib-file`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: filePath }),
-              });
-              loadGribInfo();
-            });
-          });
 
           // Wire checkbox
           currentEnabled = true;
@@ -2364,6 +2337,34 @@ const gridBounds = L.latLngBounds(
       okBtn.addEventListener('click', onOk);
       cancelBtn.addEventListener('click', cleanup);
     }
+
+    // Archive button delegation for wind and current GRIB rows (wired once)
+    document.getElementById('grib-info').addEventListener('click', e => {
+      const btn = e.target.closest('.grib-remove-btn');
+      if (!btn) return;
+      const filePath = btn.dataset.filePath;
+      const name = filePath.split('/').pop();
+      showConfirm('Archive GRIB file', `Move "${name}" to the archive folder?`, async () => {
+        await apiFetch(`${API}/archive-grib-file`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: filePath }),
+        });
+        loadGribInfo();
+      });
+    });
+    document.getElementById('current-info').addEventListener('click', e => {
+      const btn = e.target.closest('.grib-remove-btn');
+      if (!btn) return;
+      const filePath = btn.dataset.filePath;
+      const name = filePath.split('/').pop();
+      showConfirm('Archive GRIB file', `Move "${name}" to the archive folder?`, async () => {
+        await apiFetch(`${API}/archive-grib-file`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: filePath }),
+        });
+        loadGribInfo();
+      });
+    });
 
     document.getElementById('remove-old-gribs-btn').addEventListener('click', () => {
       showConfirm('Archive old GRIBs',

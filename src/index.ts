@@ -739,7 +739,9 @@ module.exports = (app: any) => {
         if (!dir) return void res.status(400).json({ error: 'No gribDir configured' });
         const { path: filePath } = req.body as { path?: string };
         if (!filePath) return void res.status(400).json({ error: 'Missing path' });
-        if (!filePath.startsWith(dir + nodepath.sep) && filePath !== dir)
+        const resolvedDir = nodepath.resolve(dir);
+        const resolvedPath = nodepath.resolve(filePath);
+        if (!resolvedPath.startsWith(resolvedDir + nodepath.sep))
           return void res.status(400).json({ error: 'Path is outside gribDir' });
         try {
           await archiveFile(dir, filePath);

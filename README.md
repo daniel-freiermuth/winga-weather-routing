@@ -125,7 +125,7 @@ Click **Reload GRIB directory** to pick up newly downloaded files without restar
 
 Each file row has a **🗑 archive** button. Clicking it opens a confirmation dialog; on confirmation the file is moved to an `archive/` subfolder inside `gribDir` and the file list is refreshed. Files are never deleted — they can be restored by moving them back from the archive folder.
 
-When one or more loaded files have a forecast period that has already ended (the `timeEnd` is in the past), a **Remove old GRIBs (N)** button appears below the file list. It archives all such files in one operation after confirmation. Files whose forecast still covers the current time or the future are not affected.
+When one or more loaded files have a forecast period that has already ended (the `timeEnd` is in the past), a **Remove old GRIBs (N)** button appears below the file list. It archives all such files — both wind and ocean current GRIBs — in one operation after confirmation. Files whose forecast still covers the current time or the future are not affected.
 
 If a file with the same name already exists in the archive folder, a serial number is inserted before the extension (e.g. `forecast.grb2` → `forecast.2.grb2`).
 

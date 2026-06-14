@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-88](https://github.com/kristianwiklund/signalk-weather-routing/issues/273) | The text colour used for GRIB file entries in the sidebar is "black", which is barely visible against the dark theme background. |
 | [BUG-87](https://github.com/kristianwiklund/signalk-weather-routing/issues/269) | Dragging the scrubber slider with the mouse, or holding an arrow key, causes the interface to try to render every intermediate position, making updates sluggish when moving across a large time range. |
 | [BUG-86](https://github.com/kristianwiklund/signalk-weather-routing/issues/264) | The ocean current GRIB support (REQ-91) has not been tested with an actual tidal current GRIB. Testing was done with BSH and RTOFS ocean current GRIBs only. It is unknown whether tidal current GRIB products (which may use different WMO parameter names or depth-level conventions) are compatible with the current implementation. |
 | [BUG-83](https://github.com/kristianwiklund/signalk-weather-routing/issues/258) | Error "no grib files cover the requested departure time" appears when routing in an area covered only by a current GRIB (no wind GRIB covering that area). The message is factually wrong — there is a GRIB file loaded — and does not distinguish between wind and current files. |
