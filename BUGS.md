@@ -4,7 +4,6 @@
 
 | # | Description |
 |---|---|
-| [BUG-90](https://github.com/kristianwiklund/signalk-weather-routing/issues/277) | When the scrubber is at a time step covered only by a current GRIB (no wind/wave coverage), wind and wave overlays show the nearest preceding wind data instead of clearing. Root cause: `fetchWindPoints`/`fetchWavePoints` clamp `timeIdx` with `Math.min(timeIdx, windTimesCount - 1)`, but `windTimes` is now a unified array (wind + current times interleaved), so the count-based clamp maps to the wrong native index. Discovered during BUG-89 testing. |
 | [BUG-88](https://github.com/kristianwiklund/signalk-weather-routing/issues/273) | The text colour used for GRIB file entries in the sidebar is "black", which is barely visible against the dark theme background. |
 
 | [BUG-86](https://github.com/kristianwiklund/signalk-weather-routing/issues/264) | The ocean current GRIB support (REQ-91) has not been tested with an actual tidal current GRIB. Testing was done with BSH and RTOFS ocean current GRIBs only. It is unknown whether tidal current GRIB products (which may use different WMO parameter names or depth-level conventions) are compatible with the current implementation. |
@@ -19,7 +18,8 @@
 ## Fixed Bugs
 
 | # | Description |
-|---|---|
+|---|---|---|
+| [~~BUG-90~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/277) | ~~When the scrubber is at a time step covered only by a current GRIB (no wind/wave coverage), wind and wave overlays show the nearest preceding wind data instead of clearing.~~ — **fixed** (added `windNativeTimes` array in `rebuildScrubberTimes`; `fetchWindPoints`/`fetchWavePoints` check whether `windTimes[timeIdx]` is wind-native before calling backend; return early with cleared overlay if not; confirmed 2026-06-14) |
 | [~~BUG-89~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/275) | ~~Wind and wave overlays don't render on fresh page load (or after GRIB reload) unless a route calculation has been run first. Wave overlay additionally does not update after route calculation — requires moving the scrubber to trigger a fetch.~~ — **fixed** (added `/wind-times` call in `initWindScrubber` to pre-load wind data; added `fetchWavePoints` call in `fetchAndDrawRoute` after route calculation; confirmed 2026-06-14) |
 | [~~BUG-87~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/269) | ~~Dragging the scrubber slider with the mouse, or holding an arrow key, causes the interface to try to render every intermediate position, making updates sluggish when moving across a large time range.~~ — **fixed** (150 ms debounce on fetch calls in scrubber `input` handler with AbortController per fetch family; confirmed 2026-06-14) |
 | [~~BUG-85~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/261) | ~~Wind overlay still rendered when all wind GRIBs unchecked with a current GRIB active.~~ — **fixed** (short-circuit added to `fetchWindPoints`: clears `allWindPoints` and removes layer when no wind file is checked; confirmed 2026-06-14) |
