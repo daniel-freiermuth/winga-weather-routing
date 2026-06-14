@@ -14,6 +14,7 @@
 
 | # | Description | Reason |
 |---|---|---|
+| [BUG-91](https://github.com/kristianwiklund/signalk-weather-routing/issues/286) | Loading indicator does not appear on GUI startup. | Opencode closed it as a mistake — the underlying issue is tracked under reopened REQ-121. |
 
 ## Fixed Bugs
 
