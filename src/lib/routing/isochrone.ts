@@ -1,6 +1,6 @@
 // Isochrone routing: time-optimal route search via iterative frontier expansion.
 
-import { WindProvider, LandEdgeIndex, PolarData, CalculationRequest, IsochronePoint, RoutePoint } from '../../types';
+import { CurrentProvider, WindProvider, LandEdgeIndex, PolarData, CalculationRequest, IsochronePoint, RoutePoint } from '../../types';
 import { RoutingAlgorithm } from './algorithm';
 import { nearestIdx } from '../windprovider';
 import { interpolateBoatSpeed } from '../polar';
@@ -22,6 +22,7 @@ const FINE_PASS_CONE_HALF_ANGLE = 100;
 // all directional constraint and causing excessive wandering (BUG-53).
 const CONE_DISABLE_LOOKAHEAD_NM = 100;
 const MAX_HEADING_CHANGE = 120;
+const DEG_TO_RAD = Math.PI / 180;
 
 interface StepTiming {
   step: number;
@@ -79,6 +80,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
   async calculate(
     wind: WindProvider,
+    current: CurrentProvider | null,
     polar: PolarData,
     edgeIndex: LandEdgeIndex | null,
     request: CalculationRequest,
@@ -211,7 +213,18 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
           candidatesEvaluated++;
           const distNM = effectiveSpeed * dtHours;
-          const { lat: newLat, lon: newLon } = destinationPoint(point.lat, point.lon, distNM, hdg);
+          const wt = destinationPoint(point.lat, point.lon, distNM, hdg);
+          let newLat = wt.lat;
+          let newLon = wt.lon;
+
+          // Apply ocean current drift: water-track endpoint + current displacement over dtHours.
+          // Current is sampled at the frontier point (start of the step) in m/s.
+          if (current) {
+            const cur = current.getCurrent(point.lat, point.lon, nextTime);
+            const dtS = dtHours * 3600;
+            newLat += cur.v * dtS / (1852 * 60);
+            newLon += cur.u * dtS / (1852 * 60 * Math.cos(newLat * DEG_TO_RAD));
+          }
 
           if (!wind.coversPointAtTime(newLat, newLon, step)) { rejectedByGrib++; continue; } // discard candidates outside spatiotemporal GRIB domain (BUG-37, BUG-75)
 

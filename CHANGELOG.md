@@ -2,6 +2,7 @@
 
 ## Upcoming
 
+- Ocean current GRIB support (REQ-91): drop RTOFS or CMEMS current GRIB files into the GRIB directory alongside wind files — the plugin auto-detects them by GRIB metadata (UOGRD/VOGRD bands) and applies ocean current U/V vectors to the routing algorithm, giving correct ground-track advancement. Includes a current vector overlay on the map (toggleable under Layers), sidebar staleness indicator, and tidal-stream disclaimer.
 - Fix wind arrows showing as calm rings before polar data is received (BUG-81)
 - Fix routing with multiple GRIB files: frontier now stops at the spatial boundary of the file that is temporally valid for the current step, instead of silently using wind data from a different file's time period (BUG-75)
 - Optional high-resolution (GSHHG f-tier, ~100 m) land avoidance: copy the hires index files from [weather-routing-hires-land-data](https://github.com/kristianwiklund/weather-routing-hires-land-data) into the plugin's `data/` directory and the plugin switches automatically (REQ-113)

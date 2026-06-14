@@ -32,6 +32,7 @@ function makeEntry(grib: GribData): GribFileEntry {
     meta: {
       path: 'test.grib2',
       mtime: 0,
+      type: 'wind',
       latMin: grib.latMin,
       latMax: grib.latMin + grib.latStep * (grib.nLat - 1),
       lonMin: grib.lonMin,
@@ -81,7 +82,7 @@ test('calculate: rejects departure time past GRIB end', async () => {
     departureTime: '2025-01-01T00:00:00Z',  // far outside GRIB
   };
   await assert.rejects(
-    () => algo.calculate(wind, polar, null, req, () => {}),
+    () => algo.calculate(wind, null, polar, null, req, () => {}),
     /departure time/i,
   );
 });
@@ -98,7 +99,7 @@ test('calculate: arrives when destination is within arrival radius', async () =>
     options: { arrivalRadiusNm: 5 },  // generous radius
   };
 
-  const { route } = await algo.calculate(wind, polar, null, req, () => {});
+  const { route } = await algo.calculate(wind, null, polar, null, req, () => {});
   assert.ok(route.length >= 2, 'route should have at least start and end waypoints');
   assert.strictEqual(route[0].lat, 41);
   assert.strictEqual(route[0].lon, 11);
@@ -116,7 +117,7 @@ test('calculate: every RoutePoint has a non-negative legCalcMs; start point is 0
     options: { arrivalRadiusNm: 5 },
   };
 
-  const { route } = await algo.calculate(wind, polar, null, req, () => {});
+  const { route } = await algo.calculate(wind, null, polar, null, req, () => {});
   for (const p of route) {
     assert.ok(typeof p.legCalcMs === 'number' && p.legCalcMs >= 0,
       `legCalcMs must be a non-negative number, got ${p.legCalcMs}`);
@@ -135,7 +136,7 @@ test('calculate: returns partial route with warning when destination unreachable
     departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
   };
 
-  const { route, warning } = await algo.calculate(wind, polar, null, req, () => {});
+  const { route, warning } = await algo.calculate(wind, null, polar, null, req, () => {});
   assert.ok(route.length >= 1, 'partial route should have at least one waypoint');
   assert.ok(typeof warning === 'string' && warning.length > 0, 'warning should be set');
   assert.match(warning!, /forecast coverage/i);
@@ -152,7 +153,7 @@ test('calculate: calls onProgress at least once', async () => {
   };
 
   let progressCalled = false;
-  await algo.calculate(wind, polar, null, req, () => { progressCalled = true; });
+  await algo.calculate(wind, null, polar, null, req, () => { progressCalled = true; });
   assert.ok(progressCalled, 'onProgress should have been called');
 });
 
@@ -170,7 +171,7 @@ test('calculate: route found in 2 steps when destination only reachable at step 
     departureTime: t0.toISOString(),
     options: { arrivalRadiusNm: 2 },
   };
-  const { route } = await algo.calculate(wind, polar, null, req, () => {});
+  const { route } = await algo.calculate(wind, null, polar, null, req, () => {});
   assert.ok(route.length >= 2, 'route must be found in 2 steps');
   assert.ok(Math.abs(route[route.length - 1].lat - 41.15) < 0.1, 'last waypoint must be near destination');
 });
@@ -185,7 +186,7 @@ test('calculate: fine-pass cone keeps frontier north of start when destination i
     options: { arrivalRadiusNm: 5 },
   };
   const progressPayloads: Array<[number, number][]> = [];
-  const { route } = await algo.calculate(wind, polar, null, req, (_pct, frontier) => {
+  const { route } = await algo.calculate(wind, null, polar, null, req, (_pct, frontier) => {
     progressPayloads.push(frontier);
   });
   assert.ok(route.length >= 2, 'route should be found');
@@ -209,7 +210,7 @@ test('calculate: onProgress frontier argument is always an array', async () => {
     options: { arrivalRadiusNm: 2 },
   };
   const allFrontiers: Array<[number, number][]> = [];
-  await algo.calculate(wind, polar, null, req, (_pct, frontier) => {
+  await algo.calculate(wind, null, polar, null, req, (_pct, frontier) => {
     allFrontiers.push(frontier);
   });
   for (const f of allFrontiers) {
@@ -236,7 +237,7 @@ test('calculate: maxWindKn discards all candidates when wind exceeds limit', asy
     departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
   };
   await assert.rejects(
-    () => algo.calculate(wind, polar, null, req, () => {}, { maxWindKn: 5 }),
+    () => algo.calculate(wind, null, polar, null, req, () => {}, { maxWindKn: 5 }),
     /no reachable positions/i,
   );
 });
@@ -249,7 +250,7 @@ test('calculate: maxWindKn=0 imposes no wind constraint', async () => {
     end: { lat: 41.05, lon: 11 },
     departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
   };
-  const { route } = await algo.calculate(wind, polar, null, req, () => {}, { maxWindKn: 0, arrivalRadiusNm: 5 });
+  const { route } = await algo.calculate(wind, null, polar, null, req, () => {}, { maxWindKn: 0, arrivalRadiusNm: 5 });
   assert.ok(route.length >= 2, 'route should be found with no wind constraint');
 });
 
@@ -262,7 +263,7 @@ test('calculate: maxWaveM discards all candidates when wave exceeds limit', asyn
     departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
   };
   await assert.rejects(
-    () => algo.calculate(wind, polar, null, req, () => {}, { maxWaveM: 1.0 }),
+    () => algo.calculate(wind, null, polar, null, req, () => {}, { maxWaveM: 1.0 }),
     /no reachable positions/i,
   );
 });
@@ -275,7 +276,7 @@ test('calculate: maxWaveM=0 imposes no wave constraint', async () => {
     end: { lat: 41.05, lon: 11 },
     departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
   };
-  const { route } = await algo.calculate(wind, polar, null, req, () => {}, { maxWaveM: 0, arrivalRadiusNm: 5 });
+  const { route } = await algo.calculate(wind, null, polar, null, req, () => {}, { maxWaveM: 0, arrivalRadiusNm: 5 });
   assert.ok(route.length >= 2, 'route should be found with no wave constraint');
 });
 
@@ -295,7 +296,7 @@ test('calculate: BUG-44 seed point (parent=undefined) ignores heading-change con
     departureTime: t0.toISOString(),
   };
   let step1FrontierSize = 0;
-  await algo.calculate(wind, polar, null, req, (pct, frontier) => {
+  await algo.calculate(wind, null, polar, null, req, (pct, frontier) => {
     if (pct === 50) step1FrontierSize = frontier.length;  // fine-pass step 0: 1/2 steps = 50%
   });
   assert.ok(
@@ -320,7 +321,7 @@ test('calculate: BUG-44 non-seed heading constraint does not crash or empty the 
     departureTime: t0.toISOString(),
   };
   const finePayloads: Array<[number, number][]> = [];
-  await algo.calculate(wind, polar, null, req, (pct, frontier) => {
+  await algo.calculate(wind, null, polar, null, req, (pct, frontier) => {
     if (pct >= 50) finePayloads.push(frontier);
   });
   assert.ok(finePayloads.length >= 2, 'fine pass should emit at least 2 frontier updates');
@@ -344,7 +345,7 @@ test('calculate: BUG-45 pruneToFrontier keeps top-2 survivors per sector', async
     departureTime: t0.toISOString(),
   };
   let step2FrontierSize = 0;
-  await algo.calculate(wind, polar, null, req, (pct, frontier) => {
+  await algo.calculate(wind, null, polar, null, req, (pct, frontier) => {
     if (pct === 100) step2FrontierSize = frontier.length;
   });
   assert.ok(
@@ -369,7 +370,7 @@ test('calculate: fine pass cone excludes candidates >100° from per-position bea
     departureTime: t0.toISOString(),
   };
   const finePayloads: Array<[number, number][]> = [];
-  await algo.calculate(wind, polar, null, req, (pct, frontier) => {
+  await algo.calculate(wind, null, polar, null, req, (pct, frontier) => {
     if (pct >= 50) finePayloads.push(frontier);
   });
   assert.ok(finePayloads.length > 0, 'fine pass should emit at least one frontier');
@@ -398,7 +399,7 @@ test('calculate: land index blocks land points', async () => {
   };
 
   await assert.rejects(
-    () => algo.calculate(wind, polar, allLand, req, () => {}),
+    () => algo.calculate(wind, null, polar, allLand, req, () => {}),
     /no reachable positions/i,
   );
 });
@@ -415,7 +416,7 @@ test('calculate: REQ-71 first-step frontier collapse throws RoutingError with re
   };
   let caughtError: unknown;
   try {
-    await algo.calculate(wind, polar, null, req, () => {}, { minBoatSpeed: 100 });
+    await algo.calculate(wind, null, polar, null, req, () => {}, { minBoatSpeed: 100 });
   } catch (e) {
     caughtError = e;
   }
@@ -434,7 +435,7 @@ test('calculate: BUG-47 seed point carries actual GRIB wind speed and direction'
     departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
     options: { arrivalRadiusNm: 5 },
   };
-  const { route } = await algo.calculate(wind, polar, null, req, () => {});
+  const { route } = await algo.calculate(wind, null, polar, null, req, () => {});
   assert.ok(route.length >= 2, 'route should contain at least two waypoints');
   const seed = route[0];
   assert.ok(seed.tws > 0, `seed tws must be > 0 (BUG-47), got ${seed.tws}`);
@@ -458,7 +459,7 @@ test('calculate: motorSpeedKn=0 rejects all candidates when polar gives only zer
     departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
   };
   await assert.rejects(
-    () => algo.calculate(wind, zeroPolar, null, req, () => {}),
+    () => algo.calculate(wind, null, zeroPolar, null, req, () => {}),
     /no reachable positions/i,
   );
 });
@@ -477,7 +478,7 @@ test('calculate: motorBelowKn + motorSpeedKn allows routing when polar gives onl
     departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
     options: { arrivalRadiusNm: 5 },
   };
-  const { route } = await algo.calculate(wind, zeroPolar, null, req, () => {}, { motorBelowKn: 1, motorSpeedKn: 4 });
+  const { route } = await algo.calculate(wind, null, zeroPolar, null, req, () => {}, { motorBelowKn: 1, motorSpeedKn: 4 });
   assert.ok(route.length >= 2, 'route should be found when motor speed replaces zero polar speed');
 });
 
@@ -496,7 +497,7 @@ test('calculate: REQ-72 frontier collapse after step 1 returns partial route wit
     v10: [new Float32Array(nPoints).fill(1), new Float32Array(nPoints).fill(5), new Float32Array(nPoints).fill(5)],
   };
   const entry: GribFileEntry = {
-    meta: { path: 'test.grib2', mtime: 0, latMin: 40, latMax: 42, lonMin: 10, lonMax: 12, latStep: 1, lonStep: 1, timeStart: t0, timeEnd: t2, nTimes: 3, referenceTime: t0 },
+    meta: { path: 'test.grib2', mtime: 0, type: 'wind' as const, latMin: 40, latMax: 42, lonMin: 10, lonMax: 12, latStep: 1, lonStep: 1, timeStart: t0, timeEnd: t2, nTimes: 3, referenceTime: t0 },
     data: grib,
   };
   const wind = new MultiFileWindProvider([entry]);
@@ -506,7 +507,7 @@ test('calculate: REQ-72 frontier collapse after step 1 returns partial route wit
     end: { lat: 50, lon: 20 },
     departureTime: t0.toISOString(),
   };
-  const { route, warning } = await algo.calculate(wind, polar, null, req, () => {}, { maxWindKn: 3 });
+  const { route, warning } = await algo.calculate(wind, null, polar, null, req, () => {}, { maxWindKn: 3 });
   assert.ok(route.length >= 1, 'partial route should have at least one waypoint');
   assert.ok(typeof warning === 'string' && warning.length > 0, 'warning should be set');
   // frontier-collapse path (not GRIB-exhausted) — message contains "No reachable positions"
@@ -528,7 +529,7 @@ test('calculate: REQ-84 motor fires on threshold, not just exact zero', async ()
     departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
     options: { arrivalRadiusNm: 5 },
   };
-  const { route } = await algo.calculate(wind, slowPolar, null, req, () => {}, { motorBelowKn: 1, motorSpeedKn: 4 });
+  const { route } = await algo.calculate(wind, null, slowPolar, null, req, () => {}, { motorBelowKn: 1, motorSpeedKn: 4 });
   const boatSpeeds = route.map(p => p.boatSpeed);
   assert.ok(route.length >= 2, 'route should be found');
   // All moving legs should use motor speed (4 kn), not the slow polar speed (0.5 kn).
@@ -550,7 +551,7 @@ test('calculate: REQ-84 motor does not fire when polarSpeed >= motorBelowKn', as
     departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
     options: { arrivalRadiusNm: 5 },
   };
-  const { route } = await algo.calculate(wind, slowPolar, null, req, () => {}, { motorBelowKn: 0.3, motorSpeedKn: 4 });
+  const { route } = await algo.calculate(wind, null, slowPolar, null, req, () => {}, { motorBelowKn: 0.3, motorSpeedKn: 4 });
   const boatSpeeds = route.map(p => p.boatSpeed);
   assert.ok(route.length >= 2, 'route should be found using polar speed');
   // Motor speed (4 kn) must NOT appear — polar speed (0.5 kn) is used.
@@ -573,7 +574,7 @@ test('calculate: REQ-83 wait-for-wind keeps frontier alive across calm step', as
     v10: [new Float32Array(nPoints).fill(0), new Float32Array(nPoints).fill(3), new Float32Array(nPoints).fill(3)],
   };
   const entry: GribFileEntry = {
-    meta: { path: 'test.grib2', mtime: 0, latMin: 40, latMax: 42, lonMin: 10, lonMax: 12, latStep: 1, lonStep: 1, timeStart: t0, timeEnd: t2, nTimes: 3, referenceTime: t0 },
+    meta: { path: 'test.grib2', mtime: 0, type: 'wind' as const, latMin: 40, latMax: 42, lonMin: 10, lonMax: 12, latStep: 1, lonStep: 1, timeStart: t0, timeEnd: t2, nTimes: 3, referenceTime: t0 },
     data: grib,
   };
   const wind = new MultiFileWindProvider([entry]);
@@ -584,7 +585,7 @@ test('calculate: REQ-83 wait-for-wind keeps frontier alive across calm step', as
     departureTime: t0.toISOString(),
     options: { arrivalRadiusNm: 5 },
   };
-  const { route } = await algo.calculate(wind, polar, null, req, () => {}, { waitForWind: true });
+  const { route } = await algo.calculate(wind, null, polar, null, req, () => {}, { waitForWind: true });
   assert.ok(route.length >= 2, 'route should be found after frontier waited through calm step');
 });
 
@@ -602,7 +603,7 @@ test('calculate: REQ-83 + REQ-84 — motor fires first, wait-for-wind not needed
     departureTime: new Date('2024-01-01T00:00:00Z').toISOString(),
     options: { arrivalRadiusNm: 5 },
   };
-  const { route } = await algo.calculate(wind, zeroPolar, null, req, () => {}, { motorBelowKn: 1, motorSpeedKn: 4, waitForWind: true });
+  const { route } = await algo.calculate(wind, null, zeroPolar, null, req, () => {}, { motorBelowKn: 1, motorSpeedKn: 4, waitForWind: true });
   const boatSpeeds = route.map(p => p.boatSpeed);
   assert.ok(route.length >= 2, 'route should be found via motor');
   assert.ok(boatSpeeds.slice(1).every(s => s === 4), `expected motor speed 4 on all legs, got ${JSON.stringify(boatSpeeds)}`);

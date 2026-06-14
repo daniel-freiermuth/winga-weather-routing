@@ -6,9 +6,10 @@ import { Router, Request, Response } from 'express';
 // Side-effect: copies gdal-async .node binary from optional dep — must run before ./lib/grib
 import './lib/ensure-gdal-binary';
 
-import { GribFileEntry, GribInfoResponse, PolarData, LandIndex, LandEdgeIndex, CalculationStatus, PluginSettings, RoutePoint, LatLon } from './types';
-import { loadGrib, scanGribDir, readGribMeta } from './lib/grib';
+import { CurrentFileEntry, CurrentProvider, GribFileEntry, GribInfoResponse, PolarData, LandIndex, LandEdgeIndex, CalculationStatus, PluginSettings, RoutePoint, LatLon } from './types';
+import { loadGrib, loadCurrentGrib, scanGribDir, readGribMeta, getCurrentAt, nearestCurrentTimeIndex } from './lib/grib';
 import { MultiFileWindProvider } from './lib/windprovider';
+import { SingleFileCurrentProvider } from './lib/currentprovider';
 import { parsePolar } from './lib/polar';
 import { buildLandIndex, polygonsInBbox, isPointOnLand } from './lib/landmask';
 import { saveRoute } from './lib/resources';
@@ -24,6 +25,8 @@ const DEFAULT_ALGORITHM = 'isochrone';
 
 module.exports = (app: any) => {
   let gribFiles: GribFileEntry[] = [];
+  let currentFiles: CurrentFileEntry[] = [];
+  let currentProvider: CurrentProvider | null = null;
   let gribFailedFiles: Array<{ path: string; error: string }> = [];
   let polar: PolarData | null = null;
   let landIndex: LandIndex | null = null;              // polygon index — overlay only
@@ -55,7 +58,8 @@ module.exports = (app: any) => {
 
   function setReady(): void {
     const parts: string[] = [];
-    if (gribFiles.length > 0) parts.push(`${gribFiles.length} GRIB file(s) indexed`);
+    if (gribFiles.length > 0) parts.push(`${gribFiles.length} wind GRIB file(s)`);
+    if (currentFiles.length > 0) parts.push(`${currentFiles.length} current GRIB file(s)`);
     if (polar) parts.push('polar loaded');
     if (edgeIndex) parts.push(`land index: ${edgeIndex.edgeGrid.size} cells`);
     if (gribFailedFiles.length > 0) parts.push(`${gribFailedFiles.length} file(s) failed to index`);
@@ -64,6 +68,8 @@ module.exports = (app: any) => {
 
   async function scanAndIndexGribDir(dir: string): Promise<void> {
     gribFiles = [];
+    currentFiles = [];
+    currentProvider = null;
     gribFailedFiles = [];
     let paths: string[];
     try {
@@ -75,9 +81,25 @@ module.exports = (app: any) => {
     for (const p of paths) {
       try {
         const meta = await readGribMeta(p);
-        gribFiles.push({ meta, data: null });
+        if (meta.type === 'current') {
+          currentFiles.push({ meta, data: null });
+        } else {
+          gribFiles.push({ meta, data: null });
+        }
       } catch (e: any) {
         gribFailedFiles.push({ path: p, error: e.message });
+      }
+    }
+    // Build current provider from the freshest current file (highest mtime).
+    if (currentFiles.length > 0) {
+      const freshest = [...currentFiles].sort((a, b) => b.meta.mtime - a.meta.mtime)[0];
+      try {
+        freshest.data = await loadCurrentGrib(freshest.meta.path);
+        currentProvider = new SingleFileCurrentProvider(freshest);
+      } catch (e: any) {
+        gribFailedFiles.push({ path: freshest.meta.path, error: `Current GRIB load failed: ${e.message}` });
+        currentFiles = currentFiles.filter(f => f !== freshest);
+        currentProvider = null;
       }
     }
   }
@@ -135,6 +157,8 @@ module.exports = (app: any) => {
 
     stop: () => {
       gribFiles = [];
+      currentFiles = [];
+      currentProvider = null;
       gribFailedFiles = [];
       polar = null;
       landIndex = null;
@@ -352,7 +376,7 @@ module.exports = (app: any) => {
 
           if (waypoints.length === 0) {
             const result = await algorithm.calculate(
-              wind, polar, activeIndex, req.body,
+              wind, currentProvider, polar, activeIndex, req.body,
               (pct, frontier) => {
                 calcStatus = { status: 'calculating', progress: pct, frontier };
                 pushSse({ type: 'progress', progress: pct, frontier });
@@ -377,7 +401,7 @@ module.exports = (app: any) => {
               const progressTop = (i + 1) / segCount;
 
               const segResult = await algorithm.calculate(
-                wind, polar, activeIndex,
+                wind, currentProvider, polar, activeIndex,
                 { ...req.body, start: segStart, end: segEnd, departureTime: segDepartureTime },
                 (pct, frontier) => {
                   const mapped = progressBase * 100 + pct * (progressTop - progressBase);
@@ -445,6 +469,7 @@ module.exports = (app: any) => {
         const info: GribInfoResponse = {
           gribDir: settings?.gribDir ?? '',
           files: gribFiles.map(f => f.meta),
+          currentFiles: currentFiles.map(f => f.meta),
           failedFiles: gribFailedFiles,
         };
         res.json(info);
@@ -574,6 +599,37 @@ module.exports = (app: any) => {
         res.json({ timeMs, latMin: +latMin.toFixed(4), latMax: +latMax.toFixed(4), lonMin: +lonMin.toFixed(4), lonMax: +lonMax.toFixed(4), latStep: +latStep.toFixed(4), lonStep: +lonStep.toFixed(4), points });
       });
 
+      router.get('/current-grid', (_req: Request, res: Response) => {
+        const timeMsParam = parseInt(_req.query.timeMs as string);
+        if (isNaN(timeMsParam)) return void res.status(400).json({ error: 'timeMs required' });
+
+        if (!currentProvider || currentFiles.length === 0)
+          return void res.status(503).json({ error: 'No ocean current GRIB loaded' });
+
+        const entry = currentFiles.find(f => f.data !== null);
+        if (!entry?.data)
+          return void res.status(503).json({ error: 'Ocean current data not yet loaded' });
+
+        const t = new Date(timeMsParam);
+        const timeIdx = nearestCurrentTimeIndex(entry.data, t);
+        const { latMin, latMax, lonMin, lonMax, latStep, lonStep } = entry.meta;
+
+        const nLatSteps = Math.round((latMax - latMin) / latStep);
+        const nLonSteps = Math.round((lonMax - lonMin) / lonStep);
+        const points: Array<{ lat: number; lon: number; u: number; v: number }> = [];
+        for (let i = 0; i <= nLatSteps; i++) {
+          const lat = latMin + i * latStep;
+          for (let j = 0; j <= nLonSteps; j++) {
+            const lon = lonMin + j * lonStep;
+            const { u, v } = getCurrentAt(entry.data, lat, lon, timeIdx);
+            // Skip near-zero current — land/fill cells are typically 0 in RTOFS/CMEMS.
+            if (u * u + v * v < 0.0001) continue;
+            points.push({ lat: +lat.toFixed(4), lon: +lon.toFixed(4), u, v });
+          }
+        }
+        res.json({ timeMs: timeMsParam, points });
+      });
+
       router.get('/land-polygons', async (req: Request, res: Response) => {
         const useDilated = req.query.dilated === 'true';
         const index = useDilated ? dilatedLandIndex : landIndex;
@@ -646,7 +702,7 @@ module.exports = (app: any) => {
         try {
           app.setPluginStatus('Re-indexing GRIB directory...');
           await scanAndIndexGribDir(dir);
-          res.json({ success: true, nFiles: gribFiles.length, failedFiles: gribFailedFiles });
+          res.json({ success: true, nFiles: gribFiles.length, nCurrentFiles: currentFiles.length, failedFiles: gribFailedFiles });
           setReady();
         } catch (e: any) {
           app.setPluginError(`GRIB reload failed: ${e.message}`);

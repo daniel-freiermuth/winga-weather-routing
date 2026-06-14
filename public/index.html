@@ -240,6 +240,9 @@
         <input type="checkbox" id="wave-overlay-toggle"> Wave overlay
       </label>
       <label class="layer-toggle">
+        <input type="checkbox" id="current-overlay-toggle"> Currents
+      </label>
+      <label class="layer-toggle">
         <input type="checkbox" id="isochrone-toggle" checked> Isochrones
       </label>
     </div>
@@ -281,6 +284,7 @@
     <div class="section">
       <div class="section-title">GRIB Forecast</div>
       <div id="grib-info">Loading...</div>
+      <div id="current-info" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid #313244"></div>
       <div id="grib-warning">
         <div id="grib-warning-msg"></div>
         <ul id="grib-warning-list"></ul>
@@ -426,6 +430,7 @@
     map.createPane('windBarbPane').style.zIndex = '350';
     map.createPane('waypointMarkerPane').style.zIndex = '345';
     map.createPane('windOverlayPane').style.zIndex = '300';
+    map.createPane('currentOverlayPane').style.zIndex = '295';
     map.createPane('landPane').style.zIndex = '250';
     map.createPane('landDilatedPane').style.zIndex = '248';
 
@@ -441,6 +446,8 @@
     let allWavePoints = [];
     let waveGridMeta = null;
     let waveOverlayMaxM = 3.0;
+    let currentOverlayLayer = null;
+    let allCurrentPoints = [];
     let unitPrefs = null;
     let windSpeedMs = false;
     let windTimes = [];
@@ -614,6 +621,10 @@
       const idx = parseInt(e.target.value);
       fetchWindPoints(idx);
       fetchWavePoints(idx);
+      if (allCurrentPoints.length > 0 || document.getElementById('current-overlay-toggle').checked) {
+        const timeMs = windTimes[idx] ? new Date(windTimes[idx]).getTime() : Date.now();
+        fetchCurrentPoints(timeMs);
+      }
       updateScrubberHighlight(idx);
     });
 
@@ -914,6 +925,37 @@
             }
           });
         });
+
+        // Current files section
+        const currentInfoEl = document.getElementById('current-info');
+        if (j.currentFiles && j.currentFiles.length > 0) {
+          let html = '<div style="font-size:10px;color:#a6adc8;margin-bottom:4px">Ocean current</div>';
+          for (const f of j.currentFiles) {
+            const name = f.path.split('/').pop();
+            if (f.referenceTime) {
+              const refDate = new Date(f.referenceTime);
+              const refFmt = refDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+                             refDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              const ageH = (Date.now() - refDate.getTime()) / 3_600_000;
+              const ageColor = ageH > 24 ? '#f38ba8' : ageH > 12 ? '#fe640b' : '#6c7086';
+              html += `<div style="font-size:11px;color:#cdd6f4">${name}</div>`;
+              html += `<div style="font-size:10px;color:${ageColor};margin-bottom:4px">Run: ${refFmt} (${Math.round(ageH)}h ago)</div>`;
+            } else {
+              html += `<div style="font-size:11px;color:#cdd6f4;margin-bottom:4px">${name}</div>`;
+            }
+          }
+          html += '<div style="font-size:10px;color:#6c7086;margin-top:2px">Note: tidal streams are not modelled in ocean current GRIBs.</div>';
+          currentInfoEl.innerHTML = html;
+          currentInfoEl.style.display = 'block';
+          // Fetch initial current overlay points using departure time as reference
+          const scrubberVal = parseInt(document.getElementById('time-scrubber').value);
+          const refMs = windTimes[scrubberVal] ? new Date(windTimes[scrubberVal]).getTime() : Date.now();
+          fetchCurrentPoints(refMs);
+        } else {
+          currentInfoEl.style.display = 'none';
+          allCurrentPoints = [];
+          if (currentOverlayLayer) { map.removeLayer(currentOverlayLayer); currentOverlayLayer = null; }
+        }
 
         showGribWarning(j.failedFiles ?? []);
         updateCalcButton();
@@ -1321,6 +1363,61 @@ const gridBounds = L.latLngBounds(
         }).addTo(windOverlayLayer);
       }
       windOverlayLayer.addTo(map);
+    }
+
+    async function fetchCurrentPoints(timeMs) {
+      const r = await apiFetch(`${API}/current-grid?timeMs=${timeMs}`);
+      if (!r.ok) return;
+      const { points } = await r.json();
+      allCurrentPoints = points;
+      if (document.getElementById('current-overlay-toggle').checked) renderCurrentOverlay();
+    }
+
+    function renderCurrentOverlay() {
+      if (currentOverlayLayer) map.removeLayer(currentOverlayLayer);
+      currentOverlayLayer = L.layerGroup();
+
+      const bounds = map.getBounds();
+      const MIN_PX = 40;
+      const keptPx = [];
+
+      for (const { lat, lon, u, v } of allCurrentPoints) {
+        if (!bounds.contains([lat, lon])) continue;
+
+        const spd = Math.sqrt(u * u + v * v) * 1.94384; // m/s → knots
+        if (spd < 0.05) continue;
+
+        const px = map.latLngToContainerPoint([lat, lon]);
+        let tooClose = false;
+        for (const p of keptPx) {
+          const dx = p.x - px.x, dy = p.y - px.y;
+          if (dx * dx + dy * dy < MIN_PX * MIN_PX) { tooClose = true; break; }
+        }
+        if (tooClose) continue;
+        keptPx.push(px);
+
+        // Arrow pointing in the direction the current flows TO (opposite of wind convention).
+        const dir = (Math.atan2(u, v) * 180 / Math.PI + 360) % 360;
+        // Scale: 1 kn ≈ 16px shaft, max ~5 kn (ocean surface current).
+        const len = Math.min(28, Math.max(8, spd * 16));
+        const rad = dir * Math.PI / 180;
+        const dx = Math.sin(rad) * len, dy = -Math.cos(rad) * len;
+        const svg = `<svg width="40" height="40" viewBox="-20 -20 40 40" xmlns="http://www.w3.org/2000/svg">` +
+          `<line x1="0" y1="0" x2="${dx.toFixed(1)}" y2="${dy.toFixed(1)}" stroke="#74c7ec" stroke-width="2" stroke-linecap="round"/>` +
+          `<polygon points="${dx.toFixed(1)},${dy.toFixed(1)} ` +
+            `${(dx - 5 * Math.cos(rad) - 3 * Math.sin(rad)).toFixed(1)},${(dy + 5 * Math.sin(rad) - 3 * Math.cos(rad)).toFixed(1)} ` +
+            `${(dx - 5 * Math.cos(rad) + 3 * Math.sin(rad)).toFixed(1)},${(dy + 5 * Math.sin(rad) + 3 * Math.cos(rad)).toFixed(1)}" ` +
+          `fill="#74c7ec"/>` +
+          `</svg>`;
+        L.marker([lat, lon], {
+          icon: L.divIcon({
+            html: `<div style="opacity:0.85;pointer-events:none">${svg}</div>`,
+            iconSize: [40, 40], iconAnchor: [20, 20], className: '',
+          }),
+          pane: 'currentOverlayPane',
+        }).addTo(currentOverlayLayer);
+      }
+      currentOverlayLayer.addTo(map);
     }
 
     async function initWindScrubber() {
@@ -1833,6 +1930,7 @@ const gridBounds = L.latLngBounds(
     map.on('zoomend moveend', () => {
       if (allWindPoints.length > 0 && document.getElementById('wind-overlay-toggle').checked) renderWindOverlay();
       if (allWavePoints.length > 0 && document.getElementById('wave-overlay-toggle').checked) renderWaveOverlay();
+      if (allCurrentPoints.length > 0 && document.getElementById('current-overlay-toggle').checked) renderCurrentOverlay();
     });
 
     map.on('click', (e) => {
@@ -1856,6 +1954,16 @@ const gridBounds = L.latLngBounds(
         if (wp) {
           const waveFmt = _fmt(wp.waveHeight, 'depth');
           lines.push(`Wave: ${waveFmt.num} ${waveFmt.sym}`);
+        }
+      }
+
+      // Current section — shown when current overlay is active
+      if (allCurrentPoints.length > 0 && document.getElementById('current-overlay-toggle').checked) {
+        const cp = allCurrentPoints.find(p => Math.abs(p.lat - lat) < 0.06 && Math.abs(p.lon - lng) < 0.06);
+        if (cp) {
+          const spdKn = (Math.sqrt(cp.u * cp.u + cp.v * cp.v) * 1.94384).toFixed(1);
+          const dir = Math.round((Math.atan2(cp.u, cp.v) * 180 / Math.PI + 360) % 360);
+          lines.push(`Current: ${spdKn} kn → ${dir}°T`);
         }
       }
 
@@ -1883,6 +1991,14 @@ const gridBounds = L.latLngBounds(
       } else {
         legend.style.display = 'none';
         if (waveOverlayLayer) { map.removeLayer(waveOverlayLayer); waveOverlayLayer = null; }
+      }
+    });
+
+    document.getElementById('current-overlay-toggle').addEventListener('change', (e) => {
+      if (e.target.checked) {
+        if (allCurrentPoints.length > 0) renderCurrentOverlay();
+      } else {
+        if (currentOverlayLayer) { map.removeLayer(currentOverlayLayer); currentOverlayLayer = null; }
       }
     });
 

@@ -1,9 +1,9 @@
-// GRIB2 loading and interpolation, scoped to OpenSkiron/ICON-EU wind and wave band layout.
+// GRIB2 loading and interpolation for wind/wave (OpenSkiron/ICON-EU) and ocean current (RTOFS/CMEMS) files.
 
 import * as fs from 'node:fs/promises';
 import * as nodepath from 'node:path';
 import * as gdal from 'gdal-async';
-import { GribData, GribFileMeta, WindVector } from '../types';
+import { CurrentGribData, GribData, GribFileMeta, WindVector } from '../types';
 
 const GRIB_EXTENSIONS = new Set(['.grib2', '.grib', '.grb2', '.grb']);
 
@@ -32,29 +32,49 @@ export async function readGribMeta(filePath: string): Promise<GribFileMeta> {
     const lonMax = lonMin + lonStep * (nLon - 1);
 
     const bandCount = ds.bands.count();
-    const timeMs = new Set<number>();
+    const windTimeMs = new Set<number>();
+    const currentTimeMs = new Set<number>();
     let referenceTimeMs: number | undefined;
 
     for (let i = 1; i <= bandCount; i++) {
       const band = ds.bands.get(i);
       const md = band.getMetadata() as Record<string, string>;
-      if (md['GRIB_SHORT_NAME'] !== GRIB_HEIGHT_LEVEL) continue;
-      if (md['GRIB_ELEMENT'] !== GRIB_U_ELEMENT) continue;
+      const element = md['GRIB_ELEMENT'] ?? '';
       const vtStr = md['GRIB_VALID_TIME'];
       if (!vtStr) continue;
-      timeMs.add(parseInt(vtStr, 10) * 1000);
-      if (referenceTimeMs === undefined) {
-        const refStr = md['GRIB_REF_TIME'];
-        if (refStr) referenceTimeMs = parseInt(refStr, 10) * 1000;
+      const ms = parseInt(vtStr, 10) * 1000;
+
+      if (element === GRIB_U_ELEMENT && md['GRIB_SHORT_NAME'] === GRIB_HEIGHT_LEVEL) {
+        windTimeMs.add(ms);
+        if (referenceTimeMs === undefined) {
+          const refStr = md['GRIB_REF_TIME'];
+          if (refStr) referenceTimeMs = parseInt(refStr, 10) * 1000;
+        }
+      } else if (element === GRIB_CURRENT_U_ELEMENT) {
+        currentTimeMs.add(ms);
+        if (referenceTimeMs === undefined) {
+          const refStr = md['GRIB_REF_TIME'];
+          if (refStr) referenceTimeMs = parseInt(refStr, 10) * 1000;
+        }
       }
     }
 
+    if (windTimeMs.size === 0 && currentTimeMs.size === 0) {
+      throw new Error(
+        `GRIB2 file contains neither wind bands (${GRIB_U_ELEMENT}/${GRIB_HEIGHT_LEVEL}) ` +
+        `nor ocean current bands (${GRIB_CURRENT_U_ELEMENT}). ` +
+        `Supported formats: OpenSkiron/ICON-EU (wind), RTOFS/CMEMS (ocean current).`,
+      );
+    }
+
+    const type: 'wind' | 'current' = windTimeMs.size > 0 ? 'wind' : 'current';
+    const timeMs = type === 'wind' ? windTimeMs : currentTimeMs;
     const sortedMs = Array.from(timeMs).sort((a, b) => a - b);
-    if (sortedMs.length === 0) throw new Error('No U10 time steps found — not an OpenSkiron/ICON-EU file');
 
     return {
       path: filePath,
       mtime: stat.mtimeMs,
+      type,
       latMin, latMax, lonMin, lonMax, latStep, lonStep,
       timeStart: new Date(sortedMs[0]),
       timeEnd: new Date(sortedMs[sortedMs.length - 1]),
@@ -72,6 +92,10 @@ const GRIB_V_ELEMENT = 'VGRD';
 const GRIB_HEIGHT_LEVEL = '10-HTGL';
 const GRIB_SWH_ELEMENT = 'HTSGW';   // significant height of combined wind waves and swell
 const GRIB_SWH_SHORT_NAME = '0-SFC';
+
+// Ocean current GRIB element names (discipline=10, cat=1, parm=2/3), consistent across RTOFS and CMEMS.
+const GRIB_CURRENT_U_ELEMENT = 'UOGRD';
+const GRIB_CURRENT_V_ELEMENT = 'VOGRD';
 
 interface BandEntry {
   band: gdal.RasterBand;
@@ -322,6 +346,107 @@ export function nearestTimeIndex(grib: GribData, t: Date): number {
   let bestDiff = Math.abs(grib.times[0].getTime() - ms);
   for (let i = 1; i < grib.times.length; i++) {
     const diff = Math.abs(grib.times[i].getTime() - ms);
+    if (diff < bestDiff) { bestDiff = diff; best = i; }
+  }
+  return best;
+}
+
+export async function loadCurrentGrib(gribPath: string): Promise<CurrentGribData> {
+  const ds = await gdal.openAsync(gribPath);
+  try {
+    return await readCurrentGrib(ds);
+  } finally {
+    ds.close();
+  }
+}
+
+async function readCurrentGrib(ds: gdal.Dataset): Promise<CurrentGribData> {
+  const bandCount = ds.bands.count();
+  if (bandCount === 0) throw new Error('GRIB2 file contains no bands');
+
+  const gt = ds.geoTransform;
+  if (!gt) throw new Error('GRIB2 file has no geotransform');
+
+  const lonMin = gt[0];
+  const lonStep = gt[1];
+  const latMax = gt[3];
+  const latStep = -gt[5];
+  const nLon = ds.rasterSize.x;
+  const nLat = ds.rasterSize.y;
+  const latMin = latMax - latStep * (nLat - 1);
+
+  interface CurrentBandEntry { band: gdal.RasterBand; element: string; validTimeMs: number }
+  const entries: CurrentBandEntry[] = [];
+
+  for (let i = 1; i <= bandCount; i++) {
+    const band = ds.bands.get(i);
+    const md = band.getMetadata() as Record<string, string>;
+    const element = md['GRIB_ELEMENT'] ?? '';
+    const validTimeStr = md['GRIB_VALID_TIME'] ?? '';
+    if (element !== GRIB_CURRENT_U_ELEMENT && element !== GRIB_CURRENT_V_ELEMENT) continue;
+    if (!validTimeStr) continue;
+    entries.push({ band, element, validTimeMs: parseInt(validTimeStr, 10) * 1000 });
+  }
+
+  if (entries.length === 0) {
+    throw new Error(
+      `No ocean current bands (${GRIB_CURRENT_U_ELEMENT}/${GRIB_CURRENT_V_ELEMENT}) found. ` +
+      `Supported formats: RTOFS, CMEMS. ` +
+      `For wind data use OpenSkiron/ICON-EU format files.`,
+    );
+  }
+
+  const timeMap = new Map<number, { u?: gdal.RasterBand; v?: gdal.RasterBand }>();
+  for (const e of entries) {
+    if (!timeMap.has(e.validTimeMs)) timeMap.set(e.validTimeMs, {});
+    const slot = timeMap.get(e.validTimeMs)!;
+    if (e.element === GRIB_CURRENT_U_ELEMENT) slot.u = e.band;
+    else slot.v = e.band;
+  }
+
+  const sortedMs = Array.from(timeMap.keys()).sort((a, b) => a - b);
+  const u: Float32Array[] = [];
+  const v: Float32Array[] = [];
+  const times: Date[] = [];
+
+  for (const ms of sortedMs) {
+    const slot = timeMap.get(ms)!;
+    if (!slot.u || !slot.v) continue;
+
+    const rawU = new Float32Array(nLon * nLat);
+    const rawV = new Float32Array(nLon * nLat);
+    await (slot.u.pixels as any).readAsync(0, 0, nLon, nLat, rawU);
+    await (slot.v.pixels as any).readAsync(0, 0, nLon, nLat, rawV);
+
+    u.push(flipRows(rawU, nLon, nLat));
+    v.push(flipRows(rawV, nLon, nLat));
+    times.push(new Date(ms));
+  }
+
+  if (times.length === 0) throw new Error('No complete UOGRD/VOGRD time step pairs found in GRIB2 file');
+
+  return { times, latMin, latStep, lonMin, lonStep, nLat, nLon, u, v };
+}
+
+// Bilinear interpolation of ocean current at a point. Returns {u:0,v:0} when outside the
+// current GRIB's spatial domain — explicit out-of-domain check prevents silently returning
+// clamped edge values, which would be wrong for grid boundaries (nautical safety).
+export function getCurrentAt(data: CurrentGribData, lat: number, lon: number, timeIdx: number): WindVector {
+  const latMax = data.latMin + data.latStep * (data.nLat - 1);
+  const lonMax = data.lonMin + data.lonStep * (data.nLon - 1);
+  if (lat < data.latMin || lat > latMax || lon < data.lonMin || lon > lonMax) return { u: 0, v: 0 };
+  return {
+    u: bilinear(data.u[timeIdx], data, lat, lon),
+    v: bilinear(data.v[timeIdx], data, lat, lon),
+  };
+}
+
+export function nearestCurrentTimeIndex(data: CurrentGribData, t: Date): number {
+  const ms = t.getTime();
+  let best = 0;
+  let bestDiff = Math.abs(data.times[0].getTime() - ms);
+  for (let i = 1; i < data.times.length; i++) {
+    const diff = Math.abs(data.times[i].getTime() - ms);
     if (diff < bestDiff) { bestDiff = diff; best = i; }
   }
   return best;

@@ -14,6 +14,7 @@ export interface WindVector {
 export interface GribFileMeta {
   path: string;
   mtime: number;     // file modification time, ms since epoch (used for conflict resolution)
+  type: 'wind' | 'current';
   latMin: number;
   latMax: number;
   lonMin: number;
@@ -23,13 +24,40 @@ export interface GribFileMeta {
   timeStart: Date;
   timeEnd: Date;
   nTimes: number;
-  referenceTime: Date;  // model run time (GRIB_REF_TIME of first wind band)
+  referenceTime: Date;  // model run time (GRIB_REF_TIME of first wind or current band)
 }
 
-// One entry per GRIB file; data is null until lazy-loaded at calculation time.
+// One entry per wind GRIB file; data is null until lazy-loaded at calculation time.
 export interface GribFileEntry {
-  meta: GribFileMeta;
+  meta: GribFileMeta;  // type === 'wind'
   data: GribData | null;
+}
+
+// Raw U/V current grids loaded from an ocean current GRIB (RTOFS, CMEMS).
+export interface CurrentGribData {
+  times: Date[];
+  latMin: number;
+  latStep: number;
+  lonMin: number;
+  lonStep: number;
+  nLat: number;
+  nLon: number;
+  u: Float32Array[];  // [timeIdx][latIdx * nLon + lonIdx], m/s eastward, index 0 = latMin
+  v: Float32Array[];  // [timeIdx][latIdx * nLon + lonIdx], m/s northward
+}
+
+// One entry per ocean current GRIB file.
+export interface CurrentFileEntry {
+  meta: GribFileMeta;  // type === 'current'
+  data: CurrentGribData | null;
+}
+
+// Provides ocean current lookups for use by the routing algorithm.
+export interface CurrentProvider {
+  getCurrent(lat: number, lon: number, t: Date): WindVector;  // {u:0,v:0} when outside domain
+  coversPoint(lat: number, lon: number): boolean;
+  readonly times: Date[];
+  readonly meta: GribFileMeta;
 }
 
 // Abstraction over one or more loaded GRIB files; used by the routing algorithm.
@@ -136,7 +164,8 @@ export interface CalculationStatus {
 
 export interface GribInfoResponse {
   gribDir: string;
-  files: GribFileMeta[];
+  files: GribFileMeta[];          // wind GRIB files
+  currentFiles: GribFileMeta[];   // ocean current GRIB files
   failedFiles: Array<{ path: string; error: string }>;
 }
 
