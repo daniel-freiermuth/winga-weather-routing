@@ -2,6 +2,7 @@
 
 ## Upcoming
 
+- Per-file archive button (🗑) on each GRIB file row moves the file to an `archive/` subfolder after confirmation; "Remove old GRIBs (N)" button archives all files whose forecast has ended (REQ-120)
 - Scrubber coverage bar now shows one coloured row per loaded GRIB file, stacked vertically, so overlapping files are all visible simultaneously (REQ-117)
 - "Now" marker on the scrubber is a yellow downward-pointing triangle above the coverage rows, replacing the previous invisible white line (REQ-118)
 - Scrubber time range now updates live when GRIB file checkboxes are toggled; unchecking all wind files clears the wind overlay immediately (BUG-84, BUG-85)
