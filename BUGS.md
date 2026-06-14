@@ -4,7 +4,12 @@
 
 | # | Description |
 |---|---|
-
+| [BUG-97](https://github.com/kristianwiklund/signalk-weather-routing/issues/295) | Optional chaining on polar speed lookups on every hot-path call (`polar.speeds[twaIdx]?.[twsIdx] ?? 0`). After `parsePolar` guarantees the array shape, these runtime checks are unnecessary overhead. Discovered in code review 2026-06-14 (M6). |
+| [BUG-96](https://github.com/kristianwiklund/signalk-weather-routing/issues/294) | `console.log` in `logStepTiming` and `logTimingSummary` on isochrone hot path without `debug.enabled &&` guard. Causes eager string allocation on every step. Discovered in code review 2026-06-14 (M2). |
+| [BUG-95](https://github.com/kristianwiklund/signalk-weather-routing/issues/293) | GRIB file load failures during route calculation logged with `console.warn` but not surfaced to user. Route calculated with subset of files without indication of partial failure. Discovered in code review 2026-06-14 (C5). |
+| [BUG-94](https://github.com/kristianwiklund/signalk-weather-routing/issues/292) | Current drift longitude uses `newLat` (already modified by latitude drift) for cosine correction instead of original `point.lat`. Small error (~0.01% per 1° latitude change) but logically incorrect. Discovered in code review 2026-06-14 (C2). |
+| [BUG-93](https://github.com/kristianwiklund/signalk-weather-routing/issues/291) | `selectFile` in windprovider.ts has a three-level fallback chain (spatial+temporal → spatial-only → first file). If no file matches both spatial and temporal constraints, it silently returns data from the wrong file — violates Nautical Safety Rule. Discovered in code review 2026-06-14 (C1). |
+| [BUG-92](https://github.com/kristianwiklund/signalk-weather-routing/issues/290) | Seed lat/lon validation `if (!start?.lat || !start?.lon || ...)` rejects valid coordinates at 0° (equator/prime meridian) because they are falsy. Discovered in code review 2026-06-14 (C3). |
 
 | [BUG-86](https://github.com/kristianwiklund/signalk-weather-routing/issues/264) | The ocean current GRIB support (REQ-91) has not been tested with an actual tidal current GRIB. Testing was done with BSH and RTOFS ocean current GRIBs only. It is unknown whether tidal current GRIB products (which may use different WMO parameter names or depth-level conventions) are compatible with the current implementation. |
 | [BUG-83](https://github.com/kristianwiklund/signalk-weather-routing/issues/258) | Error "no grib files cover the requested departure time" appears when routing in an area covered only by a current GRIB (no wind GRIB covering that area). The message is factually wrong — there is a GRIB file loaded — and does not distinguish between wind and current files. |
