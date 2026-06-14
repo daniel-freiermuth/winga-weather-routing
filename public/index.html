@@ -7,12 +7,12 @@
   <link rel="stylesheet" href="/plugins/signalk-weather-routing/leaflet/leaflet.css">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { display: flex; height: 100vh; font-family: sans-serif; font-size: 14px; }
+    body { display: flex; height: 100vh; background: #1e2230; font-family: sans-serif; font-size: 14px; }
 
-    #right-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    #right-col { flex: 1; display: flex; flex-direction: column; min-width: 0; background: #1e2230; }
 
     #conditions-panel {
-      height: 210px;
+      height: 150px;
       background: #1e2230;
       border-top: 2px solid #313244;
       display: none;
@@ -55,6 +55,7 @@
     #sidebar {
       width: 280px;
       min-width: 280px;
+      height: 100vh;
       background: #1e2230;
       color: #cdd6f4;
       display: flex;
@@ -548,6 +549,7 @@
     let currentEnabled = true;
     let unitPrefs = null;
     let windSpeedMs = false;
+    let conditionsGraphHeight = 150;
     let windTimes = [];       // unified time axis (wind + current), sorted
     let windTimesCount = 0;   // number of entries that are wind-native (for clamping overlay calls)
     let windNativeTimes = []; // wind-only timestamps, for checking coverage at timeIdx
@@ -969,6 +971,9 @@
         waveOverlayMaxM = cfg.configuration.waveOverlayMaxM;
       }
       windSpeedMs = !!cfg.configuration?.windSpeedMs;
+      if (cfg.configuration?.conditionsGraphHeight != null) {
+        conditionsGraphHeight = cfg.configuration.conditionsGraphHeight;
+      }
 
       try {
         const up = await fetch('/signalk/v1/unitpreferences/active');
@@ -1957,7 +1962,7 @@ const gridBounds = L.latLngBounds(
       conditionsFullscreen = false;
       const panel = document.getElementById('conditions-panel');
       panel.classList.remove('conditions-fullscreen');
-      panel.style.height = conditionsExpanded ? '210px' : '24px';
+      panel.style.height = conditionsExpanded ? `${conditionsGraphHeight}px` : '24px';
     }
 
     document.getElementById('conditions-handle').addEventListener('click', () => {
@@ -1965,7 +1970,7 @@ const gridBounds = L.latLngBounds(
       conditionsExpanded = !conditionsExpanded;
       document.getElementById('conditions-svg').style.display = conditionsExpanded ? '' : 'none';
       document.getElementById('conditions-toggle').textContent = conditionsExpanded ? '▼' : '▶';
-      document.getElementById('conditions-panel').style.height = conditionsExpanded ? '210px' : '24px';
+      document.getElementById('conditions-panel').style.height = conditionsExpanded ? `${conditionsGraphHeight}px` : '24px';
     });
 
     document.getElementById('scrubber-handle').addEventListener('click', () => {
@@ -1991,11 +1996,8 @@ const gridBounds = L.latLngBounds(
 
       const hasWave = meta.some(m => m.waveHeight != null);
 
-      // ViewBox layout — VH=184 to accommodate the 12px GRIB source stripe below wind arrows
-      // In dual-axis mode (windSpeedMs) ml=60 creates a margin for the two y-axis label columns.
-      // In single-axis mode ml=0: labels live at x=2 in the data area (acceptable, thin overlap).
-      const VW = 800, VH = 184;
-      const ml = windSpeedMs ? 60 : 0, mr = 0, mt = 18, mb = 76;
+      const VW = 800, VH = 170;
+      const ml = windSpeedMs ? 70 : 0, mr = 8, mt = 14, mb = 66;
       const pw = VW - ml - mr, ph = VH - mt - mb;
 
       graphMeta = meta;
@@ -2024,6 +2026,7 @@ const gridBounds = L.latLngBounds(
       el.push(`<defs><marker id="wdarrow" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
         <polygon points="0,0 5,2.5 0,5" fill="#a6adc8"/>
       </marker></defs>`);
+      el.push(`<rect x="0" y="0" width="${VW}" height="${VH}" fill="#1e2230"/>`);
 
       // Left y-axis — single axis (normal) or dual axes (windSpeedMs)
       const twsAxisStep = windSpeedMs ? twsStep5 : (maxLeft <= 15 ? 5 : 10);
@@ -2080,7 +2083,7 @@ const gridBounds = L.latLngBounds(
       el.push(`<line x1="${ml}" y1="${mt+ph}" x2="${VW}" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
 
       // Wind speed line — plotted against yWind (m/s axis when windSpeedMs, else shared)
-      el.push(`<path d="${meta.map((m,i) => (i===0?'M':'L')+xOf(i)+','+yWind(twsDisplayVals[i])).join(' ')}" fill="none" stroke="#89b4fa" stroke-width="2" stroke-linejoin="round"/>`);
+      el.push(`<path d="${meta.map((m,i) => (i===0?'M':'L')+xOf(i)+','+yWind(twsDisplayVals[i])).join(' ')}" fill="none" stroke="#89b4fa" stroke-width="1" stroke-linejoin="round"/>`);
 
       // Boat speed line — separate path per contiguous block of valid data (skips null at seed point)
       {
@@ -2095,7 +2098,7 @@ const gridBounds = L.latLngBounds(
               for (let j = segStart; j < i; j++) {
                 pts.push((j === segStart ? 'M' : 'L') + xOf(j) + ',' + yLeft(boatDisplayVals[j]));
               }
-              el.push(`<path d="${pts.join(' ')}" fill="none" stroke="#fab387" stroke-width="2" stroke-linejoin="round"/>`);
+              el.push(`<path d="${pts.join(' ')}" fill="none" stroke="#fab387" stroke-width="1" stroke-linejoin="round"/>`);
             }
             segStart = -1;
           }
@@ -2115,7 +2118,7 @@ const gridBounds = L.latLngBounds(
               for (let j = segStart; j < i; j++) {
                 pts.push((j === segStart ? 'M' : 'L') + xOf(j) + ',' + yWave(meta[j].waveHeight));
               }
-              el.push(`<path d="${pts.join(' ')}" fill="none" stroke="#a6e3a1" stroke-width="2" stroke-linejoin="round"/>`);
+              el.push(`<path d="${pts.join(' ')}" fill="none" stroke="#a6e3a1" stroke-width="1" stroke-linejoin="round"/>`);
             }
             segStart = -1;
           }
@@ -2123,26 +2126,26 @@ const gridBounds = L.latLngBounds(
       }
 
       // Per-waypoint: dots, labels, direction arrows
-      const labelEvery = Math.max(1, Math.ceil(meta.length / 7));
-      const arrowY = mt + ph + 44;
+      const labelEvery = Math.max(1, Math.ceil(meta.length / 8));
+      const arrowY = mt + ph + 32;
 
       for (let i = 0; i < meta.length; i++) {
         const m = meta[i];
         const x = parseFloat(xOf(i));
         const d = new Date(m.time);
 
-        el.push(`<circle cx="${x}" cy="${yWind(twsDisplayVals[i])}" r="3" fill="#89b4fa"/>`);
-        if (boatDisplayVals[i] != null) el.push(`<circle cx="${x}" cy="${yLeft(boatDisplayVals[i])}" r="3" fill="#fab387"/>`);
+        el.push(`<circle cx="${x}" cy="${yWind(twsDisplayVals[i])}" r="1.5" fill="#89b4fa"/>`);
+        if (boatDisplayVals[i] != null) el.push(`<circle cx="${x}" cy="${yLeft(boatDisplayVals[i])}" r="1.5" fill="#fab387"/>`);
         if (hasWave && m.waveHeight != null) {
-          el.push(`<circle cx="${x}" cy="${yWave(m.waveHeight)}" r="3" fill="#a6e3a1"/>`);
+          el.push(`<circle cx="${x}" cy="${yWave(m.waveHeight)}" r="1.5" fill="#a6e3a1"/>`);
         }
 
         // X-axis time label
         if (i === 0 || i === meta.length - 1 || i % labelEvery === 0) {
           const label = d.toLocaleDateString([],{month:'short',day:'numeric'}) + ' ' +
                         d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-          const ly = mt + ph + 13;
-          el.push(`<text x="${x}" y="${ly}" text-anchor="middle" fill="#6c7086" font-size="9" transform="rotate(-40,${x},${ly})">${label}</text>`);
+          const ly = mt + ph + 12;
+          el.push(`<text x="${x}" y="${ly}" text-anchor="middle" fill="#6c7086" font-size="9" transform="rotate(-30,${x},${ly})">${label}</text>`);
         }
 
         // Wind direction arrow — points toward where wind blows (windDir is FROM direction)
@@ -2150,7 +2153,7 @@ const gridBounds = L.latLngBounds(
         const rad = windDeg * Math.PI / 180;
         const len = 9;
         const dx = Math.sin(rad) * len, dy = -Math.cos(rad) * len;
-        el.push(`<line x1="${(x - dx/2).toFixed(1)}" y1="${(arrowY - dy/2).toFixed(1)}" x2="${(x + dx/2).toFixed(1)}" y2="${(arrowY + dy/2).toFixed(1)}" stroke="#a6adc8" stroke-width="1.5" marker-end="url(#wdarrow)"/>`);
+        el.push(`<line x1="${(x - dx/2).toFixed(1)}" y1="${(arrowY - dy/2).toFixed(1)}" x2="${(x + dx/2).toFixed(1)}" y2="${(arrowY + dy/2).toFixed(1)}" stroke="#a6adc8" stroke-width="1" marker-end="url(#wdarrow)"/>`);
       }
 
       // Legend — starts at ml so it occupies the data area, not the axis margin
@@ -2166,8 +2169,8 @@ const gridBounds = L.latLngBounds(
 
       // GRIB source stripe — colored segments below wind arrows, one per waypoint
       if (hasGrib) {
-        const stripeTop = mt + ph + 62;  // y=170, below wind arrows at y=152
-        const stripeH = 12;
+        const stripeTop = mt + ph + 40;
+        const stripeH = 8;
         for (let i = 0; i < meta.length; i++) {
           const x1 = parseFloat(xOf(i));
           const x2 = i < meta.length - 1 ? parseFloat(xOf(i + 1)) : VW;
@@ -2176,7 +2179,7 @@ const gridBounds = L.latLngBounds(
           const color = colorIdx >= 0 ? C64_PALETTE[colorIdx % C64_PALETTE.length] : '#45475a';
           el.push(`<rect x="${x1.toFixed(1)}" y="${stripeTop}" width="${(x2 - x1).toFixed(1)}" height="${stripeH}" fill="${color}" opacity="0.7"/>`);
         }
-        el.push(`<text x="${ml + 2}" y="${mt + ph + 71}" fill="#6c7086" font-size="9">GRIB</text>`);
+        el.push(`<text x="${ml + 2}" y="${stripeTop + stripeH + 10}" fill="#6c7086" font-size="8">GRIB</text>`);
       }
 
       // Intermediate waypoint markers (REQ-97): vertical dashed lines at each REQ-92 junction
@@ -2190,7 +2193,7 @@ const gridBounds = L.latLngBounds(
       svgEl.setAttribute('viewBox', `0 0 ${VW} ${VH}`);
       svgEl.innerHTML = el.join('\n');
 
-      if (!conditionsFullscreen) panel.style.height = conditionsExpanded ? '210px' : '24px';
+      if (!conditionsFullscreen) panel.style.height = conditionsExpanded ? `${conditionsGraphHeight}px` : '24px';
       panel.style.display = 'flex';
     }
 

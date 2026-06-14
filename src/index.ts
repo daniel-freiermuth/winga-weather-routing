@@ -269,6 +269,14 @@ module.exports = (app: any) => {
           description: 'Upper bound of the wave height colour scale. Heights >= this value appear red. Default: 3.0.',
           default: 3.0,
         },
+        conditionsGraphHeight: {
+          type: 'number',
+          title: 'Conditions graph height (px)',
+          description: 'Height of the conditions graph panel in pixels. Default: 150.',
+          default: 150,
+          minimum: 80,
+          maximum: 400,
+        },
       },
     }),
 
