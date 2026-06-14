@@ -181,4 +181,5 @@ export interface PluginSettings {
   coneHalfAngle?: number;
   coneDisableLookaheadNm?: number;
   maxHeadingChange?: number;
+  conditionsGraphHeight?: number;
 }
