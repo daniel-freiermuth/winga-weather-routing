@@ -417,6 +417,12 @@ async function readCurrentGrib(ds: gdal.Dataset): Promise<CurrentGribData> {
     const rawV = new Float32Array(nLon * nLat);
     await (slot.u.pixels as any).readAsync(0, 0, nLon, nLat, rawU);
     await (slot.v.pixels as any).readAsync(0, 0, nLon, nLat, rawV);
+    // Zero fill values (noDataValue = 9999 in RTOFS/BSH GRIBs) so bilinear
+    // interpolation near land boundaries does not produce bogus huge values.
+    for (let i = 0; i < rawU.length; i++) {
+      if (rawU[i] >= 9000) rawU[i] = 0;
+      if (rawV[i] >= 9000) rawV[i] = 0;
+    }
 
     u.push(flipRows(rawU, nLon, nLat));
     v.push(flipRows(rawV, nLon, nLat));

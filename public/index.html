@@ -620,8 +620,17 @@
     document.getElementById('run-helsinki-test').addEventListener('click', runHelsinkiTest);
     document.getElementById('run-gothenburg-test').addEventListener('click', runGothenburgTest);
 
+    function updateScrubberLabel(idx) {
+      if (!windTimes[idx]) return;
+      document.getElementById('time-scrubber-label').textContent =
+        new Date(windTimes[idx]).toLocaleString([], {
+          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+        });
+    }
+
     document.getElementById('time-scrubber').addEventListener('input', e => {
       const idx = parseInt(e.target.value);
+      updateScrubberLabel(idx);
       fetchWindPoints(idx);
       fetchWavePoints(idx);
       if (allCurrentPoints.length > 0 || document.getElementById('current-overlay-toggle').checked) {
@@ -856,7 +865,10 @@
 
         clearGribBoundsLayers();
 
-        if (!j.files || j.files.length === 0) {
+        const hasWindFiles = j.files && j.files.length > 0;
+        const hasCurrentFiles = j.currentFiles && j.currentFiles.length > 0;
+
+        if (!hasWindFiles && !hasCurrentFiles) {
           gribLoaded = false;
           gribInfo.innerHTML = j.gribDir
             ? `<span>No GRIB files found in</span><br>${j.gribDir}`
@@ -866,9 +878,9 @@
           return;
         }
 
-        gribLoaded = true;
+        gribLoaded = hasWindFiles;
 
-        gribInfoFiles = j.files;
+        gribInfoFiles = j.files ?? [];
 
         // Draw one dashed bbox rectangle per file in C64 palette order
         let boundsUnion = null;
@@ -884,7 +896,7 @@
         if (boundsUnion) map.fitBounds(boundsUnion);
 
         // Sidebar: one checkbox-label per file
-        gribInfo.innerHTML = j.files.map((f, i) => {
+        gribInfo.innerHTML = !hasWindFiles ? '<span>No wind GRIB files loaded</span>' : j.files.map((f, i) => {
           const color = C64_PALETTE[i % C64_PALETTE.length];
           const start = f.timeStart ? f.timeStart.slice(0,16).replace('T',' ') : '?';
           const end   = f.timeEnd   ? f.timeEnd.slice(0,16).replace('T',' ')   : '?';
@@ -1248,11 +1260,7 @@
       if (!r.ok) return;
       const { points } = await r.json();
       allWindPoints = points;
-
-      const label = new Date(windTimes[timeIdx]).toLocaleString([], {
-        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-      });
-      document.getElementById('time-scrubber-label').textContent = label;
+      updateScrubberLabel(timeIdx);
 
       if (document.getElementById('wind-overlay-toggle').checked) renderWindOverlay();
       if (document.getElementById('wave-overlay-toggle').checked) renderWaveOverlay();
@@ -1461,9 +1469,12 @@ const gridBounds = L.latLngBounds(
     }
 
     async function initWindScrubber() {
+      let times = [];
       const r = await apiFetch(`${API}/wind-times`);
-      if (!r.ok) return;
-      const { times } = await r.json();
+      if (r.ok) {
+        const j = await r.json();
+        times = j.times;
+      }
       windTimesCount = times.length;
 
       // Merge current times into a unified sorted axis
@@ -1476,7 +1487,9 @@ const gridBounds = L.latLngBounds(
           for (const t of cTimes) { if (!windSet.has(t)) unified.push(t); }
           unified.sort();
         }
-      } catch (_) { /* current-times unavailable; wind-only scrubber */ }
+      } catch (_) { /* current-times unavailable */ }
+
+      if (unified.length === 0) return;
 
       windTimes = unified;
       const scrubber = document.getElementById('time-scrubber');
@@ -1485,8 +1498,11 @@ const gridBounds = L.latLngBounds(
       scrubber.value = 0;
       document.getElementById('time-scrubber-panel').style.display = 'flex';
       windTimesLoaded = true;
-      await fetchWindPoints(0);
-      await fetchWavePoints(0);
+      updateScrubberLabel(0);
+      if (windTimesCount > 0) {
+        await fetchWindPoints(0);
+        await fetchWavePoints(0);
+      }
     }
 
     async function fetchAndDrawRoute() {
