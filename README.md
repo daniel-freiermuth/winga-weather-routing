@@ -160,6 +160,9 @@ The map displays a GRIB wind overlay showing wind speed and direction as wind ba
 - Before a route is calculated the scrubber spans the union of all currently-checked GRIB files' time ranges; toggling a file checkbox updates the range immediately
 - After a route is calculated the scrubber range matches the route (departure to estimated arrival), aligned with the conditions graph
 - Dragging the scrubber highlights the route waypoint nearest in time and draws a pink overlay on the corresponding leg
+- A **colour bar** above the slider shows one coloured row per loaded GRIB file, each row spanning that file's forecast period in the colour assigned to it in the sidebar. Current-file time steps are shown in cyan; uncovered time positions appear in dark grey.
+- A yellow downward-pointing **triangle marker** above the colour bar marks the current wall-clock time within the forecast range
+- **Now** button (right of the slider): snaps the scrubber to the nearest forecast timestep to the current time
 - **Use as departure** button (left of the scrubber): copies the current scrubber time into the departure time field, so you can browse to a forecast window and lock it in as the departure time with one click
 - **⏮ jump button** on each GRIB file row in the sidebar: clicking it moves the scrubber to the start of that file's forecast range
 

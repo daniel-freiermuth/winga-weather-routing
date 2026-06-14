@@ -206,10 +206,15 @@
       padding: 4px 10px; background: #1e2230; border-top: 1px solid #313244; flex-shrink: 0;
     }
     #time-scrubber-label { font-size: 11px; color: #a6adc8; white-space: nowrap; width: 130px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; }
-    #time-scrubber { flex: 1; accent-color: #89b4fa; cursor: pointer; }
+    #scrubber-track-wrapper { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; position: relative; padding-top: 8px; }
+    #scrubber-coverage-bar  { display: flex; flex-direction: column; gap: 1px; }
+    #scrubber-now-marker    { position: absolute; top: 0; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid #f9e2af; transform: translateX(-50%); display: none; pointer-events: none; }
+    #time-scrubber { width: 100%; accent-color: #89b4fa; cursor: pointer; }
     #time-scrubber-right-spacer { flex-shrink: 0; display: none; width: 52px; }
     #use-as-departure { font-size: 10px; color: #a6adc8; background: transparent; border: 1px solid #45475a; border-radius: 3px; padding: 1px 6px; cursor: pointer; flex-shrink: 0; white-space: nowrap; }
     #use-as-departure:hover { color: #cdd6f4; border-color: #89b4fa; }
+    #jump-to-now { font-size: 10px; color: #a6adc8; background: transparent; border: 1px solid #45475a; border-radius: 3px; padding: 1px 6px; cursor: pointer; flex-shrink: 0; }
+    #jump-to-now:hover { color: #cdd6f4; border-color: #89b4fa; }
     .grib-jump-btn { font-size: 11px; color: #6c7086; background: transparent; border: none; cursor: pointer; padding: 0 3px; vertical-align: middle; line-height: 1; }
     .grib-jump-btn:hover { color: #89b4fa; }
     .wp-highlight {
@@ -389,7 +394,12 @@
     <div id="time-scrubber-panel">
       <span id="time-scrubber-label"></span>
       <button id="use-as-departure" title="Set this time as the route departure time">Use as departure</button>
-      <input type="range" id="time-scrubber" min="0" max="0" value="0">
+      <div id="scrubber-track-wrapper">
+        <div id="scrubber-now-marker"></div>
+        <div id="scrubber-coverage-bar"></div>
+        <input type="range" id="time-scrubber" min="0" max="0" value="0">
+      </div>
+      <button id="jump-to-now" title="Jump scrubber to current time">Now</button>
       <div id="time-scrubber-right-spacer"></div>
     </div>
     <div id="conditions-panel">
@@ -642,6 +652,23 @@
       if (allCurrentPoints.length > 0 || document.getElementById('current-overlay-toggle').checked) {
         const timeMs = windTimes[idx] ? new Date(windTimes[idx]).getTime() : Date.now();
         fetchCurrentPoints(timeMs);
+      }
+      updateScrubberHighlight(idx);
+    });
+
+    // REQ-118: jump scrubber to the nearest available timestep to wall-clock now
+    document.getElementById('jump-to-now').addEventListener('click', () => {
+      if (!windTimesLoaded) return;
+      const nowMs = Date.now();
+      let idx = windTimes.findIndex(t => new Date(t).getTime() >= nowMs);
+      if (idx < 0) idx = windTimes.length - 1;
+      const scrubber = document.getElementById('time-scrubber');
+      scrubber.value = idx;
+      updateScrubberLabel(idx);
+      fetchWindPoints(idx);
+      fetchWavePoints(idx);
+      if (currentEnabled || allCurrentPoints.length > 0) {
+        fetchCurrentPoints(windTimes[idx] ? new Date(windTimes[idx]).getTime() : Date.now());
       }
       updateScrubberHighlight(idx);
     });
@@ -1544,6 +1571,51 @@ const gridBounds = L.latLngBounds(
         unified.sort();
       }
       windTimes = unified;
+
+      // REQ-117: one thin row per checked GRIB file showing its time coverage in its assigned color
+      const bar = document.getElementById('scrubber-coverage-bar');
+      if (bar) {
+        bar.innerHTML = '';
+        const totalN = unified.length;
+        const addRow = (color, si, ei) => {
+          if (si < 0 || ei < 0 || si > ei) return;
+          const p1 = (si / Math.max(1, totalN - 1) * 100).toFixed(2);
+          const p2 = (ei / Math.max(1, totalN - 1) * 100).toFixed(2);
+          const row = document.createElement('div');
+          row.style.cssText = `height:4px;border-radius:2px;background:linear-gradient(to right,#313244 0% ${p1}%,${color} ${p1}% ${p2}%,#313244 ${p2}% 100%)`;
+          bar.appendChild(row);
+        };
+        gribInfoFiles.forEach((f, i) => {
+          if (f.type === 'current') return;
+          const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
+          if (cb && !cb.checked) return;
+          const startMs = new Date(f.timeStart).getTime();
+          const endMs   = new Date(f.timeEnd).getTime();
+          const si = unified.findIndex(t => new Date(t).getTime() >= startMs);
+          const ei = unified.findLastIndex(t => new Date(t).getTime() <= endMs);
+          addRow(C64_PALETTE[i % C64_PALETTE.length], si, ei);
+        });
+        if (currentEnabled && currentFileTimes.length > 0) {
+          const currentSet = new Set(currentFileTimes);
+          const si = unified.findIndex(t => currentSet.has(t));
+          const ei = unified.findLastIndex(t => currentSet.has(t));
+          addRow('#89dceb', si, ei);
+        }
+      }
+
+      // REQ-118: position the yellow now-triangle above the coverage bar
+      const nowMs = Date.now();
+      const n = unified.length;
+      const nowIdx = unified.findIndex(t => new Date(t).getTime() >= nowMs);
+      const nowMarker = document.getElementById('scrubber-now-marker');
+      if (nowMarker) {
+        if (nowIdx >= 0 && n > 1) {
+          nowMarker.style.left = `${(nowIdx / (n - 1) * 100).toFixed(2)}%`;
+          nowMarker.style.display = 'block';
+        } else {
+          nowMarker.style.display = 'none';
+        }
+      }
 
       const scrubber = document.getElementById('time-scrubber');
       const prevVal  = Math.min(parseInt(scrubber.value) || 0, Math.max(0, unified.length - 1));

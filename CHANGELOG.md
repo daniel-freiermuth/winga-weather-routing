@@ -2,6 +2,8 @@
 
 ## Upcoming
 
+- Scrubber coverage bar now shows one coloured row per loaded GRIB file, stacked vertically, so overlapping files are all visible simultaneously (REQ-117)
+- "Now" marker on the scrubber is a yellow downward-pointing triangle above the coverage rows, replacing the previous invisible white line (REQ-118)
 - Scrubber time range now updates live when GRIB file checkboxes are toggled; unchecking all wind files clears the wind overlay immediately (BUG-84, BUG-85)
 - "Use as departure" button next to the scrubber copies the displayed forecast time into the departure time field (REQ-111)
 - ⏮ jump button on each GRIB file row jumps the scrubber to that file's start time (REQ-116)
