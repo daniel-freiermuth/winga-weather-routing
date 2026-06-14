@@ -32,6 +32,10 @@
       user-select: none;
     }
     #conditions-handle:hover { background: #313244; }
+    #conditions-toggle {
+      background: #363a4f; padding: 1px 6px; border-radius: 3px;
+    }
+    #conditions-handle:hover #conditions-toggle { background: #45475a; }
     #conditions-body {
       display: flex; flex-direction: row; flex: 1; min-height: 0;
       padding: 0 10px; gap: 8px;
@@ -228,9 +232,30 @@
     #wave-legend-bar { width: 120px; height: 10px; border-radius: 2px; background: linear-gradient(to right, #00f, #0ff, #0f0, #ff0, #f00); }
     #wave-legend-labels { display: flex; justify-content: space-between; }
     #time-scrubber-panel {
-      display: none; flex-direction: row; align-items: center; gap: 8px;
-      padding: 4px 10px; background: #1e2230; border-top: 1px solid #313244; flex-shrink: 0;
+      display: none; flex-direction: column; overflow: hidden;
+      background: #1e2230; border-top: 1px solid #313244; flex-shrink: 0;
     }
+    #scrubber-handle {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 3px 12px;
+      background: #2a2f45;
+      font-size: 11px;
+      color: #6c7086;
+      cursor: pointer;
+      flex-shrink: 0;
+      user-select: none;
+    }
+    #scrubber-handle:hover { background: #313244; }
+    #scrubber-body {
+      display: flex; flex-direction: row; align-items: center; gap: 8px;
+      padding: 4px 10px;
+    }
+    #scrubber-toggle {
+      background: #363a4f; padding: 1px 6px; border-radius: 3px;
+    }
+    #scrubber-handle:hover #scrubber-toggle { background: #45475a; }
     #time-scrubber-label { font-size: 11px; color: #a6adc8; white-space: nowrap; width: 130px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; }
     #scrubber-track-wrapper { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; position: relative; padding-top: 8px; }
     #scrubber-coverage-bar  { display: flex; flex-direction: column; gap: 1px; }
@@ -430,15 +455,21 @@
   <div id="right-col">
     <div id="map"></div>
     <div id="time-scrubber-panel">
-      <span id="time-scrubber-label"></span>
-      <button id="use-as-departure" title="Set this time as the route departure time">Use as departure</button>
-      <div id="scrubber-track-wrapper">
-        <div id="scrubber-now-marker"></div>
-        <div id="scrubber-coverage-bar"></div>
-        <input type="range" id="time-scrubber" min="0" max="0" value="0">
+      <div id="scrubber-handle" title="Collapse panel">
+        <span>Time scrubber</span>
+        <span id="scrubber-toggle">&#9660;</span>
       </div>
-      <button id="jump-to-now" title="Jump scrubber to current time">Now</button>
-      <div id="time-scrubber-right-spacer"></div>
+      <div id="scrubber-body">
+        <span id="time-scrubber-label"></span>
+        <button id="use-as-departure" title="Set this time as the route departure time">Use as departure</button>
+        <div id="scrubber-track-wrapper">
+          <div id="scrubber-now-marker"></div>
+          <div id="scrubber-coverage-bar"></div>
+          <input type="range" id="time-scrubber" min="0" max="0" value="0">
+        </div>
+        <button id="jump-to-now" title="Jump scrubber to current time">Now</button>
+        <div id="time-scrubber-right-spacer"></div>
+      </div>
     </div>
     <div id="conditions-panel">
       <div id="conditions-handle">
@@ -1849,6 +1880,7 @@ const gridBounds = L.latLngBounds(
 
     // --- Conditions graph ---
 
+    let scrubberExpanded = true;
     let conditionsExpanded = true;
     let conditionsFullscreen = false;
 
@@ -1872,6 +1904,14 @@ const gridBounds = L.latLngBounds(
       document.getElementById('conditions-svg').style.display = conditionsExpanded ? '' : 'none';
       document.getElementById('conditions-toggle').textContent = conditionsExpanded ? '▼' : '▶';
       document.getElementById('conditions-panel').style.height = conditionsExpanded ? '210px' : '24px';
+    });
+
+    document.getElementById('scrubber-handle').addEventListener('click', () => {
+      scrubberExpanded = !scrubberExpanded;
+      document.getElementById('scrubber-body').style.display = scrubberExpanded ? '' : 'none';
+      document.getElementById('scrubber-toggle').textContent = scrubberExpanded ? '▼' : '▶';
+      document.getElementById('scrubber-handle').title = scrubberExpanded ? 'Collapse panel' : 'Expand panel';
+      document.getElementById('time-scrubber-panel').style.height = scrubberExpanded ? '' : '28px';
     });
 
     document.getElementById('conditions-svg').addEventListener('click', () => {

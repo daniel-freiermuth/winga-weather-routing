@@ -170,6 +170,7 @@ The map displays a GRIB wind overlay showing wind speed and direction as wind ba
 - A yellow downward-pointing **triangle marker** above the colour bar marks the current wall-clock time within the forecast range
 - **Now** button (right of the slider): snaps the scrubber to the nearest forecast timestep to the current time
 - **Use as departure** button (left of the scrubber): copies the current scrubber time into the departure time field, so you can browse to a forecast window and lock it in as the departure time with one click
+- **Collapse/expand** handle bar on the scrubber and conditions graph panels — click a panel's handle to collapse it to a thin strip, reclaiming map space. Click again to expand.
 - **⏮ jump button** on each GRIB file row in the sidebar: clicking it moves the scrubber to the start of that file's forecast range
 
 Use the **Wind overlay** checkbox to toggle the overlay on or off without affecting the scrubber or route display.
