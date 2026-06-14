@@ -180,6 +180,32 @@
     #modal-save-btn  { background: #89b4fa; color: #1e1e2e; }
     #modal-cancel-btn { background: #313244; color: #cdd6f4; }
 
+    #confirm-modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6); z-index: 10001;
+      align-items: center; justify-content: center;
+    }
+    #confirm-modal-overlay.visible { display: flex; }
+    #confirm-modal {
+      background: #2a2f45; border: 1px solid #45475a; border-radius: 8px;
+      padding: 20px; width: 320px; display: flex; flex-direction: column; gap: 14px;
+    }
+    #confirm-modal h2 { font-size: 14px; color: #cdd6f4; font-weight: 600; }
+    #confirm-modal p { font-size: 12px; color: #a6adc8; margin: 0; }
+    #confirm-modal-cancel { background: #313244; color: #cdd6f4; }
+    #confirm-modal-ok { background: #f38ba8; color: #1e1e2e; }
+    .grib-remove-btn {
+      background: none; border: none; cursor: pointer; padding: 2px 4px;
+      font-size: 13px; color: #6c7086; line-height: 1;
+    }
+    .grib-remove-btn:hover { color: #f38ba8; }
+    #remove-old-gribs-btn {
+      width: 100%; padding: 6px; border-radius: 5px; border: none;
+      background: #313244; color: #cdd6f4; font-size: 12px; cursor: pointer;
+      margin-top: 4px;
+    }
+    #remove-old-gribs-btn:hover { background: #45475a; }
+
     #disclaimer-overlay {
       display: none; position: fixed; inset: 0;
       background: rgba(0,0,0,0.8); z-index: 10002;
@@ -294,6 +320,7 @@
       <div class="section-title">GRIB Forecast</div>
       <div id="grib-info">Loading...</div>
       <div id="current-info" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid #313244"></div>
+      <button id="remove-old-gribs-btn" style="display:none" title="Archive all GRIB files whose forecast has ended">Remove old GRIBs</button>
       <div id="grib-warning">
         <div id="grib-warning-msg"></div>
         <ul id="grib-warning-list"></ul>
@@ -370,6 +397,17 @@
       </div>
     </div>
   </div>
+  <div id="confirm-modal-overlay">
+    <div id="confirm-modal">
+      <h2 id="confirm-modal-title">Confirm</h2>
+      <p id="confirm-modal-msg"></p>
+      <div class="modal-buttons">
+        <button id="confirm-modal-cancel">Cancel</button>
+        <button id="confirm-modal-ok">Archive</button>
+      </div>
+    </div>
+  </div>
+
   <div id="disclaimer-overlay">
     <div id="disclaimer-box">
       <h2>Safety disclaimer</h2>
@@ -919,11 +957,12 @@
 
     async function loadGribInfo() {
       try {
-        const r = await apiFetch(`${API}/grib-info`);
+        const r = await apiFetch(`${API}/grib-info`, { cache: 'no-store' });
         const j = await r.json();
 
         clearGribBoundsLayers();
 
+        const currentInfoEl = document.getElementById('current-info');
         const hasWindFiles = j.files && j.files.length > 0;
         const hasCurrentFiles = j.currentFiles && j.currentFiles.length > 0;
 
@@ -932,6 +971,9 @@
           gribInfo.innerHTML = j.gribDir
             ? `<span>No GRIB files found in</span><br>${j.gribDir}`
             : '<span>No GRIB directory configured</span>';
+          currentInfoEl.style.display = 'none';
+          const removeOldBtn = document.getElementById('remove-old-gribs-btn');
+          removeOldBtn.style.display = 'none';
           showGribWarning(j.failedFiles ?? []);
           updateCalcButton();
           return;
@@ -976,6 +1018,7 @@
             `<span style="color:${color};font-size:11px">${f.nTimes} steps: ${start} &rarr; ${end}</span>` +
             `</label>` +
             `<button class="grib-jump-btn" data-time-start="${f.timeStart}" title="Jump scrubber to start of this file">&#x23EE;</button>` +
+            `<button class="grib-remove-btn" data-file-path="${f.path}" title="Archive this file">&#x1F5D1;</button>` +
             `</div>${runLine}`;
         }).join('');
 
@@ -1003,7 +1046,6 @@
         });
 
         // Current files section
-        const currentInfoEl = document.getElementById('current-info');
         if (j.currentFiles && j.currentFiles.length > 0) {
           const CURRENT_COLOR = '#89dceb';
           let html = '<div style="font-size:10px;color:#a6adc8;margin-bottom:4px">Ocean current</div>';
@@ -1026,6 +1068,7 @@
               `<span style="color:${CURRENT_COLOR};font-size:11px">${f.nTimes} steps: ${start} &rarr; ${end}</span>` +
               `</label>` +
               `<button class="grib-jump-btn" data-time-start="${f.timeStart}" title="Jump scrubber to start of this file">&#x23EE;</button>` +
+              `<button class="grib-remove-btn" data-file-path="${f.path}" title="Archive this file">&#x1F5D1;</button>` +
               `</div>${runLine}`;
             // Draw bbox
             if (currentBoundsLayer) { map.removeLayer(currentBoundsLayer); }
@@ -1071,6 +1114,14 @@
           allCurrentPoints = [];
           if (currentOverlayLayer) { map.removeLayer(currentOverlayLayer); currentOverlayLayer = null; }
         }
+
+        // Show/hide "Remove old GRIBs" button based on files with past timeEnd
+        const now = Date.now();
+        const oldCount = [...(j.files ?? []), ...(j.currentFiles ?? [])]
+          .filter(f => f.timeEnd && new Date(f.timeEnd).getTime() < now).length;
+        const removeOldBtn = document.getElementById('remove-old-gribs-btn');
+        removeOldBtn.style.display = oldCount > 0 ? '' : 'none';
+        removeOldBtn.textContent = `Remove old GRIBs (${oldCount})`;
 
         showGribWarning(j.failedFiles ?? []);
         updateCalcButton();
@@ -2268,6 +2319,60 @@ const gridBounds = L.latLngBounds(
         modalSaveBtn.disabled = false;
         saveModalOverlay.classList.remove('visible');
       }
+    });
+
+    function showConfirm(title, msg, onConfirm) {
+      document.getElementById('confirm-modal-title').textContent = title;
+      document.getElementById('confirm-modal-msg').textContent = msg;
+      const overlay = document.getElementById('confirm-modal-overlay');
+      overlay.classList.add('visible');
+      const okBtn = document.getElementById('confirm-modal-ok');
+      const cancelBtn = document.getElementById('confirm-modal-cancel');
+      const cleanup = () => {
+        overlay.classList.remove('visible');
+        okBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', cleanup);
+      };
+      const onOk = async () => { cleanup(); await onConfirm(); };
+      okBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', cleanup);
+    }
+
+    // Archive button delegation for wind and current GRIB rows (wired once)
+    document.getElementById('grib-info').addEventListener('click', e => {
+      const btn = e.target.closest('.grib-remove-btn');
+      if (!btn) return;
+      const filePath = btn.dataset.filePath;
+      const name = filePath.split('/').pop();
+      showConfirm('Archive GRIB file', `Move "${name}" to the archive folder?`, async () => {
+        await apiFetch(`${API}/archive-grib-file`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: filePath }),
+        });
+        loadGribInfo();
+      });
+    });
+    document.getElementById('current-info').addEventListener('click', e => {
+      const btn = e.target.closest('.grib-remove-btn');
+      if (!btn) return;
+      const filePath = btn.dataset.filePath;
+      const name = filePath.split('/').pop();
+      showConfirm('Archive GRIB file', `Move "${name}" to the archive folder?`, async () => {
+        await apiFetch(`${API}/archive-grib-file`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: filePath }),
+        });
+        loadGribInfo();
+      });
+    });
+
+    document.getElementById('remove-old-gribs-btn').addEventListener('click', () => {
+      showConfirm('Archive old GRIBs',
+        'Move all GRIB files whose forecast has ended to the archive folder?',
+        async () => {
+          await apiFetch(`${API}/archive-old-gribs`, { method: 'POST' });
+          loadGribInfo();
+        });
     });
 
     async function checkDilatedReady() {

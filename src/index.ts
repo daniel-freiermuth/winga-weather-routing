@@ -1,6 +1,7 @@
 // SignalK plugin entry point — registers API routes, manages plugin lifecycle and server state.
 
 import * as nodepath from 'node:path';
+import * as fs from 'node:fs/promises';
 import { Router, Request, Response } from 'express';
 
 // Side-effect: copies gdal-async .node binary from optional dep — must run before ./lib/grib
@@ -64,6 +65,22 @@ module.exports = (app: any) => {
     if (edgeIndex) parts.push(`land index: ${edgeIndex.edgeGrid.size} cells`);
     if (gribFailedFiles.length > 0) parts.push(`${gribFailedFiles.length} file(s) failed to index`);
     app.setPluginStatus(parts.join(' · '));
+  }
+
+  async function archiveFile(gribDir: string, filePath: string): Promise<void> {
+    const archiveDir = nodepath.join(gribDir, 'archive');
+    await fs.mkdir(archiveDir, { recursive: true });
+    const base = nodepath.basename(filePath);
+    const ext = nodepath.extname(base);
+    const stem = base.slice(0, base.length - ext.length);
+    let dest = nodepath.join(archiveDir, base);
+    let serial = 2;
+    while (true) {
+      try { await fs.access(dest); } catch { break; }
+      dest = nodepath.join(archiveDir, `${stem}.${serial}${ext}`);
+      serial++;
+    }
+    await fs.rename(filePath, dest);
   }
 
   async function scanAndIndexGribDir(dir: string): Promise<void> {
@@ -713,6 +730,43 @@ module.exports = (app: any) => {
           setReady();
         } catch (e: any) {
           app.setPluginError(`GRIB reload failed: ${e.message}`);
+          res.status(500).json({ error: e.message });
+        }
+      });
+
+      router.post('/archive-grib-file', async (req: Request, res: Response) => {
+        const dir = settings?.gribDir;
+        if (!dir) return void res.status(400).json({ error: 'No gribDir configured' });
+        const { path: filePath } = req.body as { path?: string };
+        if (!filePath) return void res.status(400).json({ error: 'Missing path' });
+        const resolvedDir = nodepath.resolve(dir);
+        const resolvedPath = nodepath.resolve(filePath);
+        if (!resolvedPath.startsWith(resolvedDir + nodepath.sep))
+          return void res.status(400).json({ error: 'Path is outside gribDir' });
+        try {
+          await archiveFile(dir, filePath);
+          await scanAndIndexGribDir(dir);
+          res.json({ success: true });
+          setReady();
+        } catch (e: any) {
+          res.status(500).json({ error: e.message });
+        }
+      });
+
+      router.post('/archive-old-gribs', async (req: Request, res: Response) => {
+        const dir = settings?.gribDir;
+        if (!dir) return void res.status(400).json({ error: 'No gribDir configured' });
+        const now = new Date();
+        const oldPaths = [
+          ...gribFiles.filter(f => f.meta.timeEnd < now).map(f => f.meta.path),
+          ...currentFiles.filter(f => f.meta.timeEnd < now).map(f => f.meta.path),
+        ];
+        try {
+          for (const p of oldPaths) await archiveFile(dir, p);
+          await scanAndIndexGribDir(dir);
+          res.json({ success: true, archived: oldPaths.map(p => nodepath.basename(p)) });
+          setReady();
+        } catch (e: any) {
           res.status(500).json({ error: e.message });
         }
       });
