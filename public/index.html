@@ -507,6 +507,7 @@
     let windSpeedMs = false;
     let windTimes = [];       // unified time axis (wind + current), sorted
     let windTimesCount = 0;   // number of entries that are wind-native (for clamping overlay calls)
+    let windNativeTimes = []; // wind-only timestamps, for checking coverage at timeIdx
     let windTimesLoaded = false;
     let currentFileTimes = []; // cached times from the loaded current GRIB
     let routeLayer = null;
@@ -1393,7 +1394,14 @@
         if (windOverlayLayer) { map.removeLayer(windOverlayLayer); windOverlayLayer = null; }
         return;
       }
-      const params = new URLSearchParams({ timeIdx: Math.min(timeIdx, windTimesCount - 1) });
+      // Clear overlay if this time step has no wind/wave coverage (e.g. current-only)
+      const timeStr = windTimes[timeIdx];
+      if (!timeStr || !windNativeTimes.includes(timeStr)) {
+        allWindPoints = [];
+        if (windOverlayLayer) { map.removeLayer(windOverlayLayer); windOverlayLayer = null; }
+        return;
+      }
+      const params = new URLSearchParams({ timeIdx: windNativeTimes.indexOf(timeStr) });
       gribInfoFiles.forEach((f, i) => {
         const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
         if (!cb || cb.checked) params.append('path', f.path);
@@ -1423,11 +1431,10 @@
     }
 
     async function fetchWavePoints(timeIdx, signal) {
-      const params = new URLSearchParams({ timeIdx: Math.min(timeIdx, windTimesCount - 1) });
       let anyEnabled = false;
       gribInfoFiles.forEach((f, i) => {
         const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
-        if (!cb || cb.checked) { params.append('path', f.path); anyEnabled = true; }
+        if (!cb || cb.checked) anyEnabled = true;
       });
       // No GRIB files are active — clear overlay immediately; don't hit the backend
       // (backend with no path params returns all files, not an empty result)
@@ -1436,6 +1443,18 @@
         if (waveOverlayLayer) { map.removeLayer(waveOverlayLayer); waveOverlayLayer = null; }
         return;
       }
+      // Clear overlay if this time step has no wind/wave coverage (e.g. current-only)
+      const timeStr = windTimes[timeIdx];
+      if (!timeStr || !windNativeTimes.includes(timeStr)) {
+        allWavePoints = [];
+        if (waveOverlayLayer) { map.removeLayer(waveOverlayLayer); waveOverlayLayer = null; }
+        return;
+      }
+      const params = new URLSearchParams({ timeIdx: windNativeTimes.indexOf(timeStr) });
+      gribInfoFiles.forEach((f, i) => {
+        const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
+        if (!cb || cb.checked) params.append('path', f.path);
+      });
       let r;
       try {
         r = await apiFetch(`${API}/wave-grid?${params}`, { signal });
@@ -1647,6 +1666,7 @@ const gridBounds = L.latLngBounds(
       });
       const windArr = Array.from(windSet).sort();
       windTimesCount = windArr.length;
+      windNativeTimes = windArr;
 
       let unified = [...windArr];
       if (currentEnabled && currentFileTimes.length > 0) {
