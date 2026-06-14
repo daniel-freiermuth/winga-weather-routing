@@ -4,7 +4,6 @@
 
 | # | Description |
 |---|---|
-| [BUG-81](https://github.com/kristianwiklund/signalk-weather-routing/issues/251) | Before wind data is received (slow computer or connection), every wind arrow in a GRIB area is shown as a round ring ("calm"). |
 | [BUG-58](https://github.com/kristianwiklund/signalk-weather-routing/issues/188) | `interpolateBoatSpeed` clamps wind speed to the polar's minimum TWS column when TWS is below that column, so e.g. 3 kn of wind returns the same boat speed as 6 kn of wind. This is physically wrong — the boat cannot sail at 5+ kn in 3 kn of wind. **Troubleshooting:** A fix was implemented (return 0 when `twsKnots < polar.tws[0]`, commit `92f194f`, merged as `11f149e`) but caused a routing regression: the standard Öregrund→Gotska Sandön test took a completely different path — north around Åland instead of through Ålandförträngningen. Root cause hypothesis: the GRIB wind in Ålandförträngningen is near the polar's minimum TWS (likely just below 6 kn for the test forecast), so returning 0 speed for those points kills all frontier points in the passage and forces the router to find an alternative route with stronger wind. The fix was reverted (`6575ad8`). A correct fix must handle the near-minimum case without discarding viable frontier points — e.g. by only returning 0 for TWS values significantly below the polar minimum, or by preserving the clamp for values within a small tolerance of the minimum. |
 
 ## Won't Fix
@@ -16,6 +15,7 @@
 
 | # | Description |
 |---|---|
+| [~~BUG-81~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/251) | ~~Wind arrows showed as calm rings before polar data was received.~~ — **fixed** (`polarMinTws` initialised to `0` instead of `Infinity`; confirmed 2026-06-14) |
 | [~~BUG-75~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/225) | ~~Routing with two loaded GRIBs (May 24 + June 6) used June 6 wind data for frontier points that stepped outside the May 24 GRIB's spatial boundary.~~ — **fixed** (`coversPoint` replaced with `coversPointAtTime` in isochrone candidate gate; rejects positions not covered spatially+temporally by any file; confirmed 2026-06-13) |
 | [~~BUG-80~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/242) | ~~Test buttons visible on clean install despite `hideTestButtons: true` default.~~ — **cannot reproduce** (likely a side-effect of the missing gdal binary; not reproducible after BUG-79 fixed in v0.7.3; confirmed 2026-06-13) |
 | [~~BUG-79~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/241) | ~~Plugin fails to start on ARM64 (Raspberry Pi 3, linux-arm64): no ARM64 gdal-async native binary included.~~ — **fixed** (prebuilt binaries distributed via optional npm packages `@kristianwiklund/wr-gdal-linux-arm64` and `...-x64`; `ensure-gdal-binary.ts` copies the binary into gdal-async's binding path at startup; filename corrected `gdal.mod.node` → `gdal.node` in v0.7.3; confirmed working on RPi3 2026-06-13) |

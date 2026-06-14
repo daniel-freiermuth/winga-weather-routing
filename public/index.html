@@ -549,7 +549,7 @@
     let landLayerDilated = null;
     let renderLandOverlayToken = 0;
     let dilatedIndexReady = false;
-    let polarMinTws = Infinity;   // set from /status; Infinity keeps all barbs directional until loaded
+    let polarMinTws = 0;   // set from /status; 0 keeps all barbs directional until polar loads (tws < 0 is never true)
     let dilatedPollTimer = null;
     let graphMeta = null;
     let graphLayout = null;
