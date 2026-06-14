@@ -1996,8 +1996,9 @@ const gridBounds = L.latLngBounds(
 
       const hasWave = meta.some(m => m.waveHeight != null);
 
-      const VW = 800, VH = 200;
-      const ml = windSpeedMs ? 70 : 0, mr = 8, mt = 14, mb = 66;
+      const VW = 820, VH = 200;
+      const ml = windSpeedMs ? 60 : 0, mr = 20, mt = 14, mb = 66;
+      const pr = 800; // right axis line x-coordinate
       const pw = VW - ml - mr, ph = VH - mt - mb;
 
       graphMeta = meta;
@@ -2033,7 +2034,7 @@ const gridBounds = L.latLngBounds(
       document.getElementById('conditions-y-left').innerHTML = '';
       if (windSpeedMs) {
         // Outer left axis: TWS in m/s (blue, at x=2)
-        el.push(`<text x="2" y="${mt - 5}" fill="#89b4fa" font-size="9">m/s</text>`);
+        el.push(`<text x="2" y="${mt - 8}" fill="#89b4fa" font-size="9">m/s</text>`);
         for (let v = 0; v <= maxTwsDisp; v += twsAxisStep) {
           const y = parseFloat(yWind(v));
           el.push(`<line x1="0" y1="${y.toFixed(1)}" x2="${VW}" y2="${y.toFixed(1)}" stroke="#313244" stroke-width="0.5"/>`);
@@ -2042,7 +2043,7 @@ const gridBounds = L.latLngBounds(
         // Inner left axis: boat speed in preset unit (orange), right-aligned to margin boundary
         const boatSym = _fmt(0, 'speed').sym;
         const boatStep = maxBoatDisp <= 15 ? 5 : 10;
-        el.push(`<text x="${ml - 2}" y="${mt - 5}" text-anchor="end" fill="#fab387" font-size="9">${boatSym}</text>`);
+        el.push(`<text x="${ml - 2}" y="${mt - 8}" text-anchor="end" fill="#fab387" font-size="9">${boatSym}</text>`);
         for (let v = 0; v <= maxBoatDisp; v += boatStep) {
           const y = parseFloat(yLeft(v));
           el.push(`<text x="${ml - 2}" y="${y.toFixed(1)}" text-anchor="end" fill="#fab387" font-size="10">${v}</text>`);
@@ -2050,7 +2051,7 @@ const gridBounds = L.latLngBounds(
       } else {
         // Single shared left axis
         const speedSym = _fmt(0, 'speed').sym;
-        el.push(`<text x="2" y="${mt - 5}" fill="#89b4fa" font-size="9">${speedSym}</text>`);
+        el.push(`<text x="2" y="${mt - 8}" fill="#89b4fa" font-size="9">${speedSym}</text>`);
         for (let v = 0; v <= maxLeft; v += twsAxisStep) {
           const y = parseFloat(yLeft(v));
           el.push(`<line x1="0" y1="${y.toFixed(1)}" x2="${VW}" y2="${y.toFixed(1)}" stroke="#313244" stroke-width="0.5"/>`);
@@ -2065,14 +2066,14 @@ const gridBounds = L.latLngBounds(
         document.getElementById('conditions-y-right').style.display = 'block';
         rightSpacer.style.display = 'block';
         const waveSym = _fmt(0, 'depth').sym;
-        el.push(`<text x="${VW - 2}" y="${mt - 5}" text-anchor="end" fill="#a6e3a1" font-size="9">${waveSym}</text>`);
+        el.push(`<text x="${pr + 2}" y="${mt - 8}" text-anchor="start" fill="#a6e3a1" font-size="9">${waveSym}</text>`);
         const wStep = maxWave <= 3 ? 0.5 : 1;
         for (let v = 0; v <= maxWave + 0.001; v += wStep) {
           const y = parseFloat(yWave(v));
           const dispWave = _fmt(v, 'depth');
-          el.push(`<text x="${VW - 2}" y="${y.toFixed(1)}" text-anchor="end" fill="#a6e3a1" font-size="10">${dispWave.num}</text>`);
+          el.push(`<text x="${pr + 2}" y="${y.toFixed(1)}" text-anchor="start" fill="#a6e3a1" font-size="10">${dispWave.num}</text>`);
         }
-        el.push(`<line x1="${VW}" y1="${mt}" x2="${VW}" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
+        el.push(`<line x1="${pr}" y1="${mt}" x2="${pr}" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
       } else {
         document.getElementById('conditions-y-right').style.display = 'none';
         rightSpacer.style.display = 'none';
@@ -2080,7 +2081,7 @@ const gridBounds = L.latLngBounds(
 
       // Axis lines
       el.push(`<line x1="${ml}" y1="${mt}" x2="${ml}" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
-      el.push(`<line x1="${ml}" y1="${mt+ph}" x2="${VW}" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
+      el.push(`<line x1="${ml}" y1="${mt+ph}" x2="${pr}" y2="${mt+ph}" stroke="#45475a" stroke-width="1"/>`);
 
       // Wind speed line — plotted against yWind (m/s axis when windSpeedMs, else shared)
       el.push(`<path d="${meta.map((m,i) => (i===0?'M':'L')+xOf(i)+','+yWind(twsDisplayVals[i])).join(' ')}" fill="none" stroke="#89b4fa" stroke-width="1" stroke-linejoin="round"/>`);
