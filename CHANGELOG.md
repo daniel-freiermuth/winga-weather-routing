@@ -2,6 +2,9 @@
 
 ## Upcoming
 
+- Scrubber time range now updates live when GRIB file checkboxes are toggled; unchecking all wind files clears the wind overlay immediately (BUG-84, BUG-85)
+- "Use as departure" button next to the scrubber copies the displayed forecast time into the departure time field (REQ-111)
+- ⏮ jump button on each GRIB file row jumps the scrubber to that file's start time (REQ-116)
 - Ocean current GRIB support (REQ-91): drop RTOFS or CMEMS current GRIB files into the GRIB directory alongside wind files — the plugin auto-detects them by GRIB metadata (UOGRD/VOGRD bands) and applies ocean current U/V vectors to the routing algorithm, giving correct ground-track advancement. Includes a current vector overlay on the map (toggleable under Layers), sidebar staleness indicator, and tidal-stream disclaimer.
 - Fix wind arrows showing as calm rings before polar data is received (BUG-81)
 - Fix routing with multiple GRIB files: frontier now stops at the spatial boundary of the file that is temporally valid for the current step, instead of silently using wind data from a different file's time period (BUG-75)
