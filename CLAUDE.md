@@ -62,7 +62,11 @@ Do this as the first action of every new sprint or feature, before writing any c
 
 ## PR and Merge Rule
 
-Once implementation is confirmed working and both the Phase 1 and Phase 2 commits are done, immediately create a PR and merge it — do not wait for a separate instruction. Use `gh pr merge --merge` (regular merge commit). Never use `--squash` — squash merges create a new commit hash on main unrelated to the branch's history, making it impossible to use git history to reliably detect unmerged work. Close the corresponding GitHub issues after the merge.
+The GitHub CI workflow must pass on the branch before a PR is created. Run `gh pr checks` to verify CI status. If CI is not configured or the workflow does not exist, ask before proceeding.
+
+Once CI passes and implementation is confirmed working and both the Phase 1 and Phase 2 commits are done, ask before creating a PR and before merging. Do not create or merge a PR without explicit approval.
+
+Use `gh pr merge --merge` (regular merge commit). Never use `--squash` — squash merges create a new commit hash on main unrelated to the branch's history, making it impossible to use git history to reliably detect unmerged work.
 
 ## User Documentation Rule
 
