@@ -157,9 +157,11 @@ Without this option, a frontier point with no viable headings is simply dropped 
 
 The map displays a GRIB wind overlay showing wind speed and direction as wind barbs. Each barb has an arrowhead at the downwind tip pointing in the direction the wind blows toward, making the TOWARD direction unambiguous. Ticks and pennants on the FROM end encode wind speed in the standard Beaufort scale (half-tick = 5 kn, full tick = 10 kn, pennant = 50 kn). Wind below the polar's minimum measured speed (e.g. 6 kn) is shown as a calm symbol — a ring with a centre dot — indicating conditions outside the polar's measured range. Calm symbols only appear after the polar file is loaded; before that, all barbs render directionally. Hovering over a barb shows a tooltip with wind speed, direction, and the boat's predicted speed at that point from the polar diagram. A time scrubber below the map controls which forecast timestep is shown.
 
-- Before a route is calculated the scrubber spans the full GRIB time range
+- Before a route is calculated the scrubber spans the union of all currently-checked GRIB files' time ranges; toggling a file checkbox updates the range immediately
 - After a route is calculated the scrubber range matches the route (departure to estimated arrival), aligned with the conditions graph
 - Dragging the scrubber highlights the route waypoint nearest in time and draws a pink overlay on the corresponding leg
+- **Use as departure** button (left of the scrubber): copies the current scrubber time into the departure time field, so you can browse to a forecast window and lock it in as the departure time with one click
+- **⏮ jump button** on each GRIB file row in the sidebar: clicking it moves the scrubber to the start of that file's forecast range
 
 Use the **Wind overlay** checkbox to toggle the overlay on or off without affecting the scrubber or route display.
 

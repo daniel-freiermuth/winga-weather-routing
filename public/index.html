@@ -208,6 +208,10 @@
     #time-scrubber-label { font-size: 11px; color: #a6adc8; white-space: nowrap; width: 130px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; }
     #time-scrubber { flex: 1; accent-color: #89b4fa; cursor: pointer; }
     #time-scrubber-right-spacer { flex-shrink: 0; display: none; width: 52px; }
+    #use-as-departure { font-size: 10px; color: #a6adc8; background: transparent; border: 1px solid #45475a; border-radius: 3px; padding: 1px 6px; cursor: pointer; flex-shrink: 0; white-space: nowrap; }
+    #use-as-departure:hover { color: #cdd6f4; border-color: #89b4fa; }
+    .grib-jump-btn { font-size: 11px; color: #6c7086; background: transparent; border: none; cursor: pointer; padding: 0 3px; vertical-align: middle; line-height: 1; }
+    .grib-jump-btn:hover { color: #89b4fa; }
     .wp-highlight {
       filter: drop-shadow(0 0 8px #f5c2e7) brightness(1.35);
       z-index: 9999 !important;
@@ -384,6 +388,7 @@
     <div id="map"></div>
     <div id="time-scrubber-panel">
       <span id="time-scrubber-label"></span>
+      <button id="use-as-departure" title="Set this time as the route departure time">Use as departure</button>
       <input type="range" id="time-scrubber" min="0" max="0" value="0">
       <div id="time-scrubber-right-spacer"></div>
     </div>
@@ -455,6 +460,7 @@
     let windTimes = [];       // unified time axis (wind + current), sorted
     let windTimesCount = 0;   // number of entries that are wind-native (for clamping overlay calls)
     let windTimesLoaded = false;
+    let currentFileTimes = []; // cached times from the loaded current GRIB
     let routeLayer = null;
     let windBarbLayer = null;
     let legLabelLayer = null;
@@ -634,6 +640,32 @@
       fetchWindPoints(idx);
       fetchWavePoints(idx);
       if (allCurrentPoints.length > 0 || document.getElementById('current-overlay-toggle').checked) {
+        const timeMs = windTimes[idx] ? new Date(windTimes[idx]).getTime() : Date.now();
+        fetchCurrentPoints(timeMs);
+      }
+      updateScrubberHighlight(idx);
+    });
+
+    // REQ-111: copy current scrubber time into the departure time field
+    document.getElementById('use-as-departure').addEventListener('click', () => {
+      const t = windTimes[parseInt(document.getElementById('time-scrubber').value)];
+      if (!t) return;
+      document.getElementById('departure-time').value = toLocalDateTimeInput(new Date(t));
+    });
+
+    // REQ-116: clicking a ⏮ button on a GRIB file row jumps scrubber to that file's start time
+    document.addEventListener('click', e => {
+      const btn = e.target.closest('.grib-jump-btn');
+      if (!btn || !windTimesLoaded || !btn.dataset.timeStart) return;
+      const ts = new Date(btn.dataset.timeStart).getTime();
+      const idx = windTimes.findIndex(t => new Date(t).getTime() >= ts);
+      if (idx < 0) return;
+      const scrubber = document.getElementById('time-scrubber');
+      scrubber.value = idx;
+      updateScrubberLabel(idx);
+      fetchWindPoints(idx);
+      fetchWavePoints(idx);
+      if (currentEnabled || allCurrentPoints.length > 0) {
         const timeMs = windTimes[idx] ? new Date(windTimes[idx]).getTime() : Date.now();
         fetchCurrentPoints(timeMs);
       }
@@ -910,11 +942,14 @@
             runLine = `<div style="padding-left:22px;font-size:10px;color:${ageColor}">` +
                       `Run: ${refFmt} (${Math.round(ageH)}h ago)</div>`;
           }
-          return `<label style="display:flex;align-items:center;gap:6px;cursor:pointer">` +
+          return `<div style="display:flex;align-items:center;gap:4px">` +
+            `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1">` +
             `<input type="checkbox" class="grib-file-toggle" data-file-index="${i}" checked ` +
             `style="accent-color:${color};cursor:pointer">` +
             `<span style="color:${color};font-size:11px">${f.nTimes} steps: ${start} &rarr; ${end}</span>` +
-            `</label>${runLine}`;
+            `</label>` +
+            `<button class="grib-jump-btn" data-time-start="${f.timeStart}" title="Jump scrubber to start of this file">&#x23EE;</button>` +
+            `</div>${runLine}`;
         }).join('');
 
         // Wire checkbox toggle: show/hide the bounding box rectangle
@@ -933,12 +968,10 @@
             } else {
               if (gribBoundsLayers[i]) { map.removeLayer(gribBoundsLayers[i]); gribBoundsLayers[i] = null; }
             }
-            if (windTimesLoaded) {
-              fetchWindPoints(parseInt(document.getElementById('time-scrubber').value));
-            }
-            if (document.getElementById('wave-overlay-toggle').checked) {
-              fetchWavePoints(parseInt(document.getElementById('time-scrubber').value));
-            }
+            rebuildScrubberTimes();
+            const idx = parseInt(document.getElementById('time-scrubber').value);
+            if (windTimesLoaded) fetchWindPoints(idx);
+            if (document.getElementById('wave-overlay-toggle').checked) fetchWavePoints(idx);
           });
         });
 
@@ -960,10 +993,13 @@
               runLine = `<div style="padding-left:22px;font-size:10px;color:${ageColor}">` +
                         `Run: ${refFmt} (${Math.round(ageH)}h ago)</div>`;
             }
-            html += `<label style="display:flex;align-items:center;gap:6px;cursor:pointer">` +
+            html += `<div style="display:flex;align-items:center;gap:4px">` +
+              `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1">` +
               `<input type="checkbox" id="current-file-toggle" style="accent-color:${CURRENT_COLOR};cursor:pointer" checked>` +
               `<span style="color:${CURRENT_COLOR};font-size:11px">${f.nTimes} steps: ${start} &rarr; ${end}</span>` +
-              `</label>${runLine}`;
+              `</label>` +
+              `<button class="grib-jump-btn" data-time-start="${f.timeStart}" title="Jump scrubber to start of this file">&#x23EE;</button>` +
+              `</div>${runLine}`;
             // Draw bbox
             if (currentBoundsLayer) { map.removeLayer(currentBoundsLayer); }
             currentBoundsLayer = L.rectangle(
@@ -979,6 +1015,7 @@
           currentEnabled = true;
           document.getElementById('current-file-toggle').addEventListener('change', e => {
             currentEnabled = e.target.checked;
+            rebuildScrubberTimes();
             if (currentEnabled) {
               if (!currentBoundsLayer && j.currentFiles[0]) {
                 const f = j.currentFiles[0];
@@ -1251,6 +1288,18 @@
     }
 
     async function fetchWindPoints(timeIdx) {
+      // No wind GRIB checked — clear overlay without hitting backend
+      // (backend with no path params returns all files, not an empty result)
+      let anyWindEnabled = false;
+      gribInfoFiles.forEach((f, i) => {
+        const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
+        if (!cb || cb.checked) anyWindEnabled = true;
+      });
+      if (!anyWindEnabled) {
+        allWindPoints = [];
+        if (windOverlayLayer) { map.removeLayer(windOverlayLayer); windOverlayLayer = null; }
+        return;
+      }
       const params = new URLSearchParams({ timeIdx: Math.min(timeIdx, windTimesCount - 1) });
       gribInfoFiles.forEach((f, i) => {
         const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
@@ -1468,37 +1517,60 @@ const gridBounds = L.latLngBounds(
       currentOverlayLayer.addTo(map);
     }
 
-    async function initWindScrubber() {
-      let times = [];
-      const r = await apiFetch(`${API}/wind-times`);
-      if (r.ok) {
-        const j = await r.json();
-        times = j.times;
-      }
-      windTimesCount = times.length;
+    // Recomputes windTimes from checked files and updates scrubber range.
+    // Uses GribFileMeta (timeStart, timeEnd, nTimes) to reconstruct per-file time steps
+    // client-side — avoids a backend round-trip on every toggle. Safe for ICON-EU and
+    // RTOFS which always have uniform time steps.
+    function rebuildScrubberTimes() {
+      const windSet = new Set();
+      gribInfoFiles.forEach((f, i) => {
+        const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
+        if (cb && !cb.checked) return;
+        if (!f.timeStart || !f.nTimes) return;
+        const startMs = new Date(f.timeStart).getTime();
+        const endMs   = new Date(f.timeEnd).getTime();
+        const step = f.nTimes > 1 ? (endMs - startMs) / (f.nTimes - 1) : 0;
+        for (let k = 0; k < f.nTimes; k++) {
+          windSet.add(new Date(Math.round(startMs + k * step)).toISOString());
+        }
+      });
+      const windArr = Array.from(windSet).sort();
+      windTimesCount = windArr.length;
 
-      // Merge current times into a unified sorted axis
-      let unified = [...times];
+      let unified = [...windArr];
+      if (currentEnabled && currentFileTimes.length > 0) {
+        const s = new Set(windArr);
+        for (const t of currentFileTimes) { if (!s.has(t)) unified.push(t); }
+        unified.sort();
+      }
+      windTimes = unified;
+
+      const scrubber = document.getElementById('time-scrubber');
+      const prevVal  = Math.min(parseInt(scrubber.value) || 0, Math.max(0, unified.length - 1));
+      if (unified.length === 0) {
+        document.getElementById('time-scrubber-panel').style.display = 'none';
+        windTimesLoaded = false;
+        return;
+      }
+      scrubber.min   = 0;
+      scrubber.max   = unified.length - 1;
+      scrubber.value = prevVal;
+      document.getElementById('time-scrubber-panel').style.display = 'flex';
+      windTimesLoaded = true;
+      updateScrubberLabel(prevVal);
+    }
+
+    async function initWindScrubber() {
       try {
         const rc = await apiFetch(`${API}/current-times`);
         if (rc.ok) {
           const { times: cTimes } = await rc.json();
-          const windSet = new Set(times);
-          for (const t of cTimes) { if (!windSet.has(t)) unified.push(t); }
-          unified.sort();
+          currentFileTimes = cTimes;
         }
       } catch (_) { /* current-times unavailable */ }
 
-      if (unified.length === 0) return;
+      rebuildScrubberTimes();
 
-      windTimes = unified;
-      const scrubber = document.getElementById('time-scrubber');
-      scrubber.min = 0;
-      scrubber.max = unified.length - 1;
-      scrubber.value = 0;
-      document.getElementById('time-scrubber-panel').style.display = 'flex';
-      windTimesLoaded = true;
-      updateScrubberLabel(0);
       if (windTimesCount > 0) {
         await fetchWindPoints(0);
         await fetchWavePoints(0);
