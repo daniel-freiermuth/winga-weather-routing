@@ -89,15 +89,20 @@ curl -X PUT http://localhost:3000/skServer/plugins/signalk-weather-routing/resta
 
 ## Deploying static-only changes (public/)
 
-Changes to `public/index.html` or other static assets take effect immediately — no
-recompile or restart needed. Copy directly into the installed package:
+Use `scripts/dev-deploy.sh` to copy frontend changes and refresh the version label:
 
 ```bash
-cp <plugin-src>/public/index.html \
-   <signalk-server-repo>/docker/signalk_conf/node_modules/signalk-weather-routing/public/index.html
+./scripts/dev-deploy.sh                          # defaults: signalk-server, default plugin path
+./scripts/dev-deploy.sh my-container /custom/path # custom container or plugin path
 ```
 
-Hard-refresh the browser.
+The script writes a fresh `buildinfo.json` (with git version + branch name) directly
+into the container's plugin directory, then copies `public/index.html`. No restart
+needed — hard-refresh the browser.
+
+The version label shown at the bottom of the sidebar includes the branch name during
+development (e.g. `v0.7.0-3-g1234abc/fix/BUG-90-wind-wave-overlay-clear`), making it
+easy to verify the expected code is deployed.
 
 ## Running tests
 
