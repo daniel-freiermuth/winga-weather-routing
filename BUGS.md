@@ -4,7 +4,7 @@
 
 | # | Description |
 |---|---|
-| [BUG-88](https://github.com/kristianwiklund/signalk-weather-routing/issues/273) | The text colour used for GRIB file entries in the sidebar is "black", which is barely visible against the dark theme background. |
+
 
 | [BUG-86](https://github.com/kristianwiklund/signalk-weather-routing/issues/264) | The ocean current GRIB support (REQ-91) has not been tested with an actual tidal current GRIB. Testing was done with BSH and RTOFS ocean current GRIBs only. It is unknown whether tidal current GRIB products (which may use different WMO parameter names or depth-level conventions) are compatible with the current implementation. |
 | [BUG-83](https://github.com/kristianwiklund/signalk-weather-routing/issues/258) | Error "no grib files cover the requested departure time" appears when routing in an area covered only by a current GRIB (no wind GRIB covering that area). The message is factually wrong — there is a GRIB file loaded — and does not distinguish between wind and current files. |
@@ -19,6 +19,7 @@
 
 | # | Description |
 |---|---|---|
+| [~~BUG-88~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/273) | ~~The text colour used for GRIB file entries in the sidebar is "black", which is barely visible against the dark theme background.~~ — **fixed** (replaced `#000000` with `#6c7086` in `C64_PALETTE` so the first GRIB file's text, checkbox, and coverage bar are visible on the dark theme; confirmed 2026-06-14) |
 | [~~BUG-90~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/277) | ~~When the scrubber is at a time step covered only by a current GRIB (no wind/wave coverage), wind and wave overlays show the nearest preceding wind data instead of clearing.~~ — **fixed** (added `windNativeTimes` array in `rebuildScrubberTimes`; `fetchWindPoints`/`fetchWavePoints` check whether `windTimes[timeIdx]` is wind-native before calling backend; return early with cleared overlay if not; confirmed 2026-06-14) |
 | [~~BUG-89~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/275) | ~~Wind and wave overlays don't render on fresh page load (or after GRIB reload) unless a route calculation has been run first. Wave overlay additionally does not update after route calculation — requires moving the scrubber to trigger a fetch.~~ — **fixed** (added `/wind-times` call in `initWindScrubber` to pre-load wind data; added `fetchWavePoints` call in `fetchAndDrawRoute` after route calculation; confirmed 2026-06-14) |
 | [~~BUG-87~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/269) | ~~Dragging the scrubber slider with the mouse, or holding an arrow key, causes the interface to try to render every intermediate position, making updates sluggish when moving across a large time range.~~ — **fixed** (150 ms debounce on fetch calls in scrubber `input` handler with AbortController per fetch family; confirmed 2026-06-14) |

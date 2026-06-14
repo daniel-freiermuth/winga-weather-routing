@@ -117,7 +117,7 @@ Selecting a route in this dropdown overrides any manually placed start/end marke
 
 ### GRIB files
 
-The **GRIB Forecast** panel lists all `.grib2` files found in the configured `gribDir`. Each file has a checkbox — uncheck a file to exclude it from routing and remove its bounding box from the map. When multiple files are loaded they are combined automatically; the algorithm always picks the most recent file that covers each point in space and time.
+The **GRIB Forecast** panel lists all `.grib2` files found in the configured `gribDir`. Each file has a checkbox — uncheck a file to exclude it from routing and remove its bounding box from the map. When multiple files are loaded they are combined automatically; the algorithm always picks the most recent file that covers each point in space and time. A loading indicator (spinner) appears in the panel and the status box while GRIB data is being read at startup; it disappears once the data is ready.
 
 Below each file's forecast range, the panel shows the model run timestamp — the time the NWP model was initialised to produce that forecast (e.g. `Run: Jun 10 06:00 (74h ago)`). If the run is older than 12 hours the label is shown in amber; older than 24 hours in red. This helps identify stale forecasts that may have been superseded by newer model runs.
 
