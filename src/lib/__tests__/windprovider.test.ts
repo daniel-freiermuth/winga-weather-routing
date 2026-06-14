@@ -30,6 +30,7 @@ function makeEntry(grib: GribData, mtime: number, path_ = 'test.grib2'): GribFil
     meta: {
       path: path_,
       mtime,
+      type: 'wind',
       latMin: grib.latMin,
       latMax: grib.latMin + grib.latStep * (grib.nLat - 1),
       lonMin: grib.lonMin,

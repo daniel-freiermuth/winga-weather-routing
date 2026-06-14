@@ -169,9 +169,24 @@ When the loaded GRIB files contain SWH (significant wave height) bands — as in
 
 OpenSkiron ICON-EU EWAM files are combined files containing atmospheric wind data and ocean wave data on separate grids. The plugin extracts each grid's native parameters — including the correct data-point coordinates — and renders the canvas in Web Mercator coordinates to match Leaflet's map projection, so the wave overlay is accurately positioned on the chart at all latitudes.
 
+### Ocean current support
+
+The plugin supports ocean current GRIB2 files from [RTOFS](https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/) (NOAA, free, global), [BSH](https://www.bsh.de/EN/DATA/Predictions/Currents/Surface_currents_for_sailors/surface_currents_for_sailors_node.html) (German Federal Maritime and Hydrographic Agency, free, European waters), and [CMEMS](https://marine.copernicus.eu/) (Copernicus, free registration, global). Place any current GRIB file in the same `gribDir` as the wind files — the plugin detects it automatically by its GRIB metadata (UOGRD/VOGRD bands at ocean surface level) and applies the interpolated current vectors to the routing algorithm.
+
+When a current file is loaded:
+- The **GRIB Forecast** panel shows a "Ocean current" section listing the file with its model run age in the same amber/red staleness scheme as wind files.
+- The **Currents** layer checkbox in the Layers panel enables a current vector overlay on the map — cyan arrows showing current direction and speed, driven by the time scrubber.
+- Clicking the map while the Currents overlay is active shows current speed (kn) and direction (°T) in the popup.
+- The routing algorithm adds the current's eastward/northward velocity components to each frontier point's displacement, giving correct ground-track advancement globally.
+
+**Important limitations:**
+- **Tidal streams are not modelled.** Ocean current GRIB products (RTOFS, CMEMS global) represent large-scale circulation averaged over hours; they do not capture reversing tidal streams in straits and coastal waters. Plan tide gates separately using tidal atlases.
+- **Coverage gaps.** When the current GRIB does not cover part of a route (e.g. RTOFS excludes marginal seas), zero current is applied for those points. The coverage boundary is visible as the dashed box on the map.
+- **Model currency.** Use recent current files — Gulf Stream position and eddy structure can shift by 50–100 nm week to week. The staleness indicator helps identify old files.
+
 ### Map click info
 
-Clicking anywhere on the map shows a popup with data from all active overlays at that point. If the **Wind overlay** is active the popup includes wind speed (in the active unit) and meteorological direction (°T). If the **Wave height** overlay is active it includes significant wave height. If neither overlay is active or no data is found within ~4 km of the click, no popup appears.
+Clicking anywhere on the map shows a popup with data from all active overlays at that point. If the **Wind overlay** is active the popup includes wind speed (in the active unit) and meteorological direction (°T). If the **Wave height** overlay is active it includes significant wave height. If the **Currents** overlay is active it includes current speed (kn) and direction (°T). If no overlay is active or no data is found within ~6 km of the click, no popup appears.
 
 ### Isochrone overlay
 
