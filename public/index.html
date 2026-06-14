@@ -682,16 +682,31 @@
         });
     }
 
+    let scrubberTimer = null;
+    let windAbortCtrl = null;
+    let waveAbortCtrl = null;
+    let currentAbortCtrl = null;
+
     document.getElementById('time-scrubber').addEventListener('input', e => {
       const idx = parseInt(e.target.value);
       updateScrubberLabel(idx);
-      fetchWindPoints(idx);
-      fetchWavePoints(idx);
-      if (allCurrentPoints.length > 0 || document.getElementById('current-overlay-toggle').checked) {
-        const timeMs = windTimes[idx] ? new Date(windTimes[idx]).getTime() : Date.now();
-        fetchCurrentPoints(timeMs);
-      }
       updateScrubberHighlight(idx);
+      if (scrubberTimer) clearTimeout(scrubberTimer);
+      scrubberTimer = setTimeout(() => {
+        scrubberTimer = null;
+        if (windAbortCtrl) windAbortCtrl.abort();
+        windAbortCtrl = new AbortController();
+        fetchWindPoints(idx, windAbortCtrl.signal);
+        if (waveAbortCtrl) waveAbortCtrl.abort();
+        waveAbortCtrl = new AbortController();
+        fetchWavePoints(idx, waveAbortCtrl.signal);
+        if (allCurrentPoints.length > 0 || document.getElementById('current-overlay-toggle').checked) {
+          const timeMs = windTimes[idx] ? new Date(windTimes[idx]).getTime() : Date.now();
+          if (currentAbortCtrl) currentAbortCtrl.abort();
+          currentAbortCtrl = new AbortController();
+          fetchCurrentPoints(timeMs, currentAbortCtrl.signal);
+        }
+      }, 150);
     });
 
     // REQ-118: jump scrubber to the nearest available timestep to wall-clock now
@@ -1365,7 +1380,7 @@
         `</svg></div>`;
     }
 
-    async function fetchWindPoints(timeIdx) {
+    async function fetchWindPoints(timeIdx, signal) {
       // No wind GRIB checked — clear overlay without hitting backend
       // (backend with no path params returns all files, not an empty result)
       let anyWindEnabled = false;
@@ -1383,7 +1398,13 @@
         const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
         if (!cb || cb.checked) params.append('path', f.path);
       });
-      const r = await apiFetch(`${API}/wind-grid?${params}`);
+      let r;
+      try {
+        r = await apiFetch(`${API}/wind-grid?${params}`, { signal });
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+        throw e;
+      }
       if (!r.ok) return;
       const { points } = await r.json();
       allWindPoints = points;
@@ -1401,7 +1422,7 @@
       return `hsla(${hue}, 100%, 50%, 0.7)`;
     }
 
-    async function fetchWavePoints(timeIdx) {
+    async function fetchWavePoints(timeIdx, signal) {
       const params = new URLSearchParams({ timeIdx: Math.min(timeIdx, windTimesCount - 1) });
       let anyEnabled = false;
       gribInfoFiles.forEach((f, i) => {
@@ -1415,7 +1436,13 @@
         if (waveOverlayLayer) { map.removeLayer(waveOverlayLayer); waveOverlayLayer = null; }
         return;
       }
-      const r = await apiFetch(`${API}/wave-grid?${params}`);
+      let r;
+      try {
+        r = await apiFetch(`${API}/wave-grid?${params}`, { signal });
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+        throw e;
+      }
       if (!r.ok) return;
       const { points, latMin, latMax, lonMin, lonMax, latStep, lonStep } = await r.json();
       allWavePoints = points;
@@ -1540,8 +1567,14 @@ const gridBounds = L.latLngBounds(
       windOverlayLayer.addTo(map);
     }
 
-    async function fetchCurrentPoints(timeMs) {
-      const r = await apiFetch(`${API}/current-grid?timeMs=${timeMs}`);
+    async function fetchCurrentPoints(timeMs, signal) {
+      let r;
+      try {
+        r = await apiFetch(`${API}/current-grid?timeMs=${timeMs}`, { signal });
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+        throw e;
+      }
       if (!r.ok) return;
       const { points } = await r.json();
       allCurrentPoints = points;

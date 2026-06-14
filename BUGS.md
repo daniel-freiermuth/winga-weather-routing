@@ -4,8 +4,9 @@
 
 | # | Description |
 |---|---|
+| [BUG-89](https://github.com/kristianwiklund/signalk-weather-routing/issues/275) | Wind and wave overlays don't render on fresh page load (or after GRIB reload) unless a route calculation has been run first. Wave overlay additionally does not update after route calculation — requires moving the scrubber to trigger a fetch. Root cause: `scanAndIndexGribDir` leaves wind GRIB `data = null` (only current GRIB data is loaded at scan time); the frontend never calls `/wind-times` to lazily load the data. Discovered during BUG-87 testing. Contains two sub-issues: (a) wind overlay — pre-existing, works after a route calculation loads the data (x-ref BUG-87); (b) wave overlay — `fetchWavePoints` is never called in `fetchAndDrawRoute` after route calculation, only `fetchWindPoints`. |
 | [BUG-88](https://github.com/kristianwiklund/signalk-weather-routing/issues/273) | The text colour used for GRIB file entries in the sidebar is "black", which is barely visible against the dark theme background. |
-| [BUG-87](https://github.com/kristianwiklund/signalk-weather-routing/issues/269) | Dragging the scrubber slider with the mouse, or holding an arrow key, causes the interface to try to render every intermediate position, making updates sluggish when moving across a large time range. |
+
 | [BUG-86](https://github.com/kristianwiklund/signalk-weather-routing/issues/264) | The ocean current GRIB support (REQ-91) has not been tested with an actual tidal current GRIB. Testing was done with BSH and RTOFS ocean current GRIBs only. It is unknown whether tidal current GRIB products (which may use different WMO parameter names or depth-level conventions) are compatible with the current implementation. |
 | [BUG-83](https://github.com/kristianwiklund/signalk-weather-routing/issues/258) | Error "no grib files cover the requested departure time" appears when routing in an area covered only by a current GRIB (no wind GRIB covering that area). The message is factually wrong — there is a GRIB file loaded — and does not distinguish between wind and current files. |
 | [BUG-58](https://github.com/kristianwiklund/signalk-weather-routing/issues/188) | `interpolateBoatSpeed` clamps wind speed to the polar's minimum TWS column when TWS is below that column, so e.g. 3 kn of wind returns the same boat speed as 6 kn of wind. This is physically wrong — the boat cannot sail at 5+ kn in 3 kn of wind. **Troubleshooting:** A fix was implemented (return 0 when `twsKnots < polar.tws[0]`, commit `92f194f`, merged as `11f149e`) but caused a routing regression: the standard Öregrund→Gotska Sandön test took a completely different path — north around Åland instead of through Ålandförträngningen. Root cause hypothesis: the GRIB wind in Ålandförträngningen is near the polar's minimum TWS (likely just below 6 kn for the test forecast), so returning 0 speed for those points kills all frontier points in the passage and forces the router to find an alternative route with stronger wind. The fix was reverted (`6575ad8`). A correct fix must handle the near-minimum case without discarding viable frontier points — e.g. by only returning 0 for TWS values significantly below the polar minimum, or by preserving the clamp for values within a small tolerance of the minimum. |
@@ -19,6 +20,7 @@
 
 | # | Description |
 |---|---|
+| [~~BUG-87~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/269) | ~~Dragging the scrubber slider with the mouse, or holding an arrow key, causes the interface to try to render every intermediate position, making updates sluggish when moving across a large time range.~~ — **fixed** (150 ms debounce on fetch calls in scrubber `input` handler with AbortController per fetch family; confirmed 2026-06-14) |
 | [~~BUG-85~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/261) | ~~Wind overlay still rendered when all wind GRIBs unchecked with a current GRIB active.~~ — **fixed** (short-circuit added to `fetchWindPoints`: clears `allWindPoints` and removes layer when no wind file is checked; confirmed 2026-06-14) |
 | [~~BUG-84~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/260) | ~~Scrubber time range not updated when GRIB files toggled; current GRIB times excluded from range.~~ — **fixed** (`rebuildScrubberTimes()` recomputes unified time axis from checked files on every toggle; confirmed 2026-06-14) |
 | [~~BUG-82~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/257) | ~~Current overlay shows physically impossible current values (e.g. 27487.3 kn at 45°T) over land when an RTOFS GRIB is loaded.~~ — **fixed** (zero out cells where `rawU[i] >= 9000` or `rawV[i] >= 9000` at load time in `readCurrentGrib`; confirmed 2026-06-14) |
@@ -964,3 +966,51 @@ Key findings:
 - **Building gdal-async from source on arm64 is possible** (it uses prebuildify/node-gyp) but requires `g++`, `make`, `python3`, and PROJ/GDAL dev headers. On Venus OS (Cerbo), build tools are available via `opkg` but the CPU is slow (~50 MIPS, half of a Pi 4). Node 20 on armv7 is also below SignalK's current minimum (Node 22), making Cerbo GX a low-priority target for this plugin.
 
 *(End of investigation notes — 2026-06-13)*
+
+---
+
+## BUG-87 — Investigation Notes
+
+### Deploy testing — wind/wave overlay 503 regression
+
+When deploying the BUG-87 debounce fix (commit `389b44a` on `fix/BUG-87-scrubber-debounce`) to the SignalK server container, the wind and wave overlays stopped rendering. Requests to `/wind-grid` and `/wave-grid` returned HTTP 503 with error body `"GRIB data not loaded — fetch /wind-times first"`. The current overlay continued to work normally.
+
+### Investigation
+
+**Server log evidence** (from `docker logs signalk-server`):
+```
+GET /plugins/signalk-weather-routing/wind-grid?timeIdx=0&path=...  503 1.198 ms - 60
+GET /plugins/signalk-weather-routing/wave-grid?timeIdx=0&path=...  503 1.137 ms - 60
+GET /plugins/signalk-weather-routing/grib-info                      200 1.476 ms - -
+GET /plugins/signalk-weather-routing/current-grid?timeMs=...        200 40.283 ms - -
+```
+
+Already present immediately after a `/reload-grib` call. The `wave-grid` request at `timeIdx=0` (no debounce involved) also returned 503 — confirming this was **not** caused by the debounce or AbortController changes in BUG-87.
+
+### Root cause
+
+`scanAndIndexGribDir` in `src/index.ts:86–122` treats wind and current GRIBs differently:
+
+| File type | Lines | Data loaded at scan time? |
+|-----------|-------|--------------------------|
+| Current | 102, 111–121 | **Yes** — `loadCurrentGrib()` called for the freshest file |
+| Wind | 104 | **No** — `data: null` stored, never loaded |
+
+The only paths that load wind GRIB data are:
+- **`/wind-times`** (line 497–508) — lazily loads ALL wind files. **Never called by the frontend.**
+- **`/calculate`** (line 374–382) — lazily loads only the files selected for the route calculation.
+
+Since the frontend's `initWindScrubber()` (`public/index.html:1719`) never calls `/wind-times`, and `rebuildScrubberTimes()` reconstructs the time axis purely from GRIB metadata (timeStart/timeEnd/nTimes) without loading data, the wind data stays null on every fresh page load or GRIB reload.
+
+**The wind overlay works after a route calculation** because `/calculate` calls `loadGrib()` for the selected files, setting `entry.data` for the remainder of the server session.
+
+**The wave overlay does NOT work after a route calculation** because `fetchAndDrawRoute()` (line 1800–1823) only calls `fetchWindPoints(i0)` after route completion — `fetchWavePoints` is never invoked there. The wave overlay therefore only renders when the user happens to move the scrubber (which calls `fetchWavePoints` via the `input` handler).
+
+### Classification
+
+Both issues are pre-existing — they existed before the BUG-87 debounce fix. The BUG-87 deployment simply made them visible because the user tested the scrubber on a fresh page load.
+
+- **Wind overlay (a)**: pre-existing; mitigated by running any route calculation first.
+- **Wave overlay (b)**: pre-existing; mitigated by moving the scrubber after route calculation.
+
+Logged as **BUG-89** (#275). Cross-reference comment posted on BUG-87 (#269).
