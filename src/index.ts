@@ -2,7 +2,7 @@
 
 import * as nodepath from 'node:path';
 import * as fs from 'node:fs/promises';
-import { Router, Request, Response } from 'express';
+import express, { Router, Request, Response } from 'express';
 
 // Side-effect: copies gdal-async .node binary from optional dep — must run before ./lib/grib
 import './lib/ensure-gdal-binary';
@@ -273,6 +273,11 @@ module.exports = (app: any) => {
     }),
 
     registerWithRouter: (router: Router) => {
+      const leafletDist = nodepath.join(
+        nodepath.dirname(require.resolve('leaflet/package.json')), 'dist'
+      );
+      router.use('/leaflet', express.static(leafletDist));
+
       router.post('/calculate', async (req: Request, res: Response) => {
         if (gribFiles.length === 0) return void res.status(503).json({ error: 'No GRIB files indexed — configure gribDir and reload' });
         if (!polar) return void res.status(503).json({ error: 'Polar data not loaded' });

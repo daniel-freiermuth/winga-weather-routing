@@ -45,7 +45,9 @@
   },
   "dependencies": {
     "gdal-async": "^3.9.0",
-    "jsts": "^2.12.1"
+    "jsts": "^2.12.1",
+    "express": "^4.21.0",
+    "leaflet": "^1.9.4"
   },
   "devDependencies": {
     "@signalk/server-api": "^2.0.0",
