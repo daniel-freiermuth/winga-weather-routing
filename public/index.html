@@ -1724,6 +1724,8 @@ const gridBounds = L.latLngBounds(
           currentFileTimes = cTimes;
         }
       } catch (_) { /* current-times unavailable */ }
+      // Pre-load wind GRIB data so /wind-grid and /wave-grid don't return 503
+      try { await apiFetch(`${API}/wind-times`); } catch (_) { /* wind-times unavailable */ }
 
       rebuildScrubberTimes();
 
@@ -1820,6 +1822,7 @@ const gridBounds = L.latLngBounds(
           scrubber.max = iN;
           scrubber.value = i0;
           fetchWindPoints(i0);
+          fetchWavePoints(i0);
         }
       } catch(e) { setStatus('error', `Draw failed: ${e}`); }
     }
