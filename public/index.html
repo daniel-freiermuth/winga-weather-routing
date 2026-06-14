@@ -12,7 +12,7 @@
     #right-col { flex: 1; display: flex; flex-direction: column; min-width: 0; background: #1e2230; }
 
     #conditions-panel {
-      height: 150px;
+      height: 200px;
       background: #1e2230;
       border-top: 2px solid #313244;
       display: none;
@@ -42,8 +42,8 @@
     }
     #conditions-y-left  { width: 130px; flex-shrink: 0; position: relative; }
     #conditions-y-right { width: 52px;  flex-shrink: 0; position: relative; display: none; }
-    #conditions-svg-wrapper { flex: 1; min-width: 0; min-height: 0; position: relative; }
-    #conditions-svg { position: absolute; inset: 0; display: block; cursor: zoom-in; }
+    #conditions-svg-wrapper { flex: 1; min-width: 0; min-height: 0; }
+    #conditions-svg { display: block; width: 100%; height: 100%; cursor: zoom-in; }
     #conditions-panel.conditions-fullscreen {
       position: fixed;
       top: 0; left: 0;
@@ -490,7 +490,7 @@
       <div id="conditions-body">
         <div id="conditions-y-left"></div>
         <div id="conditions-svg-wrapper">
-          <svg id="conditions-svg" preserveAspectRatio="none"></svg>
+          <svg id="conditions-svg" preserveAspectRatio="none" width="100%" height="100%"></svg>
         </div>
         <div id="conditions-y-right"></div>
       </div>
@@ -549,7 +549,7 @@
     let currentEnabled = true;
     let unitPrefs = null;
     let windSpeedMs = false;
-    let conditionsGraphHeight = 150;
+    let conditionsGraphHeight = 200;
     let windTimes = [];       // unified time axis (wind + current), sorted
     let windTimesCount = 0;   // number of entries that are wind-native (for clamping overlay calls)
     let windNativeTimes = []; // wind-only timestamps, for checking coverage at timeIdx
@@ -1996,7 +1996,7 @@ const gridBounds = L.latLngBounds(
 
       const hasWave = meta.some(m => m.waveHeight != null);
 
-      const VW = 800, VH = 170;
+      const VW = 800, VH = 200;
       const ml = windSpeedMs ? 70 : 0, mr = 8, mt = 14, mb = 66;
       const pw = VW - ml - mr, ph = VH - mt - mb;
 
