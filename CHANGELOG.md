@@ -2,6 +2,7 @@
 
 ## Upcoming
 
+- "Use vessel position" button reads the vessel's current GPS position from the SignalK WebSocket stream and sets it as the departure point; disabled when no position is available (REQ-89)
 - Per-file archive button (🗑) on each GRIB file row moves the file to an `archive/` subfolder after confirmation; "Remove old GRIBs (N)" button archives all files whose forecast has ended (REQ-120)
 - Scrubber coverage bar now shows one coloured row per loaded GRIB file, stacked vertically, so overlapping files are all visible simultaneously (REQ-117)
 - "Now" marker on the scrubber is a yellow downward-pointing triangle above the coverage rows, replacing the previous invisible white line (REQ-118)

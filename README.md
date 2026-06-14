@@ -94,7 +94,7 @@ Open the webapp at `http://<your-signalk-host>:3000/signalk-weather-routing/`.
 
 ### Basic workflow
 
-1. Set a **departure point**: click **Set on map** and click the map, or pick an existing SignalK route or waypoint from the dropdown (for routes, the last waypoint is used as the start)
+1. Set a **departure point**: click **Set on map** and click the map, click **Use vessel position** to use the vessel's current GPS position (available only when a position is being received), or pick an existing SignalK route or waypoint from the dropdown (for routes, the last waypoint is used as the start)
 2. Set a **destination** the same way
 3. Optionally select a **Route waypoints** source to route through intermediate waypoints (see below)
 4. Set a **departure time**
