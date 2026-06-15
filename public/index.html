@@ -315,6 +315,10 @@
       <label class="layer-toggle">
         <input type="checkbox" id="isochrone-toggle" checked> Isochrones
       </label>
+      <label class="layer-toggle">
+        <input type="checkbox" id="region-toggle" disabled> Regions
+      </label>
+      <div id="region-list" style="display:none;flex-direction:column;gap:4px;margin-top:4px;max-height:180px;overflow-y:auto"></div>
     </div>
 
     <div class="section">
@@ -465,6 +469,14 @@
 
   <div id="right-col">
     <div id="map"></div>
+    <!-- SVG defs for region hatch pattern -->
+    <svg width="0" height="0" style="position:absolute">
+      <defs>
+        <pattern id="hatch-avoid" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="8" stroke="#f38ba8" stroke-width="1.5" opacity="0.6"/>
+        </pattern>
+      </defs>
+    </svg>
     <div id="time-scrubber-panel">
       <div id="scrubber-handle" title="Collapse panel">
         <span>Time scrubber</span>
@@ -528,6 +540,7 @@
     map.createPane('currentOverlayPane').style.zIndex = '295';
     map.createPane('landPane').style.zIndex = '250';
     map.createPane('landDilatedPane').style.zIndex = '248';
+    map.createPane('regionPane').style.zIndex = '240';
 
     let startLatLon = null;
     let endLatLon = null;
@@ -564,6 +577,10 @@
     let prevHighlightWpIdx = -1;
     const ISOCHRONE_COLOURS = ['#000000', '#4477ff', '#8833cc', '#cc3333'];
     let isochroneLayerGroup = L.layerGroup().addTo(map);
+    let regionLayer = null;
+    let regionList = []; // { id, name, geometry } from resources API
+    let regionAvoidIds = []; // list of UUIDs currently marked as avoid
+    let avoidRegionListDirty = false;
 
     // Unit conversion helpers: plugin-internal units (kn, m, nmi) ↔ SignalK preset display units.
     const _toSI   = { speed: v => v * 0.514444,  depth: v => v, distance: v => v * 1852.001 };
@@ -691,7 +708,7 @@
         const r = await apiFetch(`${API}/reload-grib`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
         const j = await r.json();
         if (j.error) setStatus('error', j.error);
-        else loadGribInfo();
+        else { loadGribInfo(); loadRegions(); }
       } catch(e) { setStatus('error', String(e)); }
     });
 
@@ -806,6 +823,7 @@
     loadDepartureResources();
     loadWaypointRoutes();
     loadConfig();
+    loadRegions();
     connectVesselPositionStream();
 
     async function apiFetch(url, options = {}) {
@@ -1268,6 +1286,140 @@
       updateCalcButton();
     });
 
+    async function loadRegions() {
+      try {
+        // Fetch regions from the standard SignalK Resources API.
+        // Returns an object keyed by UUID.
+        const r = await fetch('/signalk/v2/api/resources/regions');
+        if (!r.ok) { regionList = []; return; }
+        const data = await r.json();
+        if (!data || typeof data !== 'object') { regionList = []; return; }
+
+        regionList = Object.entries(data).map(([id, entry]) => ({
+          id,
+          name: entry?.name ?? id.slice(0, 8),
+          geometry: entry?.feature?.geometry,
+        })).filter(r => r.geometry);
+
+        // Fetch avoid list from the plugin endpoint.
+        const avoidR = await apiFetch(`${API}/avoid-regions`);
+        if (avoidR.ok) {
+          const avoidJ = await avoidR.json();
+          regionAvoidIds = avoidJ.avoidRegionIds ?? [];
+        }
+
+        // Update the region list sidebar and overlay.
+        renderRegionList();
+        await renderRegionOverlay();
+        document.getElementById('region-toggle').disabled = false;
+      } catch {
+        regionList = [];
+      }
+    }
+
+    function renderRegionList() {
+      const container = document.getElementById('region-list');
+      if (regionList.length === 0) {
+        container.style.display = 'none';
+        return;
+      }
+      container.style.display = 'flex';
+      container.innerHTML = regionList.map(reg => {
+        const id = reg.id ?? reg._id ?? '';
+        const name = reg.name ?? id.slice(0, 8);
+        const isAvoided = regionAvoidIds.includes(id);
+        return `
+          <label class="region-item" data-uuid="${id}"
+            style="display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:4px;
+                   cursor:pointer;font-size:12px;color:#cdd6f4;background:${isAvoided ? '#3a1f28' : '#2a2f45'};
+                   border:1px solid ${isAvoided ? '#f38ba8' : 'transparent'}">
+            <input type="checkbox" ${isAvoided ? 'checked' : ''} style="accent-color:#f38ba8;cursor:pointer">
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>
+          </label>`;
+      }).join('');
+
+      container.querySelectorAll('.region-item').forEach(el => {
+        el.addEventListener('click', async (e) => {
+          if (e.target.tagName === 'INPUT') return; // let checkbox handle its own click
+          const cb = el.querySelector('input[type="checkbox"]');
+          cb.checked = !cb.checked;
+          await toggleRegionAvoid(el.dataset.uuid, cb.checked);
+        });
+        const cb = el.querySelector('input[type="checkbox"]');
+        cb.addEventListener('change', async () => {
+          await toggleRegionAvoid(el.dataset.uuid, cb.checked);
+        });
+      });
+    }
+
+    async function toggleRegionAvoid(uuid, avoid) {
+      if (avoid) {
+        if (!regionAvoidIds.includes(uuid)) regionAvoidIds.push(uuid);
+      } else {
+        regionAvoidIds = regionAvoidIds.filter(id => id !== uuid);
+      }
+      avoidRegionListDirty = true;
+      renderRegionList();
+      await renderRegionOverlay();
+      // Persist immediately via PUT /avoid-regions.
+      try {
+        await apiFetch(`${API}/avoid-regions`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ avoidRegionIds: regionAvoidIds }),
+        });
+      } catch { /* best-effort */ }
+    }
+
+    async function renderRegionOverlay() {
+      if (regionLayer) { map.removeLayer(regionLayer); regionLayer = null; }
+      if (!document.getElementById('region-toggle').checked || regionList.length === 0) return;
+
+      const features = [];
+      for (const reg of regionList) {
+        if (!reg.geometry) continue;
+        const id = reg.id ?? reg._id ?? '';
+        const isAvoided = regionAvoidIds.includes(id);
+        features.push({
+          type: 'Feature',
+          id,
+          properties: { name: reg.name ?? '', avoided: isAvoided },
+          geometry: reg.geometry,
+        });
+      }
+      if (features.length === 0) return;
+
+      regionLayer = L.geoJSON({ type: 'FeatureCollection', features }, {
+        pane: 'regionPane',
+        renderer: L.svg({ pane: 'regionPane' }),
+        style: (feature) => {
+          if (feature?.properties?.avoided) {
+            return {
+              color: '#f38ba8',
+              weight: 2,
+              fillColor: 'url(#hatch-avoid)',
+              fillOpacity: 1,
+            };
+          }
+          return {
+            color: '#6c7086',
+            weight: 1,
+            dashArray: '4 4',
+            fillColor: 'rgba(148,148,148,0.15)',
+            fillOpacity: 1,
+          };
+        },
+      }).addTo(map);
+    }
+
+    document.getElementById('region-toggle').addEventListener('change', async (e) => {
+      if (e.target.checked) {
+        await renderRegionOverlay();
+      } else {
+        if (regionLayer) { map.removeLayer(regionLayer); regionLayer = null; }
+      }
+    });
+
     async function startCalculation() {
       if (!startLatLon || !endLatLon) return;
       const depTime = document.getElementById('departure-time').value;
@@ -1319,6 +1471,7 @@
             end: endLatLon,
             departureTime: new Date(depTime).toISOString(),
             ...(routeWaypoints.length > 0 ? { waypoints: routeWaypoints } : {}),
+            avoidRegionIds: regionAvoidIds,
             useSafetyMargin: document.getElementById('safety-margin-toggle').checked,
             useLandAvoidance: document.getElementById('land-avoidance-toggle').checked,
             enabledGribPaths: gribInfoFiles

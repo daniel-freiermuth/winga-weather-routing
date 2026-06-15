@@ -150,6 +150,7 @@ export interface CalculationRequest {
   useSafetyMargin?: boolean;
   useLandAvoidance?: boolean;
   enabledGribPaths?: string[];       // if absent, all files are used
+  avoidRegionIds?: string[];
   options?: Record<string, unknown>; // per-algorithm tuning
 }
 
@@ -182,4 +183,19 @@ export interface PluginSettings {
   coneDisableLookaheadNm?: number;
   maxHeadingChange?: number;
   conditionsGraphHeight?: number;
+  avoidRegionIds?: string[];
+}
+
+// A user-defined region polygon from SignalK resources/regions.
+export interface RegionRing {
+  bboxLatMin: number;
+  bboxLatMax: number;
+  bboxLonMin: number;
+  bboxLonMax: number;
+  exterior: Float64Array;  // interleaved [lon0,lat0, lon1,lat1, ...]
+}
+
+// Simple index: UUID → RegionRing pair.
+export interface RegionIndex {
+  regions: Map<string, RegionRing>;
 }

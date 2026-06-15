@@ -1,10 +1,11 @@
 // Isochrone routing: time-optimal route search via iterative frontier expansion.
 
-import { CurrentProvider, WindProvider, LandEdgeIndex, PolarData, CalculationRequest, IsochronePoint, RoutePoint } from '../../types';
+import { CurrentProvider, WindProvider, LandEdgeIndex, RegionIndex, PolarData, CalculationRequest, IsochronePoint, RoutePoint } from '../../types';
 import { RoutingAlgorithm } from './algorithm';
 import { nearestIdx } from '../windprovider';
 import { interpolateBoatSpeed } from '../polar';
 import { segmentCrossesLandFast, isPointOnLand } from '../landmask';
+import { segmentCrossesRegion, isPointInRegion } from '../regions';
 import { haversineNM, bearingTo, destinationPoint, windSpeedKnots, windDirection } from '../geo';
 
 const DEFAULT_HEADING_STEP = 5;
@@ -83,6 +84,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     current: CurrentProvider | null,
     polar: PolarData,
     edgeIndex: LandEdgeIndex | null,
+    regionIndex: RegionIndex | null,
     request: CalculationRequest,
     onProgress: (pct: number, frontier: Array<[number, number]>) => void,
     options?: Record<string, unknown>,
@@ -106,6 +108,16 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     const nSteps = wind.times.length - startTimeIdx - 1;
 
     if (nSteps <= 0) throw new Error('Departure time is at or after the end of the forecast data');
+
+    const avoidIds = new Set(request.avoidRegionIds ?? []);
+
+    // Nautical Safety Rule: hard error if start or destination is inside an avoided region.
+    if (regionIndex && avoidIds.size > 0) {
+      if (isPointInRegion(regionIndex, avoidIds, start.lat, start.lon))
+        throw new Error('Start point is inside an avoided region — move it to open water or unmark that region');
+      if (isPointInRegion(regionIndex, avoidIds, end.lat, end.lon))
+        throw new Error('Destination is inside an avoided region — move it to open water or unmark that region');
+    }
 
     const seedVec = wind.getWind(start.lat, start.lon, startTimeIdx);
     let isochrone: IsochronePoint[] = [{
@@ -147,6 +159,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
       for (const point of isochrone) {
         if (edgeIndex && isPointOnLand(edgeIndex, point.lat, point.lon)) continue;
+        if (regionIndex && avoidIds.size > 0 && isPointInRegion(regionIndex, avoidIds, point.lat, point.lon)) continue;
 
         // Per-position bearing: cone axis points from this frontier point toward the destination,
         // not from the original start. A fixed start→end axis blocked Öresund transit headings
@@ -173,8 +186,10 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           : destinationPoint(point.lat, point.lon, coneDisableLookaheadNm, pointToDestBearing);
         const directPathBlockedByLand = edgeIndex !== null &&
           segmentCrossesLandFast(edgeIndex, point.lat, point.lon, coneCheckEnd.lat, coneCheckEnd.lon);
-        if (directPathBlockedByLand) coneDisabledCount++;
-        const coneHalfAngle = directPathBlockedByLand ? 180 : configuredConeHalfAngle;
+        const directPathBlockedByRegion = regionIndex !== null && avoidIds.size > 0 &&
+          segmentCrossesRegion(regionIndex, avoidIds, point.lat, point.lon, coneCheckEnd.lat, coneCheckEnd.lon);
+        if (directPathBlockedByLand || directPathBlockedByRegion) coneDisabledCount++;
+        const coneHalfAngle = (directPathBlockedByLand || directPathBlockedByRegion) ? 180 : configuredConeHalfAngle;
 
         let waitCandidateAdded = false;
         for (let hdg = 0; hdg < 360; hdg += headingStep) {
@@ -235,6 +250,8 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
             landCheckMs += performance.now() - t0land;
             if (blocked) { rejectedByLand++; continue; }
           }
+          if (regionIndex && avoidIds.size > 0 &&
+            segmentCrossesRegion(regionIndex, avoidIds, point.lat, point.lon, newLat, newLon)) { rejectedByLand++; continue; }
 
           const newPoint: IsochronePoint = {
             lat: newLat, lon: newLon,

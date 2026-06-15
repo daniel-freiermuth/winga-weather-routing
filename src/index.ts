@@ -7,13 +7,14 @@ import express, { Router, Request, Response } from 'express';
 // Side-effect: copies gdal-async .node binary from optional dep — must run before ./lib/grib
 import './lib/ensure-gdal-binary';
 
-import { CurrentFileEntry, CurrentProvider, GribFileEntry, GribInfoResponse, PolarData, LandIndex, LandEdgeIndex, CalculationStatus, PluginSettings, RoutePoint, LatLon } from './types';
+import { CurrentFileEntry, CurrentProvider, GribFileEntry, GribInfoResponse, PolarData, LandIndex, LandEdgeIndex, RegionIndex, CalculationStatus, PluginSettings, RoutePoint, LatLon } from './types';
 import { loadGrib, loadCurrentGrib, scanGribDir, readGribMeta, getCurrentAt, nearestCurrentTimeIndex } from './lib/grib';
 import { MultiFileWindProvider } from './lib/windprovider';
 import { SingleFileCurrentProvider } from './lib/currentprovider';
 import { parsePolar } from './lib/polar';
 import { buildLandIndex, polygonsInBbox, isPointOnLand } from './lib/landmask';
 import { saveRoute } from './lib/resources';
+import { buildRegionIndex, validRegionUuids } from './lib/regions';
 import { pluginDataDir, loadBundledEdgeIndex, loadBundledDilatedIndex, hiresLandAvailable, loadHiresEdgeIndex, loadHiresDilatedIndex } from './lib/setup';
 import { RoutingAlgorithm } from './lib/routing/algorithm';
 import { IsochroneAlgorithm } from './lib/routing/isochrone';
@@ -36,6 +37,7 @@ module.exports = (app: any) => {
   let dilatedEdgeIndex: LandEdgeIndex | null = null;   // dilated edge-tile index — safety margin routing (REQ-39)
   let dilatedIndexReady = false;
   let hiresActive = false;
+  let regionIndex: RegionIndex | null = null;
   let settings: PluginSettings | null = null;
   let calcStatus: CalculationStatus = { status: 'idle', progress: 0 };
   let pendingRoute: import('./types').RoutePoint[] | null = null;
@@ -121,6 +123,31 @@ module.exports = (app: any) => {
     }
   }
 
+  async function loadRegions(): Promise<void> {
+    try {
+      if (!app.resourcesApi?.listResources) {
+        app.debug('resourcesApi.listResources not available — skipping region load');
+        regionIndex = null;
+        return;
+      }
+      const apiRegions: any[] = await app.resourcesApi.listResources('regions');
+      regionIndex = buildRegionIndex(apiRegions);
+
+      // Auto-clean stale UUIDs from plugin config.
+      if (settings && settings.avoidRegionIds && settings.avoidRegionIds.length > 0) {
+        const valid = validRegionUuids(regionIndex);
+        const stale = settings.avoidRegionIds.filter(id => !valid.has(id));
+        if (stale.length > 0) {
+          settings.avoidRegionIds = settings.avoidRegionIds.filter(id => valid.has(id));
+          try { app.savePluginConfig?.(); } catch { /* not critical */ }
+        }
+      }
+    } catch (e: any) {
+      app.debug(`Failed to load regions: ${e.message}`);
+      regionIndex = null;
+    }
+  }
+
   const plugin = {
     id: 'signalk-weather-routing',
     name: 'Weather Routing',
@@ -169,6 +196,7 @@ module.exports = (app: any) => {
 
       app.setPluginStatus('Indexing GRIB directory...');
       await scanAndIndexGribDir(cfg.gribDir);
+      await loadRegions();
       setReady();
     },
 
@@ -183,6 +211,7 @@ module.exports = (app: any) => {
       dilatedLandIndex = null;
       dilatedEdgeIndex = null;
       dilatedIndexReady = false;
+      regionIndex = null;
       calcStatus = { status: 'idle', progress: 0 };
       pendingRoute = null;
       closeSseClients();
@@ -276,6 +305,13 @@ module.exports = (app: any) => {
           default: 150,
           minimum: 80,
           maximum: 400,
+        },
+        avoidRegionIds: {
+          type: 'array',
+          title: 'Avoided region UUIDs',
+          description: 'UUIDs of SignalK regions to avoid during routing. Manage via the webapp map overlay.',
+          items: { type: 'string' },
+          default: [],
         },
       },
     }),
@@ -408,7 +444,7 @@ module.exports = (app: any) => {
 
           if (waypoints.length === 0) {
             const result = await algorithm.calculate(
-              wind, activeCurrentProvider, polar, activeIndex, req.body,
+              wind, activeCurrentProvider, polar, activeIndex, regionIndex, req.body,
               (pct, frontier) => {
                 calcStatus = { status: 'calculating', progress: pct, frontier };
                 pushSse({ type: 'progress', progress: pct, frontier });
@@ -433,7 +469,7 @@ module.exports = (app: any) => {
               const progressTop = (i + 1) / segCount;
 
               const segResult = await algorithm.calculate(
-                wind, activeCurrentProvider, polar, activeIndex,
+                wind, activeCurrentProvider, polar, activeIndex, regionIndex,
                 { ...req.body, start: segStart, end: segEnd, departureTime: segDepartureTime },
                 (pct, frontier) => {
                   const mapped = progressBase * 100 + pct * (progressTop - progressBase);
@@ -472,7 +508,7 @@ module.exports = (app: any) => {
       });
 
       router.get('/status', (_req: Request, res: Response) => {
-        res.json({ ...calcStatus, dilatedIndexReady, hiresLandActive: hiresActive, polarMinTws: polar?.tws[0] ?? null });
+        res.json({ ...calcStatus, dilatedIndexReady, hiresLandActive: hiresActive, polarMinTws: polar?.tws[0] ?? null, nRegions: regionIndex?.regions.size ?? null, avoidRegionIds: settings?.avoidRegionIds ?? [] });
       });
 
       router.get('/calculation-stream', (req: Request, res: Response) => {
@@ -739,6 +775,7 @@ module.exports = (app: any) => {
         try {
           app.setPluginStatus('Re-indexing GRIB directory...');
           await scanAndIndexGribDir(dir);
+          await loadRegions();
           res.json({ success: true, nFiles: gribFiles.length, nCurrentFiles: currentFiles.length, failedFiles: gribFailedFiles });
           setReady();
         } catch (e: any) {
@@ -782,6 +819,41 @@ module.exports = (app: any) => {
         } catch (e: any) {
           res.status(500).json({ error: e.message });
         }
+      });
+
+      // REQ-98: Standard SignalK Resources API for region data.
+      // The frontend fetches region geometry directly from /signalk/v2/api/resources/regions.
+      // This plugin provides a lightweight endpoint for reading/writing the avoid list.
+
+      router.get('/avoid-regions', (_req: Request, res: Response) => {
+        res.json({ avoidRegionIds: settings?.avoidRegionIds ?? [] });
+      });
+
+      router.put('/avoid-regions', (req: Request, res: Response) => {
+        const ids: string[] = Array.isArray(req.body?.avoidRegionIds) ? req.body.avoidRegionIds : [];
+        // Validate: only accept UUIDs that actually exist in the current regionIndex.
+        const valid = regionIndex ? validRegionUuids(regionIndex) : new Set<string>();
+        const filtered = ids.filter(id => valid.has(id) || !valid.size); // if no regions loaded, allow all
+        if (settings) {
+          settings.avoidRegionIds = filtered;
+          try { app.savePluginConfig?.(); } catch { /* best-effort */ }
+        }
+        res.json({ avoidRegionIds: filtered });
+      });
+
+      router.get('/region-index', (_req: Request, res: Response) => {
+        // Serves the parsed region index (ring arrays) for frontend overlay rendering.
+        // The frontend typically fetches region polygons from the standard resources API,
+        // but this endpoint provides them pre-parsed for convenience and consistency.
+        if (!regionIndex) return void res.status(404).json({ error: 'No regions loaded' });
+        const entries: Array<{ uuid: string; rings: Array<Array<[number, number]>> }> = [];
+        for (const [key, ring] of regionIndex.regions) {
+          const n = ring.exterior.length / 2;
+          const coords: Array<[number, number]> = [];
+          for (let i = 0; i < n; i++) coords.push([ring.exterior[i * 2], ring.exterior[i * 2 + 1]]);
+          entries.push({ uuid: key, rings: [coords] });
+        }
+        res.json(entries);
       });
     },
   };
