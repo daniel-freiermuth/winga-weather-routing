@@ -18,10 +18,8 @@
 | [BUG-115](https://github.com/kristianwiklund/signalk-weather-routing/issues/318) | Grid iteration logic (lat/lon nested loop with per-point coverage checking) is duplicated across `/wind-grid`, `/wave-grid`, and `/current-grid` endpoints in `index.ts`. Discovered in code review 2026-06-15 (Nm3). |
 | [BUG-114](https://github.com/kristianwiklund/signalk-weather-routing/issues/317) | `/wave-grid` endpoint (`index.ts:656-667`) has two consecutive `loaded.some(...)` checks with nearly identical conditions; the first is redundant. Discovered in code review 2026-06-15 (Nm2). |
 | [BUG-113](https://github.com/kristianwiklund/signalk-weather-routing/issues/316) | Dead `reduce` on empty `isochrone` array (`isochrone.ts:355-358`) in the failure path. Only reached when `isochrone.length === 0`; `reduce` returns `undefined`, `dist` is always 0. Discovered in code review 2026-06-15 (Nm1). |
-| [BUG-112](https://github.com/kristianwiklund/signalk-weather-routing/issues/315) | `setImmediate` yield on every isochrone step (`isochrone.ts:321`). Required by design for SSE flushing — tuning candidate only, not a bug. Discovered in code review 2026-06-14 (M8). |
 | [BUG-111](https://github.com/kristianwiklund/signalk-weather-routing/issues/314) | Three `console.log` SSE debugging calls in `index.ts:518,524,528` added during BUG-8/BUG-11 debugging. Should use `app.debug`. Discovered in code review 2026-06-15 (NM6). |
 | [BUG-110](https://github.com/kristianwiklund/signalk-weather-routing/issues/313) | `Math.PI / 180` appears ~10 times across `geo.ts` and `isochrone.ts`. A `DEG_TO_RAD` constant exists but is only used sporadically. Discovered in code review 2026-06-14 (M7). |
-| [BUG-109](https://github.com/kristianwiklund/signalk-weather-routing/issues/312) | `bracketIndex` in `polar.ts:66-73` performs O(n) linear scan on sorted arrays. Arrays are 6–12 elements so practical benefit of binary search is small. Discovered in code review 2026-06-14 (M5). |
 | [BUG-108](https://github.com/kristianwiklund/signalk-weather-routing/issues/311) | `buildRegionIndex` (`regions.ts:52`) generates inconsistent keys for MultiPolygon rings: first ring of first region gets bare `id`, later rings get `id__N` with a global counter. UUID extraction works today but is fragile. Discovered in code review 2026-06-15 (NM2). |
 | [BUG-107](https://github.com/kristianwiklund/signalk-weather-routing/issues/310) | SignalK `app` object is typed as `any` in `index.ts:28`, `resources.ts:6`, `setup.ts:15`. All `app.setPluginStatus`, `app.debug`, `app.savePluginConfig`, `app.resourcesApi` calls are unchecked. Discovered in code review 2026-06-14 (M1). |
 | [BUG-106](https://github.com/kristianwiklund/signalk-weather-routing/issues/309) | Eight or more `as any` casts for gdal-async API calls in `grib.ts:156,182,190,255,256,277,418,419`. The entire GRIB data loading path relies on unchecked runtime types. Discovered in code review 2026-06-14 (C4). |
@@ -34,6 +32,8 @@
 
 | # | Description | Reason |
 |---|---|---|
+| [BUG-112](https://github.com/kristianwiklund/signalk-weather-routing/issues/315) | `setImmediate` yield on every isochrone step. | By design — required to flush SSE progress events to the browser. Removing breaks progressive rendering. Not a bug; at most a tuning candidate if routing is too slow. |
+| [BUG-109](https://github.com/kristianwiklund/signalk-weather-routing/issues/312) | `bracketIndex` performs O(n) linear scan on sorted arrays. | Arrays are 6–12 elements. Binary search overhead exceeds linear scan at this size on V8. Negligible practical benefit. |
 | [BUG-91](https://github.com/kristianwiklund/signalk-weather-routing/issues/286) | Loading indicator does not appear on GUI startup. | Opencode closed it as a mistake — the underlying issue is tracked under reopened REQ-121. |
 
 ## Fixed Bugs
