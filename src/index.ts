@@ -373,6 +373,9 @@ module.exports = (app: any) => {
         }
 
         const departureMs = new Date(departureTime).getTime();
+        if (isNaN(departureMs)) {
+          return void res.status(400).json({ error: 'Invalid departureTime — expected ISO 8601 string' });
+        }
         const enabledPaths: string[] | undefined = req.body?.enabledGribPaths;
         const selectedEntries = gribFiles.filter(f =>
           f.meta.timeEnd.getTime() >= departureMs &&
