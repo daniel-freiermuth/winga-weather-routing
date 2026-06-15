@@ -4,6 +4,7 @@
 
 | # | Requirement | Status |
 |---|---|---|
+| [REQ-123](https://github.com/kristianwiklund/signalk-weather-routing/issues/296) | **Original:** «add a feature request for adding the licenses including how to retrieve them»<br>**Interpretation:** Document how to retrieve the GSHHG license files from the NOAA NCEI archive. The required files are `LICENSE.TXT` and `COPYING.LESSERv3` from `https://www.ncei.noaa.gov/data/oceans/archive/arc0234/0304143/1.1/data/0-data/`. The process for fetching them should be documented so they can be re-retrieved if needed (e.g. for license compliance checks or updates). | open |
 | [REQ-115](https://github.com/kristianwiklund/signalk-weather-routing/issues/259) | **Original:** «we need a motoring mode»<br>**Interpretation:** A dedicated motoring mode for route calculation where the boat travels under engine at a fixed speed regardless of wind conditions. Unlike the existing motor-fallback feature (which motors only when polar speed falls below a threshold), this mode applies motor speed at all times and does not require a polar diagram or wind GRIB file to be loaded. | open |
 
 | [REQ-90](https://github.com/kristianwiklund/signalk-weather-routing/issues/167) | The routing UI can calculate routes for multiple departure times in one operation. The user specifies a sweep interval and number of alternatives (e.g. every 6 hours, 5 departures). Results are presented as a comparison table showing departure time, estimated ETA, and worst wind speed encountered for each alternative. | open |

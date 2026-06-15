@@ -188,3 +188,7 @@ Issues must be labelled: 'bug' for bugs, 'enhancement' for new features.
 Before creating a new GitHub issue for a requirement or bug, search existing issues for one covering the same topic. Retrieve all open issues from github before creating a new github issue, and check if the issue already exist. If it exists, update it as necessary including its headline and link it to the documentation in the repo. 
 
 If two identical issues are present in github, this applies to the newest issue: it becomes the duplicate: add a **comment** to it saying `Duplicate of #N` (never replace its body), close it, and point SPEC.md/BUGS.md to the new issue with the proper `<ID>: <slogan>` title.
+
+## Task Boundary Rule
+
+Deliver exactly what was asked, including any required follow-ups (e.g. creating a GitHub issue for a new SPEC.md entry), then stop. Do not resume prior work, do not take initiative on next steps, do not continue mid-task workflows. Wait for the next explicit instruction.
