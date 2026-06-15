@@ -2,6 +2,7 @@
 
 ## Upcoming
 
+- P0 code review fixes: lat/lon validation accepts 0° coordinates (BUG-92); `selectFile` and `getWave` no longer silently fall back to wrong GRIB file (BUG-93, BUG-101); GRIB load failures surfaced to user (BUG-95); `/avoid-regions` rejects invalid input when no regions loaded (BUG-99); waypoint GRIB coverage always checked (BUG-100); invalid departure time rejected with clear error (BUG-102)
 - Hires land data fix: `prepare-land-data.py` now accepts `-r f` to build genuine f-tier (full resolution) GSHHG indices; corrected binaries uploaded to the hires-land-data repo as release assets (BUG-98)
 - "Use vessel position" button reads the vessel's current GPS position from the SignalK WebSocket stream and sets it as the departure point; disabled when no position is available (REQ-89)
 - Per-file archive button (🗑) on each GRIB file row moves the file to an `archive/` subfolder after confirmation; "Remove old GRIBs (N)" button archives all files whose forecast has ended (REQ-120)
