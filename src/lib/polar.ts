@@ -50,10 +50,13 @@ export function interpolateBoatSpeed(polar: PolarData, twaDeg: number, twsKnots:
   const tTwa = twa1 === twa0 ? 0 : Math.max(0, Math.min(1, (twa - twa0) / (twa1 - twa0)));
   const tTws = tws1 === tws0 ? 0 : Math.max(0, Math.min(1, (twsKnots - tws0) / (tws1 - tws0)));
 
-  const s00 = polar.speeds[twaIdx]?.[twsIdx] ?? 0;
-  const s10 = polar.speeds[Math.min(twaIdx + 1, polar.twa.length - 1)]?.[twsIdx] ?? 0;
-  const s01 = polar.speeds[twaIdx]?.[Math.min(twsIdx + 1, polar.tws.length - 1)] ?? 0;
-  const s11 = polar.speeds[Math.min(twaIdx + 1, polar.twa.length - 1)]?.[Math.min(twsIdx + 1, polar.tws.length - 1)] ?? 0;
+  const twaNext = Math.min(twaIdx + 1, polar.twa.length - 1);
+  const twsNext = Math.min(twsIdx + 1, polar.tws.length - 1);
+
+  const s00 = polar.speeds[twaIdx][twsIdx];
+  const s10 = polar.speeds[twaNext][twsIdx];
+  const s01 = polar.speeds[twaIdx][twsNext];
+  const s11 = polar.speeds[twaNext][twsNext];
 
   return (
     (1 - tTwa) * (1 - tTws) * s00 +
