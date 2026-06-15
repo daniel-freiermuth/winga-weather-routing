@@ -16,6 +16,7 @@ import { buildLandIndex, polygonsInBbox, isPointOnLand } from './lib/landmask';
 import { saveRoute } from './lib/resources';
 import { buildRegionIndex, validRegionUuids } from './lib/regions';
 import { pluginDataDir, loadBundledEdgeIndex, loadBundledDilatedIndex, hiresLandAvailable, loadHiresEdgeIndex, loadHiresDilatedIndex } from './lib/setup';
+import { validateCalculateInput } from './lib/validation';
 import { RoutingAlgorithm } from './lib/routing/algorithm';
 import { IsochroneAlgorithm } from './lib/routing/isochrone';
 
@@ -344,10 +345,9 @@ module.exports = (app: any) => {
           maxHeadingChange:       settings?.maxHeadingChange,
           ...options,
         };
-        if (!start?.lat || !start?.lon || !end?.lat || !end?.lon || !departureTime) {
-          return void res.status(400).json({
-            error: 'Required: start {lat,lon}, end {lat,lon}, departureTime (ISO 8601)',
-          });
+        const inputValidation = validateCalculateInput({ start, end, departureTime });
+        if (!inputValidation.valid) {
+          return void res.status(400).json({ error: inputValidation.error });
         }
 
         const algorithmId: string = settings?.algorithm ?? DEFAULT_ALGORITHM;
