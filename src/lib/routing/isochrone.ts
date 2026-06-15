@@ -355,12 +355,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           warning: `Route extends past forecast coverage after ${stepsCompleted} steps — partial route shown (${dist} nm from destination)`,
         };
       }
-      const closest = isochrone.reduce((best, p) =>
-        haversineNM(p.lat, p.lon, end.lat, end.lon) < haversineNM(best.lat, best.lon, end.lat, end.lon) ? p : best,
-        isochrone[0],
-      );
-      const dist = closest ? Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon)) : 0;
-      throw new RoutingError(`Destination not reached within forecast period after ${stepsCompleted} steps (closest approach: ${dist} nm)`, 'grib_exhausted');
+      throw new RoutingError(`Destination not reached within forecast period after ${stepsCompleted} steps`, 'grib_exhausted');
     }
 
     return { route: backtrack(arrived, wind, true, end) };
