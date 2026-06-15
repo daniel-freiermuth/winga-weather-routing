@@ -4,6 +4,7 @@
 
 | # | Requirement | Status |
 |---|---|---|
+| [REQ-126](https://github.com/kristianwiklund/signalk-weather-routing/issues/335) | **Original:** «turn on/off labels on route, specify how many hours between labels. (the ones with time on each wp)»<br>**Interpretation:** Add a UI control to toggle visibility of the timestamp labels on route waypoints (the ETA labels shown at each waypoint on the map). When labels are enabled, the user can specify a time interval (in hours) — only waypoints that are at least that many hours apart get a label, reducing visual clutter on long routes. | open |
 | [REQ-115](https://github.com/kristianwiklund/signalk-weather-routing/issues/259) | **Original:** «we need a motoring mode»<br>**Interpretation:** A dedicated motoring mode for route calculation where the boat travels under engine at a fixed speed regardless of wind conditions. Unlike the existing motor-fallback feature (which motors only when polar speed falls below a threshold), this mode applies motor speed at all times and does not require a polar diagram or wind GRIB file to be loaded. | open |
 
 | [REQ-90](https://github.com/kristianwiklund/signalk-weather-routing/issues/167) | The routing UI can calculate routes for multiple departure times in one operation. The user specifies a sweep interval and number of alternatives (e.g. every 6 hours, 5 departures). Results are presented as a comparison table showing departure time, estimated ETA, and worst wind speed encountered for each alternative. | open |
