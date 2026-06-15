@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-127](https://github.com/kristianwiklund/signalk-weather-routing/issues/333) | Wave overlay exhibits state corruption when scrubbing: shows data for periods/regions without wave coverage; once overlay disappears it doesn't recover when moving back to covered time periods; behavior is semi-random; possibly triggered by moving scrubber during active routing. All frontend overlay state management issues. |
 | [BUG-126](https://github.com/kristianwiklund/signalk-weather-routing/issues/332) | Wave height in the conditions graph appears constant and low on the Gothenburg test route. Other routes may also be affected. Wind, boat speed, and other graph lines appear correct. |
 | [BUG-125](https://github.com/kristianwiklund/signalk-weather-routing/issues/331) | When implementing the "region avoidance" feature (REQ-98) it was decided that region selection shall be persisted server-side. It is not. |
 | [BUG-124](https://github.com/kristianwiklund/signalk-weather-routing/issues/327) | Rejection counters for land/wind/GRIB are computed but only used for the ternary `FailureReason` decision; their numeric values are not included in failure error messages where they would aid diagnostics. Discovered in code review 2026-06-14 (m6). |
