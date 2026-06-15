@@ -2,6 +2,7 @@
 
 ## Upcoming
 
+- P1 code review fixes: removed optional chaining overhead on polar hot path (BUG-97); isochrone timing logs guarded with `process.env.DEBUG` (BUG-96); current drift cosine uses correct latitude (BUG-94); `getWaveAt` validates bounds before bilinear (BUG-104); `savePluginConfig` awaited in loadRegions (BUG-103)
 - P0 code review fixes: lat/lon validation accepts 0° coordinates (BUG-92); `selectFile` and `getWave` no longer silently fall back to wrong GRIB file (BUG-93, BUG-101); GRIB load failures surfaced to user (BUG-95); `/avoid-regions` rejects invalid input when no regions loaded (BUG-99); waypoint GRIB coverage always checked (BUG-100); invalid departure time rejected with clear error (BUG-102)
 - Hires land data fix: `prepare-land-data.py` now accepts `-r f` to build genuine f-tier (full resolution) GSHHG indices; corrected binaries uploaded to the hires-land-data repo as release assets (BUG-98)
 - "Use vessel position" button reads the vessel's current GPS position from the SignalK WebSocket stream and sets it as the departure point; disabled when no position is available (REQ-89)

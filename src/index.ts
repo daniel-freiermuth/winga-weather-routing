@@ -140,7 +140,7 @@ module.exports = (app: any) => {
         const stale = settings.avoidRegionIds.filter(id => !valid.has(id));
         if (stale.length > 0) {
           settings.avoidRegionIds = settings.avoidRegionIds.filter(id => valid.has(id));
-          try { app.savePluginConfig?.(); } catch { /* not critical */ }
+          try { await app.savePluginConfig?.(); } catch { /* not critical */ }
         }
       }
     } catch (e: any) {

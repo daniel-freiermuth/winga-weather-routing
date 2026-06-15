@@ -39,6 +39,7 @@ interface StepTiming {
 }
 
 function logStepTiming(t: StepTiming): void {
+  if (!process.env.DEBUG) return;
   console.log(
     `[isochrone] step=${t.step} frontier=${t.frontierSize} coneDisabled=${t.coneDisabledCount}/${t.frontierSize} candidates=${t.candidatesEvaluated}` +
     ` landChecks=${t.landChecksPerformed}` +
@@ -49,6 +50,7 @@ function logStepTiming(t: StepTiming): void {
 }
 
 function logTimingSummary(timings: StepTiming[]): void {
+  if (!process.env.DEBUG) return;
   if (timings.length === 0) return;
   const fields: (keyof StepTiming)[] = [
     'frontierSize', 'coneDisabledCount', 'candidatesEvaluated', 'landChecksPerformed',
@@ -234,11 +236,13 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
           // Apply ocean current drift: water-track endpoint + current displacement over dtHours.
           // Current is sampled at the frontier point (start of the step) in m/s.
+          // Cosine correction uses point.lat (original latitude) — not newLat which is
+          // already modified by the latitude drift (BUG-94).
           if (current) {
             const cur = current.getCurrent(point.lat, point.lon, nextTime);
             const dtS = dtHours * 3600;
             newLat += cur.v * dtS / (1852 * 60);
-            newLon += cur.u * dtS / (1852 * 60 * Math.cos(newLat * DEG_TO_RAD));
+            newLon += cur.u * dtS / (1852 * 60 * Math.cos(point.lat * DEG_TO_RAD));
           }
 
           if (!wind.coversPointAtTime(newLat, newLon, step)) { rejectedByGrib++; continue; } // discard candidates outside spatiotemporal GRIB domain (BUG-37, BUG-75)

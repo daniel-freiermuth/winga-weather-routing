@@ -302,6 +302,12 @@ export function getWaveAt(grib: GribData, lat: number, lon: number, timeMs: numb
   }
   // Use swhGrid when present — wave data may be on a different grid than wind data.
   const gridParams = grib.swhGrid ?? grib;
+  // Bounds check: bilinear() silently clamps out-of-domain coordinates to edge
+  // values. Return undefined for points outside the wave grid so the router
+  // doesn't act on clamped edge data (BUG-104).
+  const latMax = gridParams.latMin + gridParams.latStep * (gridParams.nLat - 1);
+  const lonMax = gridParams.lonMin + gridParams.lonStep * (gridParams.nLon - 1);
+  if (lat < gridParams.latMin || lat > latMax || lon < gridParams.lonMin || lon > lonMax) return undefined;
   const v = bilinear(grib.swhByTime.get(bestMs)!, gridParams, lat, lon);
   // GRIB wave bands use 9999 as a fill value for land/out-of-domain cells.
   // Bilinear interpolation near land boundaries produces intermediate bogus values.

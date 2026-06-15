@@ -281,7 +281,24 @@ test('scanGribDir: throws for non-existent directory', async () => {
   await assert.rejects(
     () => scanGribDir('/nonexistent/path/that/does/not/exist'),
     /ENOENT/,
-  );
+);
+
+test('getWaveAt: returns undefined for lat/lon outside wave grid bounds (BUG-104)', () => {
+  const t0 = new Date('2024-01-01T00:00:00Z');
+  const grib: GribData = {
+    latMin: 40, latStep: 1, lonMin: 10, lonStep: 1, nLat: 3, nLon: 3,
+    times: [t0],
+    u10: [new Float32Array(9)], v10: [new Float32Array(9)],
+    swhByTime: new Map([[t0.getTime(), new Float32Array(9).fill(0.5)]]),
+  };
+  // Point inside the grid → should return a value
+  assert.ok(getWaveAt(grib, 41, 11, t0.getTime()) !== undefined, 'point inside grid should return wave height');
+  // Points outside the grid → should return undefined (not clamped edge values)
+  assert.strictEqual(getWaveAt(grib, 50, 11, t0.getTime()), undefined, 'lat above grid max should return undefined');
+  assert.strictEqual(getWaveAt(grib, 39, 11, t0.getTime()), undefined, 'lat below grid min should return undefined');
+  assert.strictEqual(getWaveAt(grib, 41, 20, t0.getTime()), undefined, 'lon east of grid max should return undefined');
+  assert.strictEqual(getWaveAt(grib, 41, 9, t0.getTime()), undefined, 'lon west of grid min should return undefined');
+});
 });
 
 // Integration test: BUG-65 — mixed-grid GRIB files must read wave data at correct coordinates.

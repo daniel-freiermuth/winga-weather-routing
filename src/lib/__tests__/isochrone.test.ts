@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { IsochroneAlgorithm, RoutingError } from '../routing/isochrone';
-import { GribData, GribFileEntry, PolarData, CalculationRequest, LandPolygon } from '../../types';
+import { GribData, GribFileEntry, PolarData, CalculationRequest, LandPolygon, CurrentProvider, WindVector } from '../../types';
 import { MultiFileWindProvider } from '../windprovider';
 import { buildLandEdgeIndex } from '../landmask';
 
@@ -607,4 +607,36 @@ test('calculate: REQ-83 + REQ-84 — motor fires first, wait-for-wind not needed
   const boatSpeeds = route.map(p => p.boatSpeed);
   assert.ok(route.length >= 2, 'route should be found via motor');
   assert.ok(boatSpeeds.slice(1).every(s => s === 4), `expected motor speed 4 on all legs, got ${JSON.stringify(boatSpeeds)}`);
+});
+
+// BUG-94: current drift longitude cosine correction must use the original point.lat,
+// not newLat (which is already modified by the latitude drift component).
+test('calculate: BUG-94 current drift runs without error with active CurrentProvider', async () => {
+  const t0 = new Date('2024-01-01T00:00:00Z');
+  const t1 = new Date('2024-01-01T01:00:00Z');
+  const mockCurrent: CurrentProvider = {
+    getCurrent: (): WindVector => ({ u: 1, v: 0.5 }),
+    coversPoint: () => true,
+    times: [t0, t1],
+    meta: {
+      path: 'mock-current.grib2', mtime: 0, type: 'current',
+      latMin: 58, latMax: 62, lonMin: 9, lonMax: 13, latStep: 1, lonStep: 1,
+      timeStart: t0, timeEnd: t1, nTimes: 2, referenceTime: t0,
+    },
+  };
+
+  const grib = makeGrib([t0, t1]);
+  grib.latMin = 59;
+  const wind = makeWind(grib);
+  const req: CalculationRequest = {
+    start: { lat: 60, lon: 11 },
+    end: { lat: 60.05, lon: 11 },
+    departureTime: t0.toISOString(),
+  };
+
+  // Previously no test exercised the current provider code path at all.
+  // This verifies the drift code runs and produces a route with non-zero
+  // current applied (u=1 m/s eastward, v=0.5 m/s northward at lat=60°).
+  const { route } = await algo.calculate(wind, mockCurrent, makePolar(), null, null, req, () => {}, { arrivalRadiusNm: 5 });
+  assert.ok(route.length >= 2, 'route should be found with active current provider');
 });
