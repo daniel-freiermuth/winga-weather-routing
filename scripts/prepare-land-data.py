@@ -3,15 +3,21 @@
 Offline build script: download GSHHG shapefile, build land edge index and
 dilated edge index, write compressed binary files to data/.
 
-Run: python3 scripts/prepare-land-data.py
+Usage:
+  python3 scripts/prepare-land-data.py             # h-tier (baseline, ~7 km)
+  python3 scripts/prepare-land-data.py -r f        # f-tier (full, ~100 m, hires)
 
 Outputs:
-  data/edge-index.bin.gz          -- land edge index (all L1 polygons)
-  data/dilated-edge-index.bin.gz  -- same polygons dilated by DILATION_RADIUS_NM
+  data/edge-index-{tier}.bin.gz          -- land edge index (all L1 polygons)
+  data/dilated-edge-index-{tier}.bin.gz  -- same polygons dilated by DILATION_RADIUS_NM
+
+  For h-tier, the output filenames omit the tier suffix for backward compatibility
+  with existing plugin packages (edge-index.bin.gz / dilated-edge-index.bin.gz).
 
 Requirements: pip3 install shapely fiona
 """
 
+import argparse
 import gzip
 import io
 import math
@@ -25,10 +31,6 @@ import fiona
 from shapely.geometry import shape, Polygon as ShapelyPolygon
 from shapely.ops import unary_union
 import numpy as np
-
-# Resolution tier: c=crude, l=low, i=intermediate, h=high, f=full
-# h gives ~7 km detail, matching the ICON-EU 7 km weather grid
-GSHHG_RESOLUTION = 'h'
 
 DILATION_RADIUS_NM = 0.5
 
@@ -328,7 +330,28 @@ def dilate_polygons(polygons):
 # Main
 # ---------------------------------------------------------------------------
 
+def _output_name(resolution, base):
+    """Return output filename matching the conventions expected by setup.ts.
+
+    h → no suffix (backward compatibility with existing plugin packages)
+    f → '-hires' suffix (matches loadHiresEdgeIndex / loadHiresDilatedIndex in setup.ts)
+    """
+    if resolution == 'h':
+        return f'{base}.bin.gz'
+    if resolution == 'f':
+        return f'{base}-hires.bin.gz'
+    return f'{base}-{resolution}.bin.gz'
+
+
 def main():
+    parser = argparse.ArgumentParser(description='Build GSHHG land edge indices')
+    parser.add_argument('-r', '--resolution', default='h', choices=['c', 'l', 'i', 'h', 'f'],
+                        help='GSHHG resolution tier: c=crude, l=low, i=intermediate, '
+                             'h=high (~7 km, default), f=full (~100 m, hires)')
+    args = parser.parse_args()
+    resolution = args.resolution
+
+    log(f'Using GSHHG resolution tier: {resolution}')
     os.makedirs(DATA_DIR, exist_ok=True)
 
     # Step 1: Download
@@ -344,14 +367,14 @@ def main():
         log('  Download complete')
 
     # Steps 2–3: Extract and load polygons
-    polygons = load_polygons(zip_path, GSHHG_RESOLUTION)
+    polygons = load_polygons(zip_path, resolution)
 
     # Step 4: Build and save edge index
     log(f'\n[4/5] Building land edge index ({len(polygons):,} polygons)...')
     edge_accum, poly_grid = build_edge_index(polygons)
     log(f'  Edge cells: {len(edge_accum):,},  poly cells: {len(poly_grid):,}')
     raw      = serialize_index(polygons, edge_accum, poly_grid, EDGE_INDEX_MAGIC, EDGE_INDEX_VERSION)
-    out_path = os.path.join(DATA_DIR, 'edge-index.bin.gz')
+    out_path = os.path.join(DATA_DIR, _output_name(resolution, 'edge-index'))
     with gzip.open(out_path, 'wb', compresslevel=9) as f:
         f.write(raw)
     log(f'  Saved {out_path}  ({len(raw)/1e6:.1f} MB raw → {os.path.getsize(out_path)/1e6:.1f} MB gzipped)')
@@ -363,12 +386,12 @@ def main():
     dil_edge, dil_poly = build_edge_index(dilated)
     log(f'  Edge cells: {len(dil_edge):,},  poly cells: {len(dil_poly):,}')
     dil_raw  = serialize_index(dilated, dil_edge, dil_poly, DILATED_INDEX_MAGIC, DILATED_INDEX_VERSION)
-    dil_path = os.path.join(DATA_DIR, 'dilated-edge-index.bin.gz')
+    dil_path = os.path.join(DATA_DIR, _output_name(resolution, 'dilated-edge-index'))
     with gzip.open(dil_path, 'wb', compresslevel=9) as f:
         f.write(dil_raw)
     log(f'  Saved {dil_path}  ({len(dil_raw)/1e6:.1f} MB raw → {os.path.getsize(dil_path)/1e6:.1f} MB gzipped)')
 
-    log('\nDone. Commit data/edge-index.bin.gz and data/dilated-edge-index.bin.gz to the repository.')
+    log(f'\nDone. Commit {out_path} and {dil_path} to the repository.')
 
 
 if __name__ == '__main__':

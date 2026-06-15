@@ -2,6 +2,7 @@
 
 ## Upcoming
 
+- Hires land data fix: `prepare-land-data.py` now accepts `-r f` to build genuine f-tier (full resolution) GSHHG indices; corrected binaries uploaded to the hires-land-data repo as release assets (BUG-98)
 - "Use vessel position" button reads the vessel's current GPS position from the SignalK WebSocket stream and sets it as the departure point; disabled when no position is available (REQ-89)
 - Per-file archive button (🗑) on each GRIB file row moves the file to an `archive/` subfolder after confirmation; "Remove old GRIBs (N)" button archives all files whose forecast has ended (REQ-120)
 - Scrubber coverage bar now shows one coloured row per loaded GRIB file, stacked vertically, so overlapping files are all visible simultaneously (REQ-117)
