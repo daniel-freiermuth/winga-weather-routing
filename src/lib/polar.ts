@@ -1,6 +1,6 @@
 // Polar diagram loading (ORC/OpenCPN semicolon-delimited CSV) and bilinear boat-speed interpolation.
 
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 import { PolarData } from '../types';
 
 export function parsePolar(filePath: string): PolarData {

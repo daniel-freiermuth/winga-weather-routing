@@ -1,9 +1,9 @@
 // Loads pre-built land index files bundled in the package, with optional hires (f-tier) override.
 
-import * as zlib from 'zlib';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import * as zlib from 'node:zlib';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { LandPolygon, LandEdgeIndex } from '../types';
 import { SignalKApp } from './signalk-app';
 
