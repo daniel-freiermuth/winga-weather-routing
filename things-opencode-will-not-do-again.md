@@ -14,7 +14,7 @@ Future self: when the SPEC.md entry and its GitHub issue are done, the task is d
 
 ## Phase 2 without confirmation — 2026-06-15
 
-The user said "now for p2" after I reported P2 implementation was complete and deployed. I interpreted this as confirmation and started Phase 2 (moving bugs to Fixed, rebasing). The user meant "continue with the P2 work" — they had not yet tested or confirmed anything. 
+The user said "now for p2" after I reported a bug had been filed to main. I interpreted this as confirmation and started Phase 2 (moving bugs to Fixed, rebasing). The user meant "continue with the P2 work" — they had not yet tested or confirmed anything. 
 
 The Commit Rule already said Phase 2 requires user confirmation, but I interpreted a general instruction as confirmation. Now the rule is strengthened: Phase 2 requires an explicit statement like "confirmed", "it works", or "DoD complete". General instructions like "continue", "proceed", "now for X", and "go on" are NOT confirmation.
 
