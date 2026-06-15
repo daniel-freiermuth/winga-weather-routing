@@ -17,6 +17,7 @@ import { saveRoute } from './lib/resources';
 import { buildRegionIndex, validRegionUuids } from './lib/regions';
 import { pluginDataDir, loadBundledEdgeIndex, loadBundledDilatedIndex, hiresLandAvailable, loadHiresEdgeIndex, loadHiresDilatedIndex } from './lib/setup';
 import { validateCalculateInput } from './lib/validation';
+import { SignalKApp } from './lib/signalk-app';
 import { RoutingAlgorithm } from './lib/routing/algorithm';
 import { IsochroneAlgorithm } from './lib/routing/isochrone';
 
@@ -26,7 +27,7 @@ const ALGORITHMS: Map<string, RoutingAlgorithm> = new Map([
 
 const DEFAULT_ALGORITHM = 'isochrone';
 
-module.exports = (app: any) => {
+module.exports = (app: SignalKApp) => {
   let gribFiles: GribFileEntry[] = [];
   let currentFiles: CurrentFileEntry[] = [];
   let currentProvider: CurrentProvider | null = null;
@@ -131,7 +132,7 @@ module.exports = (app: any) => {
         regionIndex = null;
         return;
       }
-      const apiRegions: any[] = await app.resourcesApi.listResources('regions');
+      const apiRegions = await app.resourcesApi.listResources('regions');
       regionIndex = buildRegionIndex(apiRegions);
 
       // Auto-clean stale UUIDs from plugin config.

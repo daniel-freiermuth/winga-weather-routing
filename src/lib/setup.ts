@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { LandPolygon, LandEdgeIndex } from '../types';
+import { SignalKApp } from './signalk-app';
 
 export const EDGE_INDEX_MAGIC = 0x4C4E4458;   // 'LNDX'
 export const EDGE_INDEX_VERSION = 2;           // v2: polygon data included
@@ -12,7 +13,7 @@ export const EDGE_INDEX_VERSION = 2;           // v2: polygon data included
 export const DILATED_INDEX_MAGIC = 0x444C4E44; // 'DLND'
 export const DILATED_INDEX_VERSION = 2;
 
-export function pluginDataDir(app: any): string {
+export function pluginDataDir(app: SignalKApp): string {
   const configPath: string = app.config?.configPath ?? path.join(os.homedir(), '.signalk');
   return path.join(configPath, 'plugin-config-data', 'signalk-weather-routing');
 }

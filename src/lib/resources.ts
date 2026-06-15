@@ -2,8 +2,9 @@
 
 import { RoutePoint } from '../types';
 import { haversineNM } from './geo';
+import { SignalKApp } from './signalk-app';
 
-export async function saveRoute(app: any, route: RoutePoint[], name: string): Promise<string> {
+export async function saveRoute(app: SignalKApp, route: RoutePoint[], name: string): Promise<string> {
   const uuid = crypto.randomUUID();
 
   const totalDistNM = route.slice(1).reduce((sum, p, i) => {
