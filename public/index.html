@@ -1416,7 +1416,7 @@
 
     document.getElementById('region-toggle').addEventListener('change', async (e) => {
       if (e.target.checked) {
-        await loadRegions();
+        await renderRegionOverlay();
       } else {
         if (regionLayer) { map.removeLayer(regionLayer); regionLayer = null; }
       }
