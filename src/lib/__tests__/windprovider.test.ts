@@ -181,6 +181,26 @@ test('MultiFileWindProvider: getWave returns undefined when no file has swh data
   assert.strictEqual(provider.getWave(41, 11, new Date('2024-01-01T00:00:00Z')), undefined);
 });
 
+test('MultiFileWindProvider: getWave returns undefined when no file covers point temporally (BUG-101)', () => {
+  const t0 = new Date('2024-01-01T00:00:00Z');
+  const t1 = new Date('2024-01-01T01:00:00Z');
+  const t2 = new Date('2024-01-01T02:00:00Z');
+  // File A has wave data at lat 40-42 lon 10-12, times [t0, t1]
+  const gA = makeGrib({ latMin: 40, lonMin: 10, times: [t0, t1] });
+  gA.swhByTime = new Map([[t0.getTime(), new Float32Array(9).fill(0.5)]]);
+  // File B has wave data at lat 50-52 lon 50-52, time [t2]
+  const gB = makeGrib({ latMin: 50, lonMin: 50, times: [t2] });
+  gB.swhByTime = new Map([[t2.getTime(), new Float32Array(9).fill(1.0)]]);
+  const provider = new MultiFileWindProvider([
+    makeEntry(gA, 1000, 'a.grib2'),
+    makeEntry(gB, 2000, 'b.grib2'),
+  ]);
+  // At t2, point (41,11): file A covers spatially but not temporally;
+  // file B covers temporally but not spatially → undefined (no fallback)
+  assert.strictEqual(provider.getWave(41, 11, t2), undefined,
+    'should return undefined when no wave file covers the point temporally');
+});
+
 test('MultiFileWindProvider: single file times axis matches grib.times', () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');

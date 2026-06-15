@@ -59,14 +59,12 @@ export class MultiFileWindProvider implements WindProvider {
     const waveFiles = this.sortedFiles.filter(e => e.data?.swhByTime?.size);
     if (waveFiles.length === 0) return undefined;
     const tMs = t.getTime();
-    const f =
-      waveFiles.find(e =>
-        coversPoint(e, lat, lon) &&
-        e.meta.timeStart.getTime() <= tMs &&
-        e.meta.timeEnd.getTime() >= tMs
-      ) ??
-      waveFiles.find(e => coversPoint(e, lat, lon)) ??
-      waveFiles[0];
+    const f = waveFiles.find(e =>
+      coversPoint(e, lat, lon) &&
+      e.meta.timeStart.getTime() <= tMs &&
+      e.meta.timeEnd.getTime() >= tMs
+    );
+    if (!f) return undefined;
     return getWaveAt(f.data!, lat, lon, tMs);
   }
 
