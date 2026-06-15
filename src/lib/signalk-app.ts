@@ -1,0 +1,22 @@
+// Minimal SignalK plugin app interface — subset of methods used by signalk-weather-routing.
+
+export interface SignalKResourceEntry {
+  id?: string;
+  name?: string;
+  feature?: { geometry?: any };
+  [key: string]: unknown;
+}
+
+export interface SignalKResourcesApi {
+  listResources(category: string): Promise<SignalKResourceEntry[] | Record<string, SignalKResourceEntry>>;
+  setResource(category: string, id: string, resource: unknown): Promise<void>;
+}
+
+export interface SignalKApp {
+  setPluginStatus(status: string): void;
+  setPluginError(error: string): void;
+  debug(message: string): void;
+  savePluginConfig?(): Promise<void> | void;
+  resourcesApi?: SignalKResourcesApi;
+  config?: { configPath?: string };
+}

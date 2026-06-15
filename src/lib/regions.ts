@@ -32,6 +32,7 @@ export function buildRegionIndex(apiRegions: any): RegionIndex {
       for (const poly of geo.coordinates) rings.push(...poly);
     }
 
+    let ringIdx = 0;
     for (const ringCoords of rings) {
       // ringCoords is [[lon,lat], [lon,lat], ...] — extract exterior ring only.
       const n = ringCoords.length;
@@ -48,9 +49,10 @@ export function buildRegionIndex(apiRegions: any): RegionIndex {
         if (lon < lonMin) lonMin = lon;
         if (lon > lonMax) lonMax = lon;
       }
-      // Use a synthetic key: id + ring index to handle MultiPolygon
-      const key = regions.size > 0 ? `${id}__${regions.size}` : id;
+      // Key format: always id__ringIdx for consistency across single and multi-ring regions.
+      const key = `${id}__${ringIdx}`;
       regions.set(key, { bboxLatMin: latMin, bboxLatMax: latMax, bboxLonMin: lonMin, bboxLonMax: lonMax, exterior });
+      ringIdx++;
     }
   }
 
