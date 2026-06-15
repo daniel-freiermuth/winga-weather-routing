@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-128](https://github.com/kristianwiklund/signalk-weather-routing/issues/334) | Isochrone lines are drawn on the map during route calculation even when the Isochrones checkbox in the Layers panel is unchecked. |
 | [BUG-127](https://github.com/kristianwiklund/signalk-weather-routing/issues/333) | Wave overlay exhibits state corruption when scrubbing: shows data for periods/regions without wave coverage; once overlay disappears it doesn't recover when moving back to covered time periods; behavior is semi-random; possibly triggered by moving scrubber during active routing. All frontend overlay state management issues. |
 | [BUG-125](https://github.com/kristianwiklund/signalk-weather-routing/issues/331) | When implementing the "region avoidance" feature (REQ-98) it was decided that region selection shall be persisted server-side. It is not. |
 | [BUG-124](https://github.com/kristianwiklund/signalk-weather-routing/issues/327) | Rejection counters for land/wind/GRIB are computed but only used for the ternary `FailureReason` decision; their numeric values are not included in failure error messages where they would aid diagnostics. Discovered in code review 2026-06-14 (m6). |
