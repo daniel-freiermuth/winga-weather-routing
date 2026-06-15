@@ -99,14 +99,15 @@ test('MultiFileWindProvider: getWind returns freshest file when files overlap sp
   assert.strictEqual(wind.v, 10, 'should use the newer file (mtime 2000)');
 });
 
-test('MultiFileWindProvider: getWind falls back to any file when point outside all bboxes', () => {
+test('MultiFileWindProvider: getWind returns {u:0,v:0} when point outside all bboxes (BUG-93)', () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');
   const g = makeGrib({ latMin: 40, lonMin: 10, v: 7, times: [t0, t1] });
   const provider = new MultiFileWindProvider([makeEntry(g, 1000)]);
-  // Point is outside the 40–42 lat / 10–12 lon bbox — bilinear clamps to edge
+  // Point is outside the 40–42 lat / 10–12 lon bbox — no silent fallback to wrong file
   const wind = provider.getWind(60, 20, 0);
-  assert.ok(typeof wind.u === 'number' && typeof wind.v === 'number', 'should return numbers');
+  assert.strictEqual(wind.u, 0, 'u should be 0 (no wind data outside coverage)');
+  assert.strictEqual(wind.v, 0, 'v should be 0 (no wind data outside coverage)');
 });
 
 test('MultiFileWindProvider: getWind prefers temporally-correct file over newer file outside the requested time', () => {
@@ -127,15 +128,24 @@ test('MultiFileWindProvider: getWind prefers temporally-correct file over newer 
   assert.strictEqual(wind.v, 5, 'should use the May 24 file which covers the requested time');
 });
 
-test('MultiFileWindProvider: getWind falls back to spatial-only match when no file covers the requested time', () => {
-  const jun6 = new Date('2026-06-06T00:00:00Z');
-  const jun7 = new Date('2026-06-07T00:00:00Z');
-  const grib = makeGrib({ v: 7, times: [jun6, jun7] });
-  const provider = new MultiFileWindProvider([makeEntry(grib, 1000)]);
-  // Request a time well outside the file's range — should fall back to spatial match
-  const futureIdx = 0; // only one time in the merged axis; provider still returns data
-  const wind = provider.getWind(41, 11, futureIdx);
-  assert.ok(typeof wind.v === 'number', 'should return a number via spatial fallback');
+test('MultiFileWindProvider: getWind returns {u:0,v:0} when point covered spatially but not temporally (BUG-93)', () => {
+  const t0 = new Date('2024-01-01T00:00:00Z');
+  const t1 = new Date('2024-01-01T01:00:00Z');
+  const t2 = new Date('2024-01-01T02:00:00Z');
+  // File A covers lat 40-42 lon 10-12, times [t0, t1] only
+  const gA = makeGrib({ latMin: 40, lonMin: 10, v: 5, times: [t0, t1] });
+  // File B covers lat 50-52 lon 50-52, time [t2] — different spatial area
+  const gB = makeGrib({ latMin: 50, lonMin: 50, v: 9, times: [t2] });
+  const provider = new MultiFileWindProvider([
+    makeEntry(gA, 1000, 'a.grib2'),
+    makeEntry(gB, 2000, 'b.grib2'),
+  ]);
+  // At t2: file A covers (41,11) spatially but not temporally (t2 > t1).
+  // File B covers t2 but not at (41,11). No file covers both → {u:0, v:0}.
+  const idx2 = provider.times.findIndex(t => t.getTime() === t2.getTime());
+  const wind = provider.getWind(41, 11, idx2);
+  assert.strictEqual(wind.u, 0, 'u should be 0 (no spatiotemporal coverage)');
+  assert.strictEqual(wind.v, 0, 'v should be 0 (no spatiotemporal coverage)');
 });
 
 test('MultiFileWindProvider: coversPointAtTime rejects point covered spatially by wrong-time file (BUG-75)', () => {
@@ -171,6 +181,26 @@ test('MultiFileWindProvider: getWave returns undefined when no file has swh data
   assert.strictEqual(provider.getWave(41, 11, new Date('2024-01-01T00:00:00Z')), undefined);
 });
 
+test('MultiFileWindProvider: getWave returns undefined when no file covers point temporally (BUG-101)', () => {
+  const t0 = new Date('2024-01-01T00:00:00Z');
+  const t1 = new Date('2024-01-01T01:00:00Z');
+  const t2 = new Date('2024-01-01T02:00:00Z');
+  // File A has wave data at lat 40-42 lon 10-12, times [t0, t1]
+  const gA = makeGrib({ latMin: 40, lonMin: 10, times: [t0, t1] });
+  gA.swhByTime = new Map([[t0.getTime(), new Float32Array(9).fill(0.5)]]);
+  // File B has wave data at lat 50-52 lon 50-52, time [t2]
+  const gB = makeGrib({ latMin: 50, lonMin: 50, times: [t2] });
+  gB.swhByTime = new Map([[t2.getTime(), new Float32Array(9).fill(1.0)]]);
+  const provider = new MultiFileWindProvider([
+    makeEntry(gA, 1000, 'a.grib2'),
+    makeEntry(gB, 2000, 'b.grib2'),
+  ]);
+  // At t2, point (41,11): file A covers spatially but not temporally;
+  // file B covers temporally but not spatially → undefined (no fallback)
+  assert.strictEqual(provider.getWave(41, 11, t2), undefined,
+    'should return undefined when no wave file covers the point temporally');
+});
+
 test('MultiFileWindProvider: single file times axis matches grib.times', () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');
@@ -196,7 +226,7 @@ test('MultiFileWindProvider: getFilePathForPoint returns path of the file getWin
   assert.strictEqual(provider.getFilePathForPoint(41, 11, 0), '/data/fileB.grib2');
 });
 
-test('MultiFileWindProvider: getFilePathForPoint falls back to spatial match when no temporal match', () => {
+test('MultiFileWindProvider: getFilePathForPoint returns empty string when no file covers the time (BUG-93)', () => {
   // File A covers the point spatially and temporally; file B only covers spatially (time mismatch).
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');
@@ -212,6 +242,9 @@ test('MultiFileWindProvider: getFilePathForPoint falls back to spatial match whe
   // At time index for t2: only B covers temporally → B selected
   const idx2 = provider.times.findIndex(t => t.getTime() === t2.getTime());
   assert.strictEqual(provider.getFilePathForPoint(41, 11, idx2), '/data/fileB.grib2');
+  // Point outside all files spatially → empty string (no fallback)
+  assert.strictEqual(provider.getFilePathForPoint(60, 20, idx0), '',
+    'should return empty string for uncovered point, not fall back to a file');
 });
 
 // scanGribDir: integration test using a real temp directory

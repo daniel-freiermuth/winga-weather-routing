@@ -34,41 +34,37 @@ export class MultiFileWindProvider implements WindProvider {
     this.times = Array.from(msSet).sort((a, b) => a - b).map(ms => new Date(ms));
   }
 
-  private selectFile(lat: number, lon: number, timeIdx: number): GribFileEntry {
+  private selectFile(lat: number, lon: number, timeIdx: number): GribFileEntry | undefined {
     const t = this.times[timeIdx];
     const tMs = t.getTime();
-    return (
-      this.sortedFiles.find(e =>
-        coversPoint(e, lat, lon) &&
-        e.meta.timeStart.getTime() <= tMs &&
-        e.meta.timeEnd.getTime() >= tMs
-      ) ??
-      this.sortedFiles.find(e => coversPoint(e, lat, lon)) ??
-      this.sortedFiles[0]
+    return this.sortedFiles.find(e =>
+      coversPoint(e, lat, lon) &&
+      e.meta.timeStart.getTime() <= tMs &&
+      e.meta.timeEnd.getTime() >= tMs
     );
   }
 
   getWind(lat: number, lon: number, timeIdx: number): WindVector {
-    const f = this.selectFile(lat, lon, timeIdx);
+    if (!this.coversPointAtTime(lat, lon, timeIdx)) return { u: 0, v: 0 };
+    const f = this.selectFile(lat, lon, timeIdx)!;
     return getWindAt(f.data!, lat, lon, nearestTimeIndex(f.data!, this.times[timeIdx]));
   }
 
   getFilePathForPoint(lat: number, lon: number, timeIdx: number): string {
-    return this.selectFile(lat, lon, timeIdx).meta.path;
+    if (!this.coversPointAtTime(lat, lon, timeIdx)) return '';
+    return this.selectFile(lat, lon, timeIdx)!.meta.path;
   }
 
   getWave(lat: number, lon: number, t: Date): number | undefined {
     const waveFiles = this.sortedFiles.filter(e => e.data?.swhByTime?.size);
     if (waveFiles.length === 0) return undefined;
     const tMs = t.getTime();
-    const f =
-      waveFiles.find(e =>
-        coversPoint(e, lat, lon) &&
-        e.meta.timeStart.getTime() <= tMs &&
-        e.meta.timeEnd.getTime() >= tMs
-      ) ??
-      waveFiles.find(e => coversPoint(e, lat, lon)) ??
-      waveFiles[0];
+    const f = waveFiles.find(e =>
+      coversPoint(e, lat, lon) &&
+      e.meta.timeStart.getTime() <= tMs &&
+      e.meta.timeEnd.getTime() >= tMs
+    );
+    if (!f) return undefined;
     return getWaveAt(f.data!, lat, lon, tMs);
   }
 

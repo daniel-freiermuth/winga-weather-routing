@@ -16,6 +16,7 @@ import { buildLandIndex, polygonsInBbox, isPointOnLand } from './lib/landmask';
 import { saveRoute } from './lib/resources';
 import { buildRegionIndex, validRegionUuids } from './lib/regions';
 import { pluginDataDir, loadBundledEdgeIndex, loadBundledDilatedIndex, hiresLandAvailable, loadHiresEdgeIndex, loadHiresDilatedIndex } from './lib/setup';
+import { validateCalculateInput } from './lib/validation';
 import { RoutingAlgorithm } from './lib/routing/algorithm';
 import { IsochroneAlgorithm } from './lib/routing/isochrone';
 
@@ -344,10 +345,9 @@ module.exports = (app: any) => {
           maxHeadingChange:       settings?.maxHeadingChange,
           ...options,
         };
-        if (!start?.lat || !start?.lon || !end?.lat || !end?.lon || !departureTime) {
-          return void res.status(400).json({
-            error: 'Required: start {lat,lon}, end {lat,lon}, departureTime (ISO 8601)',
-          });
+        const inputValidation = validateCalculateInput({ start, end, departureTime });
+        if (!inputValidation.valid) {
+          return void res.status(400).json({ error: inputValidation.error });
         }
 
         const algorithmId: string = settings?.algorithm ?? DEFAULT_ALGORITHM;
@@ -373,6 +373,9 @@ module.exports = (app: any) => {
         }
 
         const departureMs = new Date(departureTime).getTime();
+        if (isNaN(departureMs)) {
+          return void res.status(400).json({ error: 'Invalid departureTime — expected ISO 8601 string' });
+        }
         const enabledPaths: string[] | undefined = req.body?.enabledGribPaths;
         const selectedEntries = gribFiles.filter(f =>
           f.meta.timeEnd.getTime() >= departureMs &&
@@ -405,30 +408,33 @@ module.exports = (app: any) => {
         }
 
         const waypoints: Array<LatLon> = Array.isArray(req.body?.waypoints) ? req.body.waypoints : [];
-        if (useLandAvoidance && activeIndex) {
-          for (let i = 0; i < waypoints.length; i++) {
-            const wp = waypoints[i];
+        for (let i = 0; i < waypoints.length; i++) {
+          const wp = waypoints[i];
+          if (useLandAvoidance && activeIndex) {
             if (isPointOnLand(activeIndex, wp.lat, wp.lon))
               return void res.status(400).json({ error: `Waypoint ${i + 1} is on land — move it to open water` });
-            const wpCovered = selectedEntries.some(f =>
-              wp.lat >= f.meta.latMin && wp.lat <= f.meta.latMax &&
-              wp.lon >= f.meta.lonMin && wp.lon <= f.meta.lonMax
-            );
-            if (!wpCovered)
-              return void res.status(400).json({ error: `Waypoint ${i + 1} is outside the GRIB coverage area — load a GRIB file covering all waypoints` });
           }
+          // GRIB coverage is independent of land avoidance — always checked.
+          const wpCovered = selectedEntries.some(f =>
+            wp.lat >= f.meta.latMin && wp.lat <= f.meta.latMax &&
+            wp.lon >= f.meta.lonMin && wp.lon <= f.meta.lonMax
+          );
+          if (!wpCovered)
+            return void res.status(400).json({ error: `Waypoint ${i + 1} is outside the GRIB coverage area — load a GRIB file covering all waypoints` });
         }
 
         calcStatus = { status: 'calculating', progress: 0 };
         res.json({ status: 'calculating' });
 
         try {
+          const calcFailedFiles: Array<{ path: string; error: string }> = [];
           for (const entry of selectedEntries) {
             if (entry.data === null) {
               try {
                 entry.data = await loadGrib(entry.meta.path);
               } catch (e: any) {
-                console.warn(`[weather-routing] Failed to load GRIB file ${entry.meta.path}: ${e.message}`);
+                app.debug(`Failed to load GRIB file ${entry.meta.path}: ${e.message}`);
+                calcFailedFiles.push({ path: entry.meta.path, error: e.message });
               }
             }
           }
@@ -492,10 +498,17 @@ module.exports = (app: any) => {
           }
 
           pendingRoute = route;
+          const loadWarning = calcFailedFiles.length > 0
+            ? `${calcFailedFiles.length} GRIB file(s) failed to load: ${calcFailedFiles.map(f => f.path.split('/').pop()).join(', ')}`
+            : undefined;
           if (warning) {
-            calcStatus = { status: 'warning', progress: 100, warning };
+            calcStatus = { status: 'warning', progress: 100, warning: loadWarning ? `${warning}; ${loadWarning}` : warning };
             app.setPluginStatus(`Partial route: ${route.length} waypoints`);
-            pushSse({ type: 'warning', warning });
+            pushSse({ type: 'warning', warning: calcStatus.warning });
+          } else if (loadWarning) {
+            calcStatus = { status: 'warning', progress: 100, warning: loadWarning };
+            app.setPluginStatus(`Route ready: ${route.length} waypoints (${loadWarning})`);
+            pushSse({ type: 'warning', warning: loadWarning });
           } else {
             calcStatus = { status: 'done', progress: 100 };
             app.setPluginStatus(`Route ready: ${route.length} waypoints`);
@@ -838,7 +851,10 @@ module.exports = (app: any) => {
         const ids: string[] = Array.isArray(req.body?.avoidRegionIds) ? req.body.avoidRegionIds : [];
         // Validate: only accept UUIDs that actually exist in the current regionIndex.
         const valid = regionIndex ? validRegionUuids(regionIndex) : new Set<string>();
-        const filtered = ids.filter(id => valid.has(id) || !valid.size); // if no regions loaded, allow all
+        if (valid.size === 0) {
+          return void res.status(400).json({ error: 'No SignalK regions available — cannot validate region IDs' });
+        }
+        const filtered = ids.filter(id => valid.has(id));
         if (settings) {
           settings.avoidRegionIds = filtered;
           try { app.savePluginConfig?.(); } catch { /* best-effort */ }
