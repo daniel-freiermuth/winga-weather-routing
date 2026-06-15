@@ -163,7 +163,7 @@ If implementing a verification, test, or validation task would require introduci
 
 ## Issue Closure Rule
 
-A GitHub issue must not be closed unless the fix or implementation has been confirmed solved — either by explicit user confirmation or by automated CI passing. After the Phase 2 commit, push the branch and wait for CI to succeed before closing. Closing an issue solely because the code was written is not sufficient.
+A GitHub issue must not be closed unless the fix or implementation has been confirmed solved — both explicit user confirmation AND automated CI passing. After the Phase 2 commit, push the branch and wait for CI to succeed before closing. Closing an issue solely because the code was written is not sufficient.
 
 ## Three-Table Rule
 
