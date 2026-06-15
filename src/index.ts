@@ -663,13 +663,7 @@ module.exports = (app: SignalKApp) => {
           const lat = latMin + i * latStep;
           for (let j = 0; j <= nLon; j++) {
             const lon = lonMin + j * lonStep;
-            // Skip points outside any loaded file's coverage
-            if (!loaded.some(f =>
-              f.meta.latMin <= lat && lat <= f.meta.latMax &&
-              f.meta.lonMin <= lon && lon <= f.meta.lonMax &&
-              f.meta.timeStart.getTime() <= timeMs && f.meta.timeEnd.getTime() >= timeMs
-            )) continue;
-            // Only include points within actual wave data coverage; skip edge-extrapolated fallback
+            // Skip points outside wave data coverage (spatial + temporal + swh present)
             if (!loaded.some(f =>
               f.data?.swhByTime?.size &&
               f.meta.latMin <= lat && lat <= f.meta.latMax &&
