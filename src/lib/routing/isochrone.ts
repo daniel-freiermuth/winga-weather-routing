@@ -236,11 +236,13 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
           // Apply ocean current drift: water-track endpoint + current displacement over dtHours.
           // Current is sampled at the frontier point (start of the step) in m/s.
+          // Cosine correction uses point.lat (original latitude) — not newLat which is
+          // already modified by the latitude drift (BUG-94).
           if (current) {
             const cur = current.getCurrent(point.lat, point.lon, nextTime);
             const dtS = dtHours * 3600;
             newLat += cur.v * dtS / (1852 * 60);
-            newLon += cur.u * dtS / (1852 * 60 * Math.cos(newLat * DEG_TO_RAD));
+            newLon += cur.u * dtS / (1852 * 60 * Math.cos(point.lat * DEG_TO_RAD));
           }
 
           if (!wind.coversPointAtTime(newLat, newLon, step)) { rejectedByGrib++; continue; } // discard candidates outside spatiotemporal GRIB domain (BUG-37, BUG-75)
