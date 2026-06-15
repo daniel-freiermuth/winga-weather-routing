@@ -405,18 +405,19 @@ module.exports = (app: any) => {
         }
 
         const waypoints: Array<LatLon> = Array.isArray(req.body?.waypoints) ? req.body.waypoints : [];
-        if (useLandAvoidance && activeIndex) {
-          for (let i = 0; i < waypoints.length; i++) {
-            const wp = waypoints[i];
+        for (let i = 0; i < waypoints.length; i++) {
+          const wp = waypoints[i];
+          if (useLandAvoidance && activeIndex) {
             if (isPointOnLand(activeIndex, wp.lat, wp.lon))
               return void res.status(400).json({ error: `Waypoint ${i + 1} is on land — move it to open water` });
-            const wpCovered = selectedEntries.some(f =>
-              wp.lat >= f.meta.latMin && wp.lat <= f.meta.latMax &&
-              wp.lon >= f.meta.lonMin && wp.lon <= f.meta.lonMax
-            );
-            if (!wpCovered)
-              return void res.status(400).json({ error: `Waypoint ${i + 1} is outside the GRIB coverage area — load a GRIB file covering all waypoints` });
           }
+          // GRIB coverage is independent of land avoidance — always checked.
+          const wpCovered = selectedEntries.some(f =>
+            wp.lat >= f.meta.latMin && wp.lat <= f.meta.latMax &&
+            wp.lon >= f.meta.lonMin && wp.lon <= f.meta.lonMax
+          );
+          if (!wpCovered)
+            return void res.status(400).json({ error: `Waypoint ${i + 1} is outside the GRIB coverage area — load a GRIB file covering all waypoints` });
         }
 
         calcStatus = { status: 'calculating', progress: 0 };
