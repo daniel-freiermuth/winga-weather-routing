@@ -7,6 +7,24 @@ import { CurrentGribData, GribData, GribFileMeta, WindVector } from '../types';
 
 const GRIB_EXTENSIONS = new Set(['.grib2', '.grib', '.grb2', '.grb']);
 
+// Typed wrappers for gdal-async APIs that have incomplete TypeScript definitions (BUG-106).
+// The `as any` escapes are centralised here so the rest of the file is type-checked normally.
+type GdalBand = gdal.RasterBand;
+
+async function readBandPixels(band: GdalBand, nLon: number, nLat: number): Promise<Float32Array> {
+  const buf = new Float32Array(nLon * nLat);
+  await (band.pixels as any).readAsync(0, 0, nLon, nLat, buf);
+  return buf;
+}
+
+function vsimemCopy(data: Buffer, path: string): void {
+  (gdal.vsimem as any).copy(data, path);
+}
+
+function vsimemRelease(path: string): void {
+  (gdal.vsimem as any).release(path);
+}
+
 export async function scanGribDir(dir: string): Promise<string[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
   return entries
@@ -153,7 +171,7 @@ async function readSwhFromOceanMessages(gribPath: string): Promise<SwhResult | n
   if (oceanChunks.length === 0) return null;
 
   const vsimemPath = `/vsimem/wave_${Date.now()}_${Math.trunc(Math.random() * 1e9)}.grb2`;
-  (gdal.vsimem as any).copy(Buffer.concat(oceanChunks), vsimemPath);
+  vsimemCopy(Buffer.concat(oceanChunks), vsimemPath);
   const wds = await gdal.openAsync(vsimemPath);
   try {
     const gt = wds.geoTransform;
@@ -178,8 +196,7 @@ async function readSwhFromOceanMessages(gribPath: string): Promise<SwhResult | n
       const vtStr = md['GRIB_VALID_TIME'];
       if (!vtStr) continue;
       const ms = parseInt(vtStr, 10) * 1000;
-      const raw = new Float32Array(nLon * nLat);
-      await (band.pixels as any).readAsync(0, 0, nLon, nLat, raw);
+      const raw = await readBandPixels(band, nLon, nLat);
       swhByTime.set(ms, flipRows(raw, nLon, nLat));
     }
 
@@ -187,7 +204,7 @@ async function readSwhFromOceanMessages(gribPath: string): Promise<SwhResult | n
     return { swhByTime, swhGrid };
   } finally {
     wds.close();
-    (gdal.vsimem as any).release(vsimemPath);
+    vsimemRelease(vsimemPath);
   }
 }
 
@@ -249,11 +266,8 @@ async function readGrib(ds: gdal.Dataset): Promise<GribData> {
     const slot = timeMap.get(ms)!;
     if (!slot.u || !slot.v) continue;  // skip incomplete U/V pairs
 
-    const rawU = new Float32Array(nLon * nLat);
-    const rawV = new Float32Array(nLon * nLat);
-
-    await (slot.u.pixels as any).readAsync(0, 0, nLon, nLat, rawU);
-    await (slot.v.pixels as any).readAsync(0, 0, nLon, nLat, rawV);
+    const rawU = await readBandPixels(slot.u, nLon, nLat);
+    const rawV = await readBandPixels(slot.v, nLon, nLat);
 
     // GDAL row 0 = latMax (top); flip so index 0 = latMin (bottom), consistent with bilinear
     u10.push(flipRows(rawU, nLon, nLat));
@@ -273,8 +287,7 @@ async function readGrib(ds: gdal.Dataset): Promise<GribData> {
     const vtStr: string = (md as Record<string, string>)['GRIB_VALID_TIME'] ?? '';
     if (!vtStr) continue;
     const ms = parseInt(vtStr, 10) * 1000;
-    const raw = new Float32Array(nLon * nLat);
-    await (band.pixels as any).readAsync(0, 0, nLon, nLat, raw);
+    const raw = await readBandPixels(band, nLon, nLat);
     swhByTime.set(ms, flipRows(raw, nLon, nLat));
   }
 
@@ -419,10 +432,8 @@ async function readCurrentGrib(ds: gdal.Dataset): Promise<CurrentGribData> {
     const slot = timeMap.get(ms)!;
     if (!slot.u || !slot.v) continue;
 
-    const rawU = new Float32Array(nLon * nLat);
-    const rawV = new Float32Array(nLon * nLat);
-    await (slot.u.pixels as any).readAsync(0, 0, nLon, nLat, rawU);
-    await (slot.v.pixels as any).readAsync(0, 0, nLon, nLat, rawV);
+    const rawU = await readBandPixels(slot.u, nLon, nLat);
+    const rawV = await readBandPixels(slot.v, nLon, nLat);
     // Zero fill values (noDataValue = 9999 in RTOFS/BSH GRIBs) so bilinear
     // interpolation near land boundaries does not produce bogus huge values.
     for (let i = 0; i < rawU.length; i++) {
