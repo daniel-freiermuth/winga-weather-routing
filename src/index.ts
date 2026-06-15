@@ -528,17 +528,14 @@ module.exports = (app: any) => {
       });
 
       router.get('/calculation-stream', (req: Request, res: Response) => {
-        console.log(`[calculation-stream] connection received at ${Date.now()}`);
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders();
         if (typeof (res as any).flush === 'function') (res as any).flush();
-        console.log(`[calculation-stream] headers flushed at ${Date.now()}`);
 
         sseClients.add(res);
         req.on('close', () => {
-          console.log(`[calculation-stream] client closed at ${Date.now()}`);
           sseClients.delete(res);
         });
 
