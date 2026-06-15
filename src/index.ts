@@ -328,6 +328,9 @@ module.exports = (app: any) => {
         if (calcStatus.status === 'calculating') {
           return void res.status(409).json({ error: 'Calculation already in progress' });
         }
+        // Refresh region index so newly-created SignalK regions are picked up
+        // even if they were added after plugin startup (REQ-98).
+        await loadRegions();
 
         const { start, end, departureTime, options } = req.body ?? {};
         // Plugin settings act as defaults; per-request options override.
@@ -829,7 +832,9 @@ module.exports = (app: any) => {
         res.json({ avoidRegionIds: settings?.avoidRegionIds ?? [] });
       });
 
-      router.put('/avoid-regions', (req: Request, res: Response) => {
+      router.put('/avoid-regions', async (req: Request, res: Response) => {
+        // Refresh the region index so newly-created regions are recognised.
+        await loadRegions();
         const ids: string[] = Array.isArray(req.body?.avoidRegionIds) ? req.body.avoidRegionIds : [];
         // Validate: only accept UUIDs that actually exist in the current regionIndex.
         const valid = regionIndex ? validRegionUuids(regionIndex) : new Set<string>();
