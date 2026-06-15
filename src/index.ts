@@ -427,12 +427,14 @@ module.exports = (app: any) => {
         res.json({ status: 'calculating' });
 
         try {
+          const calcFailedFiles: Array<{ path: string; error: string }> = [];
           for (const entry of selectedEntries) {
             if (entry.data === null) {
               try {
                 entry.data = await loadGrib(entry.meta.path);
               } catch (e: any) {
-                console.warn(`[weather-routing] Failed to load GRIB file ${entry.meta.path}: ${e.message}`);
+                app.debug(`Failed to load GRIB file ${entry.meta.path}: ${e.message}`);
+                calcFailedFiles.push({ path: entry.meta.path, error: e.message });
               }
             }
           }
@@ -496,10 +498,17 @@ module.exports = (app: any) => {
           }
 
           pendingRoute = route;
+          const loadWarning = calcFailedFiles.length > 0
+            ? `${calcFailedFiles.length} GRIB file(s) failed to load: ${calcFailedFiles.map(f => f.path.split('/').pop()).join(', ')}`
+            : undefined;
           if (warning) {
-            calcStatus = { status: 'warning', progress: 100, warning };
+            calcStatus = { status: 'warning', progress: 100, warning: loadWarning ? `${warning}; ${loadWarning}` : warning };
             app.setPluginStatus(`Partial route: ${route.length} waypoints`);
-            pushSse({ type: 'warning', warning });
+            pushSse({ type: 'warning', warning: calcStatus.warning });
+          } else if (loadWarning) {
+            calcStatus = { status: 'warning', progress: 100, warning: loadWarning };
+            app.setPluginStatus(`Route ready: ${route.length} waypoints (${loadWarning})`);
+            pushSse({ type: 'warning', warning: loadWarning });
           } else {
             calcStatus = { status: 'done', progress: 100 };
             app.setPluginStatus(`Route ready: ${route.length} waypoints`);
