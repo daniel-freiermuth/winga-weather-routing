@@ -230,24 +230,23 @@ function segmentHitsPoly(
   return segmentCrossesRing(lat1, lon1, lat2, lon2, poly.exterior);
 }
 
-// Ray-cast point-in-polygon. Ring coords are interleaved [lon0,lat0, lon1,lat1, ...].
-function pointInRing(lat: number, lon: number, ring: Float64Array): boolean {
-  const n = ring.length >> 1;
-  let inside = false;
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = ring[i * 2];      // lon
-    const yi = ring[i * 2 + 1]; // lat
-    const xj = ring[j * 2];
-    const yj = ring[j * 2 + 1];
-    if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
-      inside = !inside;
-    }
-  }
-  return inside;
+// Parametric segment-segment intersection — exported for reuse by region checks.
+export function segmentsIntersect(
+  x1: number, y1: number, x2: number, y2: number,
+  x3: number, y3: number, x4: number, y4: number,
+): boolean {
+  const d1x = x2 - x1, d1y = y2 - y1;
+  const d2x = x4 - x3, d2y = y4 - y3;
+  const cross = d1x * d2y - d1y * d2x;
+  if (Math.abs(cross) < 1e-12) return false;
+  const dx = x3 - x1, dy = y3 - y1;
+  const t = (dx * d2y - dy * d2x) / cross;
+  const u = (dx * d1y - dy * d1x) / cross;
+  return t > 0 && t < 1 && u > 0 && u < 1;
 }
 
-// Returns true if segment (lat1,lon1)→(lat2,lon2) crosses any edge of the ring.
-function segmentCrossesRing(
+// True when segment crosses any edge of a closed ring — exported for region checks.
+export function segmentCrossesRing(
   lat1: number, lon1: number,
   lat2: number, lon2: number,
   ring: Float64Array,
@@ -262,19 +261,20 @@ function segmentCrossesRing(
   return false;
 }
 
-// Parametric segment-segment intersection (cross-product test). Coords are (x=lon, y=lat).
-function segmentsIntersect(
-  x1: number, y1: number, x2: number, y2: number,
-  x3: number, y3: number, x4: number, y4: number,
-): boolean {
-  const d1x = x2 - x1, d1y = y2 - y1;
-  const d2x = x4 - x3, d2y = y4 - y3;
-  const cross = d1x * d2y - d1y * d2x;
-  if (Math.abs(cross) < 1e-12) return false; // parallel
-  const dx = x3 - x1, dy = y3 - y1;
-  const t = (dx * d2y - dy * d2x) / cross;
-  const u = (dx * d1y - dy * d1x) / cross;
-  return t > 0 && t < 1 && u > 0 && u < 1; // strict interior: shared endpoints between adjacent polygon edges would otherwise register as two intersections
+// Ray-cast point-in-ring test — exported for region checks.
+export function pointInRing(lat: number, lon: number, ring: Float64Array): boolean {
+  const n = ring.length >> 1;
+  let inside = false;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = ring[i * 2];      // lon
+    const yi = ring[i * 2 + 1]; // lat
+    const xj = ring[j * 2];
+    const yj = ring[j * 2 + 1];
+    if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
 }
 
 export function polygonsInBbox(

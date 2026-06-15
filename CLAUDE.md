@@ -149,8 +149,9 @@ Implementation and confirmation are two separate commits:
 
 **Phase 2 — confirmation commit** (after user confirms it works):
 - Move the row from the Open table to the Closed table in SPEC.md or BUGS.md.
-- Close the GitHub issue with `gh issue close`.
 - Commit message uses `ref #N`.
+
+After the Phase 2 commit: **push the branch** (`git push origin <branch>`), then **wait for CI to pass** before closing the issue. Run `gh run list --branch <branch>` to check CI status. Only close the issue once CI succeeds.
 
 Never mark something as done or fixed in the docs before it has been confirmed.
 
@@ -162,7 +163,7 @@ If implementing a verification, test, or validation task would require introduci
 
 ## Issue Closure Rule
 
-A GitHub issue must not be closed unless the fix or implementation has been confirmed solved — either by explicit user confirmation or by automated testing/validation. Closing an issue solely because the code was written is not sufficient.
+A GitHub issue must not be closed unless the fix or implementation has been confirmed solved — both explicit user confirmation AND automated CI passing. After the Phase 2 commit, push the branch and wait for CI to succeed before closing. Closing an issue solely because the code was written is not sufficient.
 
 ## Three-Table Rule
 

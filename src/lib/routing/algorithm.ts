@@ -1,6 +1,6 @@
 // RoutingAlgorithm interface — the contract all routing algorithm implementations must satisfy.
 
-import { CurrentProvider, WindProvider, LandEdgeIndex, PolarData, CalculationRequest, RoutePoint } from '../../types';
+import { CurrentProvider, WindProvider, LandEdgeIndex, RegionIndex, PolarData, CalculationRequest, RoutePoint } from '../../types';
 
 export interface RoutingAlgorithm {
   readonly id: string;
@@ -10,6 +10,7 @@ export interface RoutingAlgorithm {
     current: CurrentProvider | null,
     polar: PolarData,
     edgeIndex: LandEdgeIndex | null,
+    regionIndex: RegionIndex | null,
     request: CalculationRequest,
     onProgress: (pct: number, frontier: Array<[number, number]>) => void,
     options?: Record<string, unknown>,
