@@ -39,6 +39,7 @@ interface StepTiming {
 }
 
 function logStepTiming(t: StepTiming): void {
+  if (!process.env.DEBUG) return;
   console.log(
     `[isochrone] step=${t.step} frontier=${t.frontierSize} coneDisabled=${t.coneDisabledCount}/${t.frontierSize} candidates=${t.candidatesEvaluated}` +
     ` landChecks=${t.landChecksPerformed}` +
@@ -49,6 +50,7 @@ function logStepTiming(t: StepTiming): void {
 }
 
 function logTimingSummary(timings: StepTiming[]): void {
+  if (!process.env.DEBUG) return;
   if (timings.length === 0) return;
   const fields: (keyof StepTiming)[] = [
     'frontierSize', 'coneDisabledCount', 'candidatesEvaluated', 'landChecksPerformed',
