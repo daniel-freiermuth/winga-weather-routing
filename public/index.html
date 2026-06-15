@@ -1353,12 +1353,14 @@
     }
 
     async function toggleRegionAvoid(uuid, avoid) {
+      // Refresh region geometry and the avoid list from the backend before toggling,
+      // so the overlay reflects any edits made in freeboard-sk (REQ-98).
+      await loadRegions();
       if (avoid) {
         if (!regionAvoidIds.includes(uuid)) regionAvoidIds.push(uuid);
       } else {
         regionAvoidIds = regionAvoidIds.filter(id => id !== uuid);
       }
-      avoidRegionListDirty = true;
       renderRegionList();
       await renderRegionOverlay();
       // Persist immediately via PUT /avoid-regions.
@@ -1422,6 +1424,9 @@
 
     async function startCalculation() {
       if (!startLatLon || !endLatLon) return;
+      // Refresh region geometry from SignalK before routing so any edits
+      // made in freeboard-sk are reflected in the overlay (REQ-98).
+      await loadRegions();
       const depTime = document.getElementById('departure-time').value;
       if (!depTime) return setStatus('error', 'Please set a departure time');
 
