@@ -6,7 +6,7 @@ import { nearestIdx } from '../windprovider';
 import { interpolateBoatSpeed } from '../polar';
 import { segmentCrossesLandFast, isPointOnLand } from '../landmask';
 import { segmentCrossesRegion, isPointInRegion } from '../regions';
-import { haversineNM, bearingTo, destinationPoint, windSpeedKnots, windDirection } from '../geo';
+import { haversineNM, bearingTo, destinationPoint, windSpeedKnots, windDirection, DEG_TO_RAD } from '../geo';
 
 const DEFAULT_HEADING_STEP = 5;
 const DEFAULT_SECTOR_SIZE = 1;
@@ -23,7 +23,6 @@ const FINE_PASS_CONE_HALF_ANGLE = 100;
 // all directional constraint and causing excessive wandering (BUG-53).
 const CONE_DISABLE_LOOKAHEAD_NM = 100;
 const MAX_HEADING_CHANGE = 120;
-const DEG_TO_RAD = Math.PI / 180;
 
 interface StepTiming {
   step: number;
@@ -398,7 +397,7 @@ function pruneToFrontier<T extends { lat: number; lon: number }>(
     const sector = Math.floor(((brng % 360) + 360) % 360 / sectorSize);
 
     const dLat = p.lat - startLat;
-    const dLon = (p.lon - startLon) * Math.cos(startLat * (Math.PI / 180)); // cosine correction: longitude degrees are shorter than latitude degrees away from the equator
+    const dLon = (p.lon - startLon) * Math.cos(startLat * DEG_TO_RAD); // cosine correction: longitude degrees are shorter than latitude degrees away from the equator
     const distSq = dLat * dLat + dLon * dLon;
 
     const existing = sectors.get(sector) ?? [];
