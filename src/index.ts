@@ -838,7 +838,10 @@ module.exports = (app: any) => {
         const ids: string[] = Array.isArray(req.body?.avoidRegionIds) ? req.body.avoidRegionIds : [];
         // Validate: only accept UUIDs that actually exist in the current regionIndex.
         const valid = regionIndex ? validRegionUuids(regionIndex) : new Set<string>();
-        const filtered = ids.filter(id => valid.has(id) || !valid.size); // if no regions loaded, allow all
+        if (valid.size === 0) {
+          return void res.status(400).json({ error: 'No SignalK regions available — cannot validate region IDs' });
+        }
+        const filtered = ids.filter(id => valid.has(id));
         if (settings) {
           settings.avoidRegionIds = filtered;
           try { app.savePluginConfig?.(); } catch { /* best-effort */ }
