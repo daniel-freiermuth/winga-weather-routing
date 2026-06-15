@@ -150,6 +150,7 @@ Implementation and confirmation are two separate commits:
 **Phase 2 — confirmation commit** (after user confirms it works):
 - Move the row from the Open table to the Closed table in SPEC.md or BUGS.md.
 - Commit message uses `ref #N`.
+- **Phase 2 requires explicit confirmation.** The user must say something like "confirmed", "it works", "looks good", or "DoD complete" — do not interpret general instructions like "continue", "proceed", "now for X", or "go on" as confirmation. When in doubt, ask: "Have you confirmed this works, or should I wait for your test results?"
 
 After the Phase 2 commit: **push the branch** (`git push origin <branch>`), then **wait for CI to pass** before closing the issue. Run `gh run list --branch <branch>` to check CI status. Only close the issue once CI succeeds.
 
