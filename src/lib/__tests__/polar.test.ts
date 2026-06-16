@@ -1,6 +1,7 @@
-import { test } from 'node:test';
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
+import * as fsp from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { parsePolar, interpolateBoatSpeed } from '../polar';
@@ -18,18 +19,21 @@ const POLAR_CSV = [
   '180;3;6',
 ].join('\n');
 
-function writeTmpPolar(): string {
-  const tmpFile = path.join(os.tmpdir(), `polar-test-${process.pid}.csv`);
-  fs.writeFileSync(tmpFile, POLAR_CSV);
-  return tmpFile;
-}
-
-let tmpFile: string;
+let tmpDir: string;
 let polar: PolarData;
 
-test('parsePolar: parses header TWS values', () => {
-  tmpFile = writeTmpPolar();
+before(async () => {
+  tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'polar-test-'));
+  const tmpFile = path.join(tmpDir, 'polar.csv');
+  fs.writeFileSync(tmpFile, POLAR_CSV);
   polar = parsePolar(tmpFile);
+});
+
+after(async () => {
+  if (tmpDir) await fsp.rm(tmpDir, { recursive: true, force: true });
+});
+
+test('parsePolar: parses header TWS values', () => {
   assert.deepStrictEqual(polar.tws, [10, 20]);
 });
 
@@ -102,9 +106,4 @@ test('interpolateBoatSpeed: clamps to minimum-TWS column speed in light air belo
   const atMin = interpolateBoatSpeed(polar, 90, 10);
   const below = interpolateBoatSpeed(polar, 90, 5);
   assert.ok(Math.abs(below - atMin) < 0.001, `below-min speed ${below} should equal at-min speed ${atMin}`);
-});
-
-test('cleanup temp file', () => {
-  if (tmpFile) try { fs.unlinkSync(tmpFile); } catch {}
-  assert.ok(true);
 });

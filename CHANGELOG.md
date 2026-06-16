@@ -2,6 +2,7 @@
 
 ## Upcoming
 
+- P3b code review fixes: rejection counts in failure error messages (BUG-124); extracted `closestTo()` helper (BUG-121); crash-safe temp file cleanup in polar test (BUG-123)
 - P3a code review fixes: standardised `node:` fs imports (BUG-119); deleted dead `dilate.ts` (BUG-118); removed dead reduce in failure path (BUG-113); merged redundant wave-grid coverage check (BUG-114)
 - P2 code review fixes: removed SSE `console.log` debugging calls (BUG-111); deduplicated `DEG_TO_RAD` constant across codebase (BUG-110); fixed `buildRegionIndex` key generation (BUG-108); centralised gdal-async `as any` casts in typed wrappers (BUG-106); defined `SignalKApp` interface replacing `app: any` (BUG-107)
 - P1 code review fixes: removed optional chaining overhead on polar hot path (BUG-97); isochrone timing logs guarded with `process.env.DEBUG` (BUG-96); current drift cosine uses correct latitude (BUG-94); `getWaveAt` validates bounds before bilinear (BUG-104); `savePluginConfig` awaited in loadRegions (BUG-103)
