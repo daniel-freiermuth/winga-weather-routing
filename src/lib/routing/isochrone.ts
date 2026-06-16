@@ -306,9 +306,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           'wind too adverse or light';
         const counts = `(land: ${lastRejectedByLand}, wind: ${lastRejectedByPolar}, grib: ${lastRejectedByGrib})`;
         if (lastFrontier !== null) {
-          const closest = lastFrontier.reduce((best, p) =>
-            haversineNM(p.lat, p.lon, end.lat, end.lon) < haversineNM(best.lat, best.lon, end.lat, end.lon) ? p : best
-          );
+          const closest = closestTo(lastFrontier, end);
           const dist = Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon));
           return {
             route: backtrack(closest, wind, false),
@@ -347,9 +345,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     if (!arrived) {
       if (isochrone.length > 0) {
         // Time steps exhausted with a live frontier — route extends past forecast coverage.
-        const closest = isochrone.reduce((best, p) =>
-          haversineNM(p.lat, p.lon, end.lat, end.lon) < haversineNM(best.lat, best.lon, end.lat, end.lon) ? p : best
-        );
+        const closest = closestTo(isochrone, end);
         const dist = Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon));
         return {
           route: backtrack(closest, wind, false),
@@ -379,6 +375,13 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 // the frontier near the start indefinitely (D13, BUG-37).
 // Frontier escape (escaped points are farthest from start) is prevented by the GRIB
 // domain boundary check applied before candidates enter this function.
+// Returns the point in `points` closest to `target` by haversine distance.
+function closestTo<T extends { lat: number; lon: number }>(points: T[], target: { lat: number; lon: number }): T {
+  return points.reduce((best, p) =>
+    haversineNM(p.lat, p.lon, target.lat, target.lon) < haversineNM(best.lat, best.lon, target.lat, target.lon) ? p : best
+  );
+}
+
 function pruneToFrontier<T extends { lat: number; lon: number }>(
   candidates: T[],
   startLat: number,
