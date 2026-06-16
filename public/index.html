@@ -524,6 +524,17 @@
   <script>
     const API = '/plugins/signalk-weather-routing';
 
+    // Escapes HTML special characters for safe insertion into innerHTML (BUG-117).
+    // Also escapes quotes for safe use inside HTML attributes.
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     const DISCLAIMER_KEY = 'wr-disclaimer-v1';
     const disclaimerOverlay = document.getElementById('disclaimer-overlay');
     const disclaimerOk = document.getElementById('disclaimer-ok');
@@ -858,7 +869,7 @@
       } catch(e) { /* fall back to OSM only */ }
 
       const select = document.getElementById('chart-select');
-      select.innerHTML = charts.map((c, i) => `<option value="${i}">${c.name}</option>`).join('');
+      select.innerHTML = charts.map((c, i) => `<option value="${i}">${escapeHtml(c.name)}</option>`).join('');
       setChart(charts[0]);
       select.addEventListener('change', () => setChart(charts[parseInt(select.value)]));
     }
@@ -903,7 +914,7 @@
       if (entries.length === 0) { sel.style.display = 'none'; return; }
 
       sel.innerHTML = '<option value="">— set from resources —</option>' +
-        entries.map((e, i) => `<option value="${i}">${e.label}</option>`).join('');
+        entries.map((e, i) => `<option value="${i}">${escapeHtml(e.label)}</option>`).join('');
       sel.style.display = '';
     }
 
@@ -933,7 +944,7 @@
 
       const sel = document.getElementById('waypoints-route');
       sel.innerHTML = '<option value="">— route waypoints —</option>' +
-        entries.map((e, i) => `<option value="${i}">${e.label}</option>`).join('');
+        entries.map((e, i) => `<option value="${i}">${escapeHtml(e.label)}</option>`).join('');
       document.getElementById('waypoints-route-section').style.display = '';
     }
 
@@ -1095,7 +1106,7 @@
         if (!hasWindFiles && !hasCurrentFiles) {
           gribLoaded = false;
           gribInfo.innerHTML = j.gribDir
-            ? `<span>No GRIB files found in</span><br>${j.gribDir}`
+            ? `<span>No GRIB files found in</span><br>${escapeHtml(j.gribDir)}`
             : '<span>No GRIB directory configured</span>';
           currentInfoEl.style.display = 'none';
           const removeOldBtn = document.getElementById('remove-old-gribs-btn');
@@ -1194,7 +1205,7 @@
               `<span style="color:${CURRENT_COLOR};font-size:11px">${f.nTimes} steps: ${start} &rarr; ${end}</span>` +
               `</label>` +
               `<button class="grib-jump-btn" data-time-start="${f.timeStart}" title="Jump scrubber to start of this file">&#x23EE;</button>` +
-              `<button class="grib-remove-btn" data-file-path="${f.path}" title="Archive this file">&#x1F5D1;</button>` +
+            `<button class="grib-remove-btn" data-file-path="${escapeHtml(f.path)}" title="Archive this file">&#x1F5D1;</button>` +
               `</div>${runLine}`;
             // Draw bbox
             if (currentBoundsLayer) { map.removeLayer(currentBoundsLayer); }
@@ -1272,7 +1283,7 @@
         `${failedFiles.length} of ${total} GRIB file(s) could not be indexed:`;
       const ul = document.getElementById('grib-warning-list');
       ul.innerHTML = failedFiles.map(f =>
-        `<li title="${f.error}">${f.path.split('/').pop()}</li>`
+        `<li title="${escapeHtml(f.error)}">${escapeHtml(f.path.split('/').pop())}</li>`
       ).join('');
       document.getElementById('grib-warning-ack').textContent =
         `Continue with ${ok} of ${total} file(s)`;
@@ -1329,12 +1340,12 @@
         const name = reg.name ?? id.slice(0, 8);
         const isAvoided = regionAvoidIds.includes(id);
         return `
-          <label class="region-item" data-uuid="${id}"
+          <label class="region-item" data-uuid="${escapeHtml(id)}"
             style="display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:4px;
                    cursor:pointer;font-size:12px;color:#cdd6f4;background:${isAvoided ? '#3a1f28' : '#2a2f45'};
                    border:1px solid ${isAvoided ? '#f38ba8' : 'transparent'}">
             <input type="checkbox" ${isAvoided ? 'checked' : ''} style="accent-color:#f38ba8;cursor:pointer">
-            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(name)}</span>
           </label>`;
       }).join('');
 
