@@ -304,6 +304,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           r === 'land' ? 'land blocks all paths' :
           r === 'grib_exhausted' ? 'frontier reached GRIB boundary' :
           'wind too adverse or light';
+        const counts = `(land: ${lastRejectedByLand}, wind: ${lastRejectedByPolar}, grib: ${lastRejectedByGrib})`;
         if (lastFrontier !== null) {
           const closest = lastFrontier.reduce((best, p) =>
             haversineNM(p.lat, p.lon, end.lat, end.lon) < haversineNM(best.lat, best.lon, end.lat, end.lon) ? p : best
@@ -311,11 +312,11 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           const dist = Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon));
           return {
             route: backtrack(closest, wind, false),
-            warning: `No reachable positions at step ${stepsCompleted + 1} (${reasonText(reason)}) — partial route shown (${dist} nm from destination)`,
+            warning: `No reachable positions at step ${stepsCompleted + 1} (${reasonText(reason)}) ${counts} — partial route shown (${dist} nm from destination)`,
           };
         }
         throw new RoutingError(
-          `No reachable positions at step ${step - startTimeIdx + 1} — ${reasonText(reason)}${reason === 'wind' ? ' to make progress' : ''}`,
+          `No reachable positions at step ${step - startTimeIdx + 1} — ${reasonText(reason)}${reason === 'wind' ? ' to make progress' : ''} ${counts}`,
           reason,
         );
       }
