@@ -135,19 +135,23 @@ module.exports = (app: SignalKApp) => {
       }
       const apiRegions = await app.resourcesApi.listResources('regions');
       regionIndex = buildRegionIndex(apiRegions);
-
-      // Auto-clean stale UUIDs from plugin config.
-      if (settings && settings.avoidRegionIds && settings.avoidRegionIds.length > 0) {
-        const valid = validRegionUuids(regionIndex);
-        const stale = settings.avoidRegionIds.filter(id => !valid.has(id));
-        if (stale.length > 0) {
-          settings.avoidRegionIds = settings.avoidRegionIds.filter(id => valid.has(id));
-          try { await app.savePluginConfig?.(); } catch { /* not critical */ }
-        }
-      }
     } catch (e: any) {
       app.debug(`Failed to load regions: ${e.message}`);
       regionIndex = null;
+    }
+  }
+
+  // Removes stale region UUIDs from plugin config. Called only from start() so that
+  // frequent read-only loadRegions() calls (from /calculate, /reload-grib, /avoid-regions)
+  // do not mutate persisted config as a side effect (BUG-116).
+  async function cleanStaleRegionIds(): Promise<void> {
+    if (!settings || !settings.avoidRegionIds || settings.avoidRegionIds.length === 0) return;
+    if (!regionIndex) return;
+    const valid = validRegionUuids(regionIndex);
+    const stale = settings.avoidRegionIds.filter(id => !valid.has(id));
+    if (stale.length > 0) {
+      settings.avoidRegionIds = settings.avoidRegionIds.filter(id => valid.has(id));
+      try { await app.savePluginConfig?.(); } catch { /* not critical */ }
     }
   }
 
@@ -200,6 +204,7 @@ module.exports = (app: SignalKApp) => {
       app.setPluginStatus('Indexing GRIB directory...');
       await scanAndIndexGribDir(cfg.gribDir);
       await loadRegions();
+      await cleanStaleRegionIds();
       setReady();
     },
 
