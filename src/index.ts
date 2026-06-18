@@ -18,6 +18,7 @@ import { buildRegionIndex, validRegionUuids } from './lib/regions';
 import { pluginDataDir, loadBundledEdgeIndex, loadBundledDilatedIndex, hiresLandAvailable, loadHiresEdgeIndex, loadHiresDilatedIndex } from './lib/setup';
 import { validateCalculateInput } from './lib/validation';
 import { SignalKApp } from './lib/signalk-app';
+import { computeGridBounds } from './lib/grid';
 import { RoutingAlgorithm } from './lib/routing/algorithm';
 import { IsochroneAlgorithm } from './lib/routing/isochrone';
 
@@ -134,19 +135,23 @@ module.exports = (app: SignalKApp) => {
       }
       const apiRegions = await app.resourcesApi.listResources('regions');
       regionIndex = buildRegionIndex(apiRegions);
-
-      // Auto-clean stale UUIDs from plugin config.
-      if (settings && settings.avoidRegionIds && settings.avoidRegionIds.length > 0) {
-        const valid = validRegionUuids(regionIndex);
-        const stale = settings.avoidRegionIds.filter(id => !valid.has(id));
-        if (stale.length > 0) {
-          settings.avoidRegionIds = settings.avoidRegionIds.filter(id => valid.has(id));
-          try { await app.savePluginConfig?.(); } catch { /* not critical */ }
-        }
-      }
     } catch (e: any) {
       app.debug(`Failed to load regions: ${e.message}`);
       regionIndex = null;
+    }
+  }
+
+  // Removes stale region UUIDs from plugin config. Called only from start() so that
+  // frequent read-only loadRegions() calls (from /calculate, /reload-grib, /avoid-regions)
+  // do not mutate persisted config as a side effect (BUG-116).
+  async function cleanStaleRegionIds(): Promise<void> {
+    if (!settings || !settings.avoidRegionIds || settings.avoidRegionIds.length === 0) return;
+    if (!regionIndex) return;
+    const valid = validRegionUuids(regionIndex);
+    const stale = settings.avoidRegionIds.filter(id => !valid.has(id));
+    if (stale.length > 0) {
+      settings.avoidRegionIds = settings.avoidRegionIds.filter(id => valid.has(id));
+      try { await app.savePluginConfig?.(); } catch { /* not critical */ }
     }
   }
 
@@ -199,6 +204,7 @@ module.exports = (app: SignalKApp) => {
       app.setPluginStatus('Indexing GRIB directory...');
       await scanAndIndexGribDir(cfg.gribDir);
       await loadRegions();
+      await cleanStaleRegionIds();
       setReady();
     },
 
@@ -594,20 +600,9 @@ module.exports = (app: SignalKApp) => {
           return void res.status(400).json({ error: `timeIdx out of range [0, ${wind.times.length - 1}]` });
 
         const timeMs = wind.times[timeIdx].getTime();
-        // Use the native GRIB grid resolution so arrows align with actual data points.
-        const latStep = Math.min(...loaded.map(f => f.meta.latStep));
-        const lonStep = Math.min(...loaded.map(f => f.meta.lonStep));
-        let latMin = Infinity, latMax = -Infinity, lonMin = Infinity, lonMax = -Infinity;
-        for (const f of loaded) {
-          if (f.meta.latMin < latMin) latMin = f.meta.latMin;
-          if (f.meta.latMax > latMax) latMax = f.meta.latMax;
-          if (f.meta.lonMin < lonMin) lonMin = f.meta.lonMin;
-          if (f.meta.lonMax > lonMax) lonMax = f.meta.lonMax;
-        }
+        const { latMin, latMax, lonMin, lonMax, latStep, lonStep, nLat, nLon } = computeGridBounds(loaded as GribFileEntry[]);
 
         // Index-based loop avoids floating-point drift over thousands of 0.0625° steps.
-        const nLat = Math.round((latMax - latMin) / latStep);
-        const nLon = Math.round((lonMax - lonMin) / lonStep);
         const points: Array<{ lat: number; lon: number; u: number; v: number }> = [];
         for (let i = 0; i <= nLat; i++) {
           const lat = latMin + i * latStep;
@@ -646,18 +641,8 @@ module.exports = (app: SignalKApp) => {
           return void res.status(400).json({ error: `timeIdx out of range [0, ${wind.times.length - 1}]` });
 
         const timeMs = wind.times[timeIdx].getTime();
-        const latStep = Math.min(...loaded.map(f => f.meta.latStep));
-        const lonStep = Math.min(...loaded.map(f => f.meta.lonStep));
-        let latMin = Infinity, latMax = -Infinity, lonMin = Infinity, lonMax = -Infinity;
-        for (const f of loaded) {
-          if (f.meta.latMin < latMin) latMin = f.meta.latMin;
-          if (f.meta.latMax > latMax) latMax = f.meta.latMax;
-          if (f.meta.lonMin < lonMin) lonMin = f.meta.lonMin;
-          if (f.meta.lonMax > lonMax) lonMax = f.meta.lonMax;
-        }
+        const { latMin, latMax, lonMin, lonMax, latStep, lonStep, nLat, nLon } = computeGridBounds(loaded as GribFileEntry[]);
 
-        const nLat = Math.round((latMax - latMin) / latStep);
-        const nLon = Math.round((lonMax - lonMin) / lonStep);
         const points: Array<{ lat: number; lon: number; waveHeight?: number }> = [];
         for (let i = 0; i <= nLat; i++) {
           const lat = latMin + i * latStep;
