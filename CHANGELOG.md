@@ -2,6 +2,7 @@
 
 ## Upcoming
 
+- P3c code review fixes: extracted `computeGridBounds()` grid helper (BUG-115); separated config mutation from region loading (BUG-116); added `escapeHtml()` for XSS-safe innerHTML (BUG-117)
 - P3b code review fixes: rejection counts in failure error messages (BUG-124); extracted `closestTo()` helper (BUG-121); crash-safe temp file cleanup in polar test (BUG-123)
 - P3a code review fixes: standardised `node:` fs imports (BUG-119); deleted dead `dilate.ts` (BUG-118); removed dead reduce in failure path (BUG-113); merged redundant wave-grid coverage check (BUG-114)
 - P2 code review fixes: removed SSE `console.log` debugging calls (BUG-111); deduplicated `DEG_TO_RAD` constant across codebase (BUG-110); fixed `buildRegionIndex` key generation (BUG-108); centralised gdal-async `as any` casts in typed wrappers (BUG-106); defined `SignalKApp` interface replacing `app: any` (BUG-107)
