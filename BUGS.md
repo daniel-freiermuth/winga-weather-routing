@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-134](https://github.com/kristianwiklund/signalk-weather-routing/issues/353) | Helsinki test route, leg June 7 1400-1500: route markers show calm circles (calm indicator) instead of wind barbs. Clicking the markers shows 8.5-9 kn wind in tooltips. The wind barbs around the leg area also show 8.5-9 kn. The waypoint barbs are not rendering correctly despite having valid wind data. |
 | [BUG-133](https://github.com/kristianwiklund/signalk-weather-routing/issues/348) | Clicking the label of a region avoidance checkbox briefly blinks the checkbox then returns it to the same state as before the click. All other checkboxes toggle correctly when clicking the label. |
 | [BUG-129](https://github.com/kristianwiklund/signalk-weather-routing/issues/339) | `getWind()` double-scans the files array after BUG-93 fix — `coversPointAtTime()` (.some()) runs before `selectFile()` (.find()), both scanning the same array with the same spatial+temporal predicate. Doubles per-call file-scan work on the isochrone hot path. |
 | [BUG-128](https://github.com/kristianwiklund/signalk-weather-routing/issues/334) | Isochrone lines are drawn on the map during route calculation even when the Isochrones checkbox in the Layers panel is unchecked. |
