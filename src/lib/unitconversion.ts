@@ -17,31 +17,36 @@ export interface UnitPrefs {
 
 // Factors: plugin-internal units → SI (m/s, m, m)
 export const toSI: Record<Category, (v: number) => number> = {
-  speed:    v => v * 0.514444,
-  depth:    v => v,
-  distance: v => v * 1852.001,
+  speed: (v) => v * 0.514444,
+  depth: (v) => v,
+  distance: (v) => v * 1852.001,
 };
 
 // Factors: SI (m/s, m, m) → plugin-internal units
 export const fromSI: Record<Category, (v: number) => number> = {
-  speed:    v => v * 1.94384,
-  depth:    v => v,
-  distance: v => v / 1852.001,
+  speed: (v) => v * 1.94384,
+  depth: (v) => v,
+  distance: (v) => v / 1852.001,
 };
 
 const FALLBACK_SYMBOL: Record<Category, string> = { speed: 'kn', depth: 'm', distance: 'nmi' };
 
 // Safe formula evaluator for "value * N" / "value / N" / "value + N" / "value - N"
 export function evalFormula(formula: string, value: number): number {
-  const m = formula.match(/^value\s*([*/+\-])\s*([\d.]+)$/);
+  const m = formula.match(/^value\s*([*/+-])\s*([\d.]+)$/);
   if (!m) return value;
   const n = parseFloat(m[2]);
   switch (m[1]) {
-    case '*': return value * n;
-    case '/': return value / n;
-    case '+': return value + n;
-    case '-': return value - n;
-    default:  return value;
+    case '*':
+      return value * n;
+    case '/':
+      return value / n;
+    case '+':
+      return value + n;
+    case '-':
+      return value - n;
+    default:
+      return value;
   }
 }
 
@@ -55,7 +60,12 @@ export function toDisplay(value: number, category: Category, prefs: UnitPrefs | 
 }
 
 // Convert internal-unit value to { num, sym } for display.
-export function fmt(value: number, category: Category, prefs: UnitPrefs | null, forceMs = false): { num: string; sym: string } {
+export function fmt(
+  value: number,
+  category: Category,
+  prefs: UnitPrefs | null,
+  forceMs = false,
+): { num: string; sym: string } {
   if (forceMs) {
     return { num: toSI[category](value).toFixed(2), sym: 'm/s' };
   }

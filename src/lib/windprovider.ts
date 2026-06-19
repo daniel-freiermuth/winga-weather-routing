@@ -6,10 +6,14 @@ import { getWindAt, getWaveAt, nearestTimeIndex } from './grib';
 
 export function nearestIdx(times: Date[], t: Date): number {
   const ms = t.getTime();
-  let best = 0, bestDiff = Infinity;
+  let best = 0,
+    bestDiff = Infinity;
   for (let i = 0; i < times.length; i++) {
     const diff = Math.abs(times[i].getTime() - ms);
-    if (diff < bestDiff) { bestDiff = diff; best = i; }
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = i;
+    }
   }
   return best;
 }
@@ -31,16 +35,16 @@ export class MultiFileWindProvider implements WindProvider {
     for (const f of this.sortedFiles) {
       for (const t of f.data!.times) msSet.add(t.getTime());
     }
-    this.times = Array.from(msSet).sort((a, b) => a - b).map(ms => new Date(ms));
+    this.times = Array.from(msSet)
+      .sort((a, b) => a - b)
+      .map((ms) => new Date(ms));
   }
 
   private selectFile(lat: number, lon: number, timeIdx: number): GribFileEntry | undefined {
     const t = this.times[timeIdx];
     const tMs = t.getTime();
-    return this.sortedFiles.find(e =>
-      coversPoint(e, lat, lon) &&
-      e.meta.timeStart.getTime() <= tMs &&
-      e.meta.timeEnd.getTime() >= tMs
+    return this.sortedFiles.find(
+      (e) => coversPoint(e, lat, lon) && e.meta.timeStart.getTime() <= tMs && e.meta.timeEnd.getTime() >= tMs,
     );
   }
 
@@ -56,28 +60,24 @@ export class MultiFileWindProvider implements WindProvider {
   }
 
   getWave(lat: number, lon: number, t: Date): number | undefined {
-    const waveFiles = this.sortedFiles.filter(e => e.data?.swhByTime?.size);
+    const waveFiles = this.sortedFiles.filter((e) => e.data?.swhByTime?.size);
     if (waveFiles.length === 0) return undefined;
     const tMs = t.getTime();
-    const f = waveFiles.find(e =>
-      coversPoint(e, lat, lon) &&
-      e.meta.timeStart.getTime() <= tMs &&
-      e.meta.timeEnd.getTime() >= tMs
+    const f = waveFiles.find(
+      (e) => coversPoint(e, lat, lon) && e.meta.timeStart.getTime() <= tMs && e.meta.timeEnd.getTime() >= tMs,
     );
     if (!f) return undefined;
     return getWaveAt(f.data!, lat, lon, tMs);
   }
 
   coversPoint(lat: number, lon: number): boolean {
-    return this.sortedFiles.some(e => coversPoint(e, lat, lon));
+    return this.sortedFiles.some((e) => coversPoint(e, lat, lon));
   }
 
   coversPointAtTime(lat: number, lon: number, timeIdx: number): boolean {
     const tMs = this.times[timeIdx].getTime();
-    return this.sortedFiles.some(e =>
-      coversPoint(e, lat, lon) &&
-      e.meta.timeStart.getTime() <= tMs &&
-      e.meta.timeEnd.getTime() >= tMs
+    return this.sortedFiles.some(
+      (e) => coversPoint(e, lat, lon) && e.meta.timeStart.getTime() <= tMs && e.meta.timeEnd.getTime() >= tMs,
     );
   }
 }

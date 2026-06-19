@@ -6,24 +6,37 @@ import { getCurrentAt, nearestCurrentTimeIndex } from '../grib';
 import { SingleFileCurrentProvider } from '../currentprovider';
 import { CurrentGribData, CurrentFileEntry } from '../../types';
 
-function makeCurrentGrib(opts: {
-  latMin?: number; latStep?: number; lonMin?: number; lonStep?: number;
-  nLat?: number; nLon?: number;
-  u?: number; v?: number;
-  times?: Date[];
-} = {}): CurrentGribData {
-  const latMin  = opts.latMin  ?? 40;
+function makeCurrentGrib(
+  opts: {
+    latMin?: number;
+    latStep?: number;
+    lonMin?: number;
+    lonStep?: number;
+    nLat?: number;
+    nLon?: number;
+    u?: number;
+    v?: number;
+    times?: Date[];
+  } = {},
+): CurrentGribData {
+  const latMin = opts.latMin ?? 40;
   const latStep = opts.latStep ?? 1;
-  const lonMin  = opts.lonMin  ?? 10;
+  const lonMin = opts.lonMin ?? 10;
   const lonStep = opts.lonStep ?? 1;
-  const nLat    = opts.nLat    ?? 2;
-  const nLon    = opts.nLon    ?? 2;
-  const nPts    = nLat * nLon;
+  const nLat = opts.nLat ?? 2;
+  const nLon = opts.nLon ?? 2;
+  const nPts = nLat * nLon;
   const t0 = opts.times?.[0] ?? new Date('2024-01-01T00:00:00Z');
   const t1 = opts.times?.[1] ?? new Date('2024-01-01T03:00:00Z');
   const times = opts.times ?? [t0, t1];
   return {
-    latMin, latStep, lonMin, lonStep, nLat, nLon, times,
+    latMin,
+    latStep,
+    lonMin,
+    lonStep,
+    nLat,
+    nLon,
+    times,
     u: times.map(() => new Float32Array(nPts).fill(opts.u ?? 1.0)),
     v: times.map(() => new Float32Array(nPts).fill(opts.v ?? 0.5)),
   };
@@ -62,35 +75,35 @@ test('getCurrentAt: returns interpolated value at centre of uniform 2×2 grid', 
 
 test('getCurrentAt: returns {u:0,v:0} for point south of grid (out-of-domain, no clamping)', () => {
   const data = makeCurrentGrib({ u: 5.0, v: 3.0 });
-  const result = getCurrentAt(data, 39.0, 10.5, 0);  // lat=39 < latMin=40
+  const result = getCurrentAt(data, 39.0, 10.5, 0); // lat=39 < latMin=40
   assert.strictEqual(result.u, 0);
   assert.strictEqual(result.v, 0);
 });
 
 test('getCurrentAt: returns {u:0,v:0} for point north of grid', () => {
   const data = makeCurrentGrib({ u: 5.0, v: 3.0 });
-  const result = getCurrentAt(data, 42.0, 10.5, 0);  // lat=42 > latMax=41
+  const result = getCurrentAt(data, 42.0, 10.5, 0); // lat=42 > latMax=41
   assert.strictEqual(result.u, 0);
   assert.strictEqual(result.v, 0);
 });
 
 test('getCurrentAt: returns {u:0,v:0} for point west of grid', () => {
   const data = makeCurrentGrib({ u: 5.0, v: 3.0 });
-  const result = getCurrentAt(data, 40.5, 9.0, 0);   // lon=9 < lonMin=10
+  const result = getCurrentAt(data, 40.5, 9.0, 0); // lon=9 < lonMin=10
   assert.strictEqual(result.u, 0);
   assert.strictEqual(result.v, 0);
 });
 
 test('getCurrentAt: returns {u:0,v:0} for point east of grid', () => {
   const data = makeCurrentGrib({ u: 5.0, v: 3.0 });
-  const result = getCurrentAt(data, 40.5, 12.0, 0);  // lon=12 > lonMax=11
+  const result = getCurrentAt(data, 40.5, 12.0, 0); // lon=12 > lonMax=11
   assert.strictEqual(result.u, 0);
   assert.strictEqual(result.v, 0);
 });
 
 test('getCurrentAt: returns non-zero for point exactly on grid boundary', () => {
   const data = makeCurrentGrib({ u: 3.0, v: 1.5 });
-  const result = getCurrentAt(data, 40.0, 10.0, 0);  // at latMin, lonMin exactly
+  const result = getCurrentAt(data, 40.0, 10.0, 0); // at latMin, lonMin exactly
   assert.ok(result.u !== 0 || result.v !== 0, 'boundary point should have non-zero current');
 });
 

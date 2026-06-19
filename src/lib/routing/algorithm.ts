@@ -1,6 +1,14 @@
 // RoutingAlgorithm interface — the contract all routing algorithm implementations must satisfy.
 
-import { CurrentProvider, WindProvider, LandEdgeIndex, RegionIndex, PolarData, CalculationRequest, RoutePoint } from '../../types';
+import {
+  CurrentProvider,
+  WindProvider,
+  LandEdgeIndex,
+  RegionIndex,
+  PolarData,
+  CalculationRequest,
+  RoutePoint,
+} from '../../types';
 
 export interface RoutingAlgorithm {
   readonly id: string;

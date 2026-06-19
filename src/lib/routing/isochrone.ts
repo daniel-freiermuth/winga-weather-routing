@@ -1,6 +1,15 @@
 // Isochrone routing: time-optimal route search via iterative frontier expansion.
 
-import { CurrentProvider, WindProvider, LandEdgeIndex, RegionIndex, PolarData, CalculationRequest, IsochronePoint, RoutePoint } from '../../types';
+import {
+  CurrentProvider,
+  WindProvider,
+  LandEdgeIndex,
+  RegionIndex,
+  PolarData,
+  CalculationRequest,
+  IsochronePoint,
+  RoutePoint,
+} from '../../types';
 import { RoutingAlgorithm } from './algorithm';
 import { nearestIdx } from '../windprovider';
 import { interpolateBoatSpeed } from '../polar';
@@ -41,10 +50,10 @@ function logStepTiming(t: StepTiming): void {
   if (!process.env.DEBUG) return;
   console.log(
     `[isochrone] step=${t.step} frontier=${t.frontierSize} coneDisabled=${t.coneDisabledCount}/${t.frontierSize} candidates=${t.candidatesEvaluated}` +
-    ` landChecks=${t.landChecksPerformed}` +
-    ` wind=${t.windLookupMs.toFixed(1)}ms polar=${t.polarMs.toFixed(1)}ms` +
-    ` land=${t.landCheckMs.toFixed(1)}ms prune=${t.pruningMs.toFixed(1)}ms` +
-    ` total=${t.totalMs.toFixed(1)}ms`,
+      ` landChecks=${t.landChecksPerformed}` +
+      ` wind=${t.windLookupMs.toFixed(1)}ms polar=${t.polarMs.toFixed(1)}ms` +
+      ` land=${t.landCheckMs.toFixed(1)}ms prune=${t.pruningMs.toFixed(1)}ms` +
+      ` total=${t.totalMs.toFixed(1)}ms`,
   );
 }
 
@@ -52,8 +61,15 @@ function logTimingSummary(timings: StepTiming[]): void {
   if (!process.env.DEBUG) return;
   if (timings.length === 0) return;
   const fields: (keyof StepTiming)[] = [
-    'frontierSize', 'coneDisabledCount', 'candidatesEvaluated', 'landChecksPerformed',
-    'windLookupMs', 'polarMs', 'landCheckMs', 'pruningMs', 'totalMs',
+    'frontierSize',
+    'coneDisabledCount',
+    'candidatesEvaluated',
+    'landChecksPerformed',
+    'windLookupMs',
+    'polarMs',
+    'landCheckMs',
+    'pruningMs',
+    'totalMs',
   ];
   const lines = fields.map((f) => {
     const vals = timings.map((t) => t[f] as number);
@@ -70,7 +86,10 @@ type FailureReason = 'land' | 'wind' | 'grib_exhausted';
 // Structured routing failure — carries a machine-readable reason so the frontend
 // can show the sailor a specific diagnostic rather than a generic error string.
 export class RoutingError extends Error {
-  constructor(message: string, public readonly reason: FailureReason) {
+  constructor(
+    message: string,
+    public readonly reason: FailureReason,
+  ) {
     super(message);
     this.name = 'RoutingError';
   }
@@ -94,14 +113,14 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     const sectorSize = Number(options?.sectorSize ?? DEFAULT_SECTOR_SIZE);
     const minBoatSpeed = Number(options?.minBoatSpeed ?? DEFAULT_MIN_BOAT_SPEED);
     const arrivalRadiusNm = Number(options?.arrivalRadiusNm ?? DEFAULT_ARRIVAL_RADIUS_NM);
-    const maxWindKn        = Number(options?.maxWindKn        ?? 0);  // 0 = no limit
-    const maxWaveM         = Number(options?.maxWaveM         ?? 0);  // 0 = no limit
-    const motorSpeedKn     = Number(options?.motorSpeedKn     ?? 0);  // 0 = no motor
-    const motorBelowKn     = Number(options?.motorBelowKn     ?? 0);  // 0 = disabled
-    const waitForWind      = Boolean(options?.waitForWind     ?? false);
-    const configuredConeHalfAngle = Number(options?.coneHalfAngle    ?? FINE_PASS_CONE_HALF_ANGLE);
-    const coneDisableLookaheadNm  = Number(options?.coneDisableLookaheadNm ?? CONE_DISABLE_LOOKAHEAD_NM);
-    const maxHeadingChangeDeg     = Number(options?.maxHeadingChange   ?? MAX_HEADING_CHANGE);
+    const maxWindKn = Number(options?.maxWindKn ?? 0); // 0 = no limit
+    const maxWaveM = Number(options?.maxWaveM ?? 0); // 0 = no limit
+    const motorSpeedKn = Number(options?.motorSpeedKn ?? 0); // 0 = no motor
+    const motorBelowKn = Number(options?.motorBelowKn ?? 0); // 0 = disabled
+    const waitForWind = Boolean(options?.waitForWind ?? false);
+    const configuredConeHalfAngle = Number(options?.coneHalfAngle ?? FINE_PASS_CONE_HALF_ANGLE);
+    const coneDisableLookaheadNm = Number(options?.coneDisableLookaheadNm ?? CONE_DISABLE_LOOKAHEAD_NM);
+    const maxHeadingChangeDeg = Number(options?.maxHeadingChange ?? MAX_HEADING_CHANGE);
 
     const { start, end } = request;
     const departureTime = new Date(request.departureTime);
@@ -121,16 +140,20 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     }
 
     const seedVec = wind.getWind(start.lat, start.lon, startTimeIdx);
-    let isochrone: IsochronePoint[] = [{
-      lat: start.lat, lon: start.lon,
-      time: wind.times[startTimeIdx],
-      heading: 0, twa: 0,
-      tws: windSpeedKnots(seedVec.u, seedVec.v),
-      boatSpeed: undefined,
-      windDir: windDirection(seedVec.u, seedVec.v),
-      stepCalcMs: 0,
-      parent: undefined,
-    }];
+    let isochrone: IsochronePoint[] = [
+      {
+        lat: start.lat,
+        lon: start.lon,
+        time: wind.times[startTimeIdx],
+        heading: 0,
+        twa: 0,
+        tws: windSpeedKnots(seedVec.u, seedVec.v),
+        boatSpeed: undefined,
+        windDir: windDirection(seedVec.u, seedVec.v),
+        stepCalcMs: 0,
+        parent: undefined,
+      },
+    ];
 
     let arrived: IsochronePoint | null = null;
 
@@ -175,22 +198,29 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         const tws = windSpeedKnots(windVec.u, windVec.v);
         const wdir = windDirection(windVec.u, windVec.v);
 
-        if (maxWindKn > 0 && tws > maxWindKn) { rejectedByPolar++; continue; }
+        if (maxWindKn > 0 && tws > maxWindKn) {
+          rejectedByPolar++;
+          continue;
+        }
         if (maxWaveM > 0) {
           const wh = wind.getWave(point.lat, point.lon, wind.times[step]);
           if (wh != null && wh > maxWaveM) continue;
         }
 
         const distToDest = haversineNM(point.lat, point.lon, end.lat, end.lon);
-        const coneCheckEnd = distToDest <= coneDisableLookaheadNm
-          ? end
-          : destinationPoint(point.lat, point.lon, coneDisableLookaheadNm, pointToDestBearing);
-        const directPathBlockedByLand = edgeIndex !== null &&
+        const coneCheckEnd =
+          distToDest <= coneDisableLookaheadNm
+            ? end
+            : destinationPoint(point.lat, point.lon, coneDisableLookaheadNm, pointToDestBearing);
+        const directPathBlockedByLand =
+          edgeIndex !== null &&
           segmentCrossesLandFast(edgeIndex, point.lat, point.lon, coneCheckEnd.lat, coneCheckEnd.lon);
-        const directPathBlockedByRegion = regionIndex !== null && avoidIds.size > 0 &&
+        const directPathBlockedByRegion =
+          regionIndex !== null &&
+          avoidIds.size > 0 &&
           segmentCrossesRegion(regionIndex, avoidIds, point.lat, point.lon, coneCheckEnd.lat, coneCheckEnd.lon);
         if (directPathBlockedByLand || directPathBlockedByRegion) coneDisabledCount++;
-        const coneHalfAngle = (directPathBlockedByLand || directPathBlockedByRegion) ? 180 : configuredConeHalfAngle;
+        const coneHalfAngle = directPathBlockedByLand || directPathBlockedByRegion ? 180 : configuredConeHalfAngle;
 
         let waitCandidateAdded = false;
         for (let hdg = 0; hdg < 360; hdg += headingStep) {
@@ -204,22 +234,29 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
             if (delta > maxHeadingChangeDeg) continue;
           }
 
-          let twa = ((hdg - wdir) + 360) % 360;
+          let twa = (hdg - wdir + 360) % 360;
           if (twa > 180) twa = 360 - twa;
 
           const polarSpeed = interpolateBoatSpeed(polar, twa, tws);
           // REQ-84: motor fires when polarSpeed < motorBelowKn threshold.
-          const effectiveSpeed = (motorBelowKn > 0 && motorSpeedKn > 0 && polarSpeed < motorBelowKn)
-            ? motorSpeedKn
-            : polarSpeed;
+          const effectiveSpeed =
+            motorBelowKn > 0 && motorSpeedKn > 0 && polarSpeed < motorBelowKn ? motorSpeedKn : polarSpeed;
           // REQ-82: below minimum → zero-speed gate before discard.
           if (effectiveSpeed < minBoatSpeed) {
             // REQ-83: stay in place for one candidate per frontier point; advancing time only.
             if (waitForWind && !waitCandidateAdded) {
               candidates.push({
-                lat: point.lat, lon: point.lon, time: nextTime,
-                heading: point.heading, twa: point.twa, tws, boatSpeed: 0,
-                windDir: wdir, stepCalcMs: 0, gribFilePath, parent: point,
+                lat: point.lat,
+                lon: point.lon,
+                time: nextTime,
+                heading: point.heading,
+                twa: point.twa,
+                tws,
+                boatSpeed: 0,
+                windDir: wdir,
+                stepCalcMs: 0,
+                gribFilePath,
+                parent: point,
               });
               waitCandidateAdded = true;
             }
@@ -240,26 +277,43 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           if (current) {
             const cur = current.getCurrent(point.lat, point.lon, nextTime);
             const dtS = dtHours * 3600;
-            newLat += cur.v * dtS / (1852 * 60);
-            newLon += cur.u * dtS / (1852 * 60 * Math.cos(point.lat * DEG_TO_RAD));
+            newLat += (cur.v * dtS) / (1852 * 60);
+            newLon += (cur.u * dtS) / (1852 * 60 * Math.cos(point.lat * DEG_TO_RAD));
           }
 
-          if (!wind.coversPointAtTime(newLat, newLon, step)) { rejectedByGrib++; continue; } // discard candidates outside spatiotemporal GRIB domain (BUG-37, BUG-75)
+          if (!wind.coversPointAtTime(newLat, newLon, step)) {
+            rejectedByGrib++;
+            continue;
+          } // discard candidates outside spatiotemporal GRIB domain (BUG-37, BUG-75)
 
           if (edgeIndex) {
             landChecksPerformed++;
             const t0land = performance.now();
             const blocked = segmentCrossesLandFast(edgeIndex, point.lat, point.lon, newLat, newLon);
             landCheckMs += performance.now() - t0land;
-            if (blocked) { rejectedByLand++; continue; }
+            if (blocked) {
+              rejectedByLand++;
+              continue;
+            }
           }
-          if (regionIndex && avoidIds.size > 0 &&
-            segmentCrossesRegion(regionIndex, avoidIds, point.lat, point.lon, newLat, newLon)) { rejectedByLand++; continue; }
+          if (
+            regionIndex &&
+            avoidIds.size > 0 &&
+            segmentCrossesRegion(regionIndex, avoidIds, point.lat, point.lon, newLat, newLon)
+          ) {
+            rejectedByLand++;
+            continue;
+          }
 
           const newPoint: IsochronePoint = {
-            lat: newLat, lon: newLon,
+            lat: newLat,
+            lon: newLon,
             time: nextTime,
-            heading: hdg, twa, tws, boatSpeed: effectiveSpeed, windDir: wdir,
+            heading: hdg,
+            twa,
+            tws,
+            boatSpeed: effectiveSpeed,
+            windDir: wdir,
             stepCalcMs: 0,
             gribFilePath,
             parent: point,
@@ -301,9 +355,11 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
               ? 'land'
               : 'wind';
         const reasonText = (r: FailureReason) =>
-          r === 'land' ? 'land blocks all paths' :
-          r === 'grib_exhausted' ? 'frontier reached GRIB boundary' :
-          'wind too adverse or light';
+          r === 'land'
+            ? 'land blocks all paths'
+            : r === 'grib_exhausted'
+              ? 'frontier reached GRIB boundary'
+              : 'wind too adverse or light';
         const counts = `(land: ${lastRejectedByLand}, wind: ${lastRejectedByPolar}, grib: ${lastRejectedByGrib})`;
         if (lastFrontier !== null) {
           const closest = closestTo(lastFrontier, end);
@@ -352,7 +408,10 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           warning: `Route extends past forecast coverage after ${stepsCompleted} steps — partial route shown (${dist} nm from destination)`,
         };
       }
-      throw new RoutingError(`Destination not reached within forecast period after ${stepsCompleted} steps`, 'grib_exhausted');
+      throw new RoutingError(
+        `Destination not reached within forecast period after ${stepsCompleted} steps`,
+        'grib_exhausted',
+      );
     }
 
     return { route: backtrack(arrived, wind, true, end) };
@@ -378,7 +437,9 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 // Returns the point in `points` closest to `target` by haversine distance.
 function closestTo<T extends { lat: number; lon: number }>(points: T[], target: { lat: number; lon: number }): T {
   return points.reduce((best, p) =>
-    haversineNM(p.lat, p.lon, target.lat, target.lon) < haversineNM(best.lat, best.lon, target.lat, target.lon) ? p : best
+    haversineNM(p.lat, p.lon, target.lat, target.lon) < haversineNM(best.lat, best.lon, target.lat, target.lon)
+      ? p
+      : best,
   );
 }
 
@@ -393,7 +454,7 @@ function pruneToFrontier<T extends { lat: number; lon: number }>(
 
   for (const p of candidates) {
     const brng = bearingTo(startLat, startLon, p.lat, p.lon);
-    const sector = Math.floor(((brng % 360) + 360) % 360 / sectorSize);
+    const sector = Math.floor((((brng % 360) + 360) % 360) / sectorSize);
 
     const dLat = p.lat - startLat;
     const dLon = (p.lon - startLon) * Math.cos(startLat * DEG_TO_RAD); // cosine correction: longitude degrees are shorter than latitude degrees away from the equator
@@ -425,10 +486,14 @@ function backtrack(
 
   if (includeEnd && end) {
     route.unshift({
-      lat: end.lat, lon: end.lon,
+      lat: end.lat,
+      lon: end.lon,
       time: arrived.time,
       heading: arrived.heading,
-      twa: arrived.twa, tws: arrived.tws, boatSpeed: arrived.boatSpeed, windDir: arrived.windDir,
+      twa: arrived.twa,
+      tws: arrived.tws,
+      boatSpeed: arrived.boatSpeed,
+      windDir: arrived.windDir,
       legCalcMs: 0,
       waveHeight: wind.getWave(end.lat, end.lon, arrived.time),
       gribFilePath: arrived.gribFilePath,
@@ -438,10 +503,14 @@ function backtrack(
   let cur: IsochronePoint | undefined = arrived;
   while (cur) {
     route.unshift({
-      lat: cur.lat, lon: cur.lon,
+      lat: cur.lat,
+      lon: cur.lon,
       time: cur.time,
       heading: cur.heading,
-      twa: cur.twa, tws: cur.tws, boatSpeed: cur.boatSpeed, windDir: cur.windDir,
+      twa: cur.twa,
+      tws: cur.tws,
+      boatSpeed: cur.boatSpeed,
+      windDir: cur.windDir,
       legCalcMs: cur.stepCalcMs,
       waveHeight: wind.getWave(cur.lat, cur.lon, cur.time),
       gribFilePath: cur.gribFilePath,
@@ -451,4 +520,3 @@ function backtrack(
 
   return route;
 }
-

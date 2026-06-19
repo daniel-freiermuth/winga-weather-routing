@@ -3,13 +3,29 @@ import assert from 'node:assert/strict';
 import { computeGridBounds } from '../grid';
 import { GribFileEntry } from '../../types';
 
-function makeEntry(latMin: number, latMax: number, lonMin: number, lonMax: number, latStep: number, lonStep: number): GribFileEntry {
+function makeEntry(
+  latMin: number,
+  latMax: number,
+  lonMin: number,
+  lonMax: number,
+  latStep: number,
+  lonStep: number,
+): GribFileEntry {
   return {
     meta: {
-      path: 'test.grib2', mtime: 0, type: 'wind' as const,
-      latMin, latMax, lonMin, lonMax, latStep, lonStep,
-      timeStart: new Date('2024-01-01'), timeEnd: new Date('2024-01-02'),
-      nTimes: 2, referenceTime: new Date('2024-01-01'),
+      path: 'test.grib2',
+      mtime: 0,
+      type: 'wind' as const,
+      latMin,
+      latMax,
+      lonMin,
+      lonMax,
+      latStep,
+      lonStep,
+      timeStart: new Date('2024-01-01'),
+      timeEnd: new Date('2024-01-02'),
+      nTimes: 2,
+      referenceTime: new Date('2024-01-01'),
     },
     data: null,
   };
@@ -36,8 +52,8 @@ test('computeGridBounds: picks finest step when files differ', () => {
 test('computeGridBounds: nLat/nLon computed from union bbox and finest step', () => {
   const a = makeEntry(40, 42, 10, 12, 0.5, 0.5);
   const bounds = computeGridBounds([a]);
-  assert.strictEqual(bounds.nLat, 4);  // (42-40)/0.5 = 4
-  assert.strictEqual(bounds.nLon, 4);  // (12-10)/0.5 = 4
+  assert.strictEqual(bounds.nLat, 4); // (42-40)/0.5 = 4
+  assert.strictEqual(bounds.nLon, 4); // (12-10)/0.5 = 4
 });
 
 test('computeGridBounds: single file', () => {
@@ -50,5 +66,5 @@ test('computeGridBounds: single file', () => {
   assert.strictEqual(bounds.latStep, 1);
   assert.strictEqual(bounds.lonStep, 2);
   assert.strictEqual(bounds.nLat, 5);
-  assert.strictEqual(bounds.nLon, 5);  // (10-0)/2 = 5
+  assert.strictEqual(bounds.nLon, 5); // (10-0)/2 = 5
 });

@@ -14,7 +14,7 @@ export async function saveRoute(app: SignalKApp, route: RoutePoint[], name: stri
   const resource = {
     name,
     description: `Isochrone route calculated by signalk-weather-routing`,
-    distance: Math.round(totalDistNM * 1852),  // SignalK stores distance in metres
+    distance: Math.round(totalDistNM * 1852), // SignalK stores distance in metres
     feature: {
       type: 'Feature' as const,
       geometry: {

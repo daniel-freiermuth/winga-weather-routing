@@ -12,8 +12,13 @@ export interface CalculateInput {
 
 export function validateCalculateInput(input: CalculateInput): { valid: true } | { valid: false; error: string } {
   const { start, end, departureTime } = input;
-  if (!isValidCoordinate(start?.lat) || !isValidCoordinate(start?.lon) ||
-      !isValidCoordinate(end?.lat) || !isValidCoordinate(end?.lon) || !departureTime) {
+  if (
+    !isValidCoordinate(start?.lat) ||
+    !isValidCoordinate(start?.lon) ||
+    !isValidCoordinate(end?.lat) ||
+    !isValidCoordinate(end?.lon) ||
+    !departureTime
+  ) {
     return { valid: false, error: 'Required: start {lat,lon}, end {lat,lon}, departureTime (ISO 8601)' };
   }
   return { valid: true };
