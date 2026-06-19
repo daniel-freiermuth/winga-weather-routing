@@ -31,8 +31,6 @@
   "files": [
     "dist/",
     "public/",
-    "data/edge-index.bin.gz",
-    "data/dilated-edge-index.bin.gz",
     "wr-icon-128px.png",
     "route-to-route-demo.png",
     "screenshot2.jpg"
@@ -45,6 +43,7 @@
     "@kristianwiklund/wr-gdal-linux-arm64": "3.12.3"
   },
   "dependencies": {
+    "@kristianwiklund/wr-land-data": "1.0.0",
     "gdal-async": "^3.9.0",
     "jsts": "^2.12.1",
     "express": "^4.21.0",

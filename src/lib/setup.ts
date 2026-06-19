@@ -19,8 +19,15 @@ export function pluginDataDir(app: SignalKApp): string {
 }
 
 function bundledDataDir(): string {
-  // __dirname is dist/lib/ at runtime; data/ is two levels up at the package root
-  return path.join(__dirname, '../../data');
+  // Try the separate land-data package first (REQ-128).
+  // Falls back to the bundled data/ directory for backward compatibility.
+  try {
+    const pkgPath = require.resolve('@kristianwiklund/wr-land-data/package.json');
+    return path.join(path.dirname(pkgPath), 'data');
+  } catch {
+    // __dirname is dist/lib/ at runtime; data/ is two levels up at the package root
+    return path.join(__dirname, '../../data');
+  }
 }
 
 // Both edge and dilated indices share this binary layout after the 32-byte header:
