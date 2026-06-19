@@ -1,6 +1,6 @@
 # Changelog
 
-## Upcoming
+## 0.8.0
 
 - Error message clarifies "No wind GRIB files" when only current GRIB is loaded (BUG-83)
 - Region avoidance checkbox label click no longer double-toggles (BUG-133)
