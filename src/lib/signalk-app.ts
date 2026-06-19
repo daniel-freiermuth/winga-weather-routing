@@ -17,6 +17,7 @@ export interface SignalKApp {
   setPluginError(error: string): void;
   debug(message: string): void;
   savePluginConfig?(): Promise<void> | void;
+  savePluginOptions?(configuration: Record<string, unknown>, callback?: (err?: Error) => void): void;
   resourcesApi?: SignalKResourcesApi;
   config?: { configPath?: string };
 }
