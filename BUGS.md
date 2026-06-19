@@ -4,6 +4,8 @@
 
 | # | Description |
 |---|---|
+| [BUG-132](https://github.com/kristianwiklund/signalk-weather-routing/issues/347) | Post routing, when the scrubber start and stop time is locked to the route duration, the old grib color bar visualizer still shows at its original render position instead of updating to match the locked range. |
+| [BUG-131](https://github.com/kristianwiklund/signalk-weather-routing/issues/346) | Writing the avoid regions to config dropped the gribDir and polarPath. Likely caused by the BUG-125 fix: `savePluginOptions({ avoidRegionIds })` passes a partial config — the SignalK API treats the parameter as the FULL configuration object, overwriting the entire `configuration` key. |
 | [BUG-130](https://github.com/kristianwiklund/signalk-weather-routing/issues/344) | CI fails — REQ-127 added eslint and prettier to CI but existing code has eslint errors and prettier formatting violations. Cleanup needed: run prettier, fix lint errors. The `no-explicit-any` warnings are NOT tracked by code review — they are a mix of gdal wrapper casts, SignalK resource data, Express boundary types, and test assertions. These will be accepted via eslint inline disables with documented reasons. |
 | [BUG-129](https://github.com/kristianwiklund/signalk-weather-routing/issues/339) | `getWind()` double-scans the files array after BUG-93 fix — `coversPointAtTime()` (.some()) runs before `selectFile()` (.find()), both scanning the same array with the same spatial+temporal predicate. Doubles per-call file-scan work on the isochrone hot path. |
 | [BUG-128](https://github.com/kristianwiklund/signalk-weather-routing/issues/334) | Isochrone lines are drawn on the map during route calculation even when the Isochrones checkbox in the Layers panel is unchecked. |
