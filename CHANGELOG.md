@@ -2,6 +2,7 @@
 
 ## Upcoming
 
+- Polar low-wind fix: boat speed linearly interpolates toward zero below polar minimum TWS instead of clamping to full speed (BUG-58)
 - Fixed scrubber time axis: uses actual GRIB times instead of even-spacing reconstruction (BUG-134: variable ICON-EU spacing caused 12+ hour divergence at later forecast steps)
 - Waypoint labels toggle with configurable interval (hours); Helsinki test destination updated (REQ-125, REQ-126)
 - Scrubber coverage bar now updates when route locks the time range; added Full/Route range toggle button (BUG-132)

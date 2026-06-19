@@ -45,16 +45,22 @@ export function interpolateBoatSpeed(polar: PolarData, twaDeg: number, twsKnots:
 
   const twa0 = polar.twa[twaIdx];
   const twa1 = polar.twa[Math.min(twaIdx + 1, polar.twa.length - 1)];
+  const tTwa = twa1 === twa0 ? 0 : Math.max(0, Math.min(1, (twa - twa0) / (twa1 - twa0)));
+  const twaNext = Math.min(twaIdx + 1, polar.twa.length - 1);
+
+  // Below polar minimum TWS: linearly interpolate toward zero (BUG-58).
+  // ORC polars start at 6 kn because the VPP aero model is unreliable below that,
+  // not because boats can't sail. At 4-5 kn TWS a typical boat makes 1-3 kn.
+  // Linear ramp from (0, 0) to (polar.tws[0], polar_min_speed) preserves
+  // frontier points at moderate TWS while correctly showing less wind = less speed.
+  if (twsKnots < polar.tws[0]) {
+    const minTwsSpeed = (1 - tTwa) * polar.speeds[twaIdx][0] + tTwa * polar.speeds[twaNext][0];
+    return minTwsSpeed * (twsKnots / polar.tws[0]);
+  }
+
   const tws0 = polar.tws[twsIdx];
   const tws1 = polar.tws[Math.min(twsIdx + 1, polar.tws.length - 1)];
-
-  // Clamp to [0,1]: upper clamp prevents extrapolation beyond the polar maximum;
-  // lower clamp returns the minimum-TWS column speed in light air below the polar minimum
-  // rather than extrapolating toward zero (BUG-36).
-  const tTwa = twa1 === twa0 ? 0 : Math.max(0, Math.min(1, (twa - twa0) / (twa1 - twa0)));
   const tTws = tws1 === tws0 ? 0 : Math.max(0, Math.min(1, (twsKnots - tws0) / (tws1 - tws0)));
-
-  const twaNext = Math.min(twaIdx + 1, polar.twa.length - 1);
   const twsNext = Math.min(twsIdx + 1, polar.tws.length - 1);
 
   const s00 = polar.speeds[twaIdx][twsIdx];

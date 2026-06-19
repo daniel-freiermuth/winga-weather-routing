@@ -97,8 +97,19 @@ test('interpolateBoatSpeed: TWA above 180° is clamped to 180°', () => {
   assert.ok(Math.abs(beyond - at180) < 0.001, `expected ${at180}, got ${beyond}`);
 });
 
-test('interpolateBoatSpeed: clamps to minimum-TWS column speed in light air below polar minimum', () => {
+test('interpolateBoatSpeed: linear interpolation toward zero for TWS below polar minimum (BUG-58)', () => {
+  // Test polar has TWS columns [10, 20]. Minimum TWS = 10.
   const atMin = interpolateBoatSpeed(polar, 90, 10);
-  const below = interpolateBoatSpeed(polar, 90, 5);
-  assert.ok(Math.abs(below - atMin) < 0.001, `below-min speed ${below} should equal at-min speed ${atMin}`);
+  const halfMin = interpolateBoatSpeed(polar, 90, 5);
+  const quarter = interpolateBoatSpeed(polar, 90, 2.5);
+  assert.ok(halfMin < atMin, `5 kn (${halfMin}) should be slower than 10 kn (${atMin})`);
+  assert.ok(
+    Math.abs(halfMin - atMin / 2) < 0.001,
+    `5 kn (half min TWS) should give ~half speed: ${halfMin} vs ${atMin / 2}`,
+  );
+  assert.ok(
+    Math.abs(quarter - atMin / 4) < 0.001,
+    `2.5 kn (quarter min TWS) should give ~quarter speed: ${quarter} vs ${atMin / 4}`,
+  );
+  assert.strictEqual(interpolateBoatSpeed(polar, 90, 0), 0, '0 kn should give 0 speed');
 });
