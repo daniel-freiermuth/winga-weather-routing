@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-133](https://github.com/kristianwiklund/signalk-weather-routing/issues/348) | Clicking the label of a region avoidance checkbox briefly blinks the checkbox then returns it to the same state as before the click. All other checkboxes toggle correctly when clicking the label. |
 | [BUG-132](https://github.com/kristianwiklund/signalk-weather-routing/issues/347) | Post routing, when the scrubber start and stop time is locked to the route duration, the old grib color bar visualizer still shows at its original render position instead of updating to match the locked range. |
 | [BUG-131](https://github.com/kristianwiklund/signalk-weather-routing/issues/346) | Writing the avoid regions to config dropped the gribDir and polarPath. Likely caused by the BUG-125 fix: `savePluginOptions({ avoidRegionIds })` passes a partial config — the SignalK API treats the parameter as the FULL configuration object, overwriting the entire `configuration` key. |
 | [BUG-129](https://github.com/kristianwiklund/signalk-weather-routing/issues/339) | `getWind()` double-scans the files array after BUG-93 fix — `coversPointAtTime()` (.some()) runs before `selectFile()` (.find()), both scanning the same array with the same spatial+temporal predicate. Doubles per-call file-scan work on the isochrone hot path. |
