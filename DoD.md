@@ -2,6 +2,24 @@
 
 The agent must verify ALL items in this checklist before declaring a task complete. The checklist is printed and each item confirmed before reporting "done" to the user.
 
+## HARD GATE: Items 1-6 must ALL pass before ANY of items 7-16
+
+Items 1-6 are a **hard gate**. The agent must NOT:
+- Create a Phase 2 commit (item 11)
+- Push a branch
+- Create a PR (item 13)
+- Ask for merge approval (item 14)
+
+...until items 1-6 are ALL confirmed `[x]`. Specifically, item 6 (user confirmation) blocks everything else. The agent must deploy, ask the user to test, and WAIT. No exceptions — not even for "trivial" one-line changes.
+
+**Workflow:**
+1. Implement (items 1-4: build, lint, format, test)
+2. Deploy (item 5: copy to container + restart)
+3. Ask user to test — **STOP HERE. Do not proceed to Phase 2. Do not create a PR. Do not ask for merge.**
+4. Only after explicit user confirmation: Phase 2 docs (items 7-9)
+5. Phase 2 commit (items 10-11)
+6. Push, CI, PR, merge (items 12-16)
+
 ## Checklist
 
 Print this checklist before declaring done:
