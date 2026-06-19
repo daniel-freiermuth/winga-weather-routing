@@ -2,6 +2,7 @@
 
 ## Upcoming
 
+- Scrubber coverage bar now updates when route locks the time range; added Full/Route range toggle button (BUG-132)
 - Fixed config corruption: toggling region avoidance no longer drops gribDir and polarPath (BUG-131: `savePluginOptions` now passes full settings object)
 - Code quality: all source files formatted with prettier; eslint passes with 0 errors and 0 warnings; accepted `any` usages documented with inline disables (BUG-130)
 - Region avoidance selections now persist across SignalK restarts (BUG-125: fixed `savePluginConfig` → `savePluginOptions`)
