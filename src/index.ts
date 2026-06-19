@@ -927,7 +927,7 @@ module.exports = (app: SignalKApp) => {
         if (settings) {
           settings.avoidRegionIds = filtered;
           try {
-        app.savePluginOptions?.(settings);
+            app.savePluginOptions?.(settings);
           } catch {
             /* best-effort */
           }

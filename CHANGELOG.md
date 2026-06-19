@@ -2,6 +2,7 @@
 
 ## Upcoming
 
+- Fixed config corruption: toggling region avoidance no longer drops gribDir and polarPath (BUG-131: `savePluginOptions` now passes full settings object)
 - Code quality: all source files formatted with prettier; eslint passes with 0 errors and 0 warnings; accepted `any` usages documented with inline disables (BUG-130)
 - Region avoidance selections now persist across SignalK restarts (BUG-125: fixed `savePluginConfig` → `savePluginOptions`)
 - Land data distributed as separate npm package `@kristianwiklund/wr-land-data`; main package reduced from 93 MB to 85 kB (REQ-128)
