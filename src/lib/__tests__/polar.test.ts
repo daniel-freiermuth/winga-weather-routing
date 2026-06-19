@@ -103,7 +103,13 @@ test('interpolateBoatSpeed: linear interpolation toward zero for TWS below polar
   const halfMin = interpolateBoatSpeed(polar, 90, 5);
   const quarter = interpolateBoatSpeed(polar, 90, 2.5);
   assert.ok(halfMin < atMin, `5 kn (${halfMin}) should be slower than 10 kn (${atMin})`);
-  assert.ok(Math.abs(halfMin - atMin / 2) < 0.001, `5 kn (half min TWS) should give ~half speed: ${halfMin} vs ${atMin / 2}`);
-  assert.ok(Math.abs(quarter - atMin / 4) < 0.001, `2.5 kn (quarter min TWS) should give ~quarter speed: ${quarter} vs ${atMin / 4}`);
+  assert.ok(
+    Math.abs(halfMin - atMin / 2) < 0.001,
+    `5 kn (half min TWS) should give ~half speed: ${halfMin} vs ${atMin / 2}`,
+  );
+  assert.ok(
+    Math.abs(quarter - atMin / 4) < 0.001,
+    `2.5 kn (quarter min TWS) should give ~quarter speed: ${quarter} vs ${atMin / 4}`,
+  );
   assert.strictEqual(interpolateBoatSpeed(polar, 90, 0), 0, '0 kn should give 0 speed');
 });
