@@ -7,6 +7,7 @@ import { CurrentGribData, GribData, GribFileMeta, WindVector } from '../types';
 
 const GRIB_EXTENSIONS = new Set(['.grib2', '.grib', '.grb2', '.grb']);
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- gdal-async typings incomplete (BUG-106) */
 // Typed wrappers for gdal-async APIs that have incomplete TypeScript definitions (BUG-106).
 // The `as any` escapes are centralised here so the rest of the file is type-checked normally.
 type GdalBand = gdal.RasterBand;
@@ -24,6 +25,7 @@ function vsimemCopy(data: Buffer, path: string): void {
 function vsimemRelease(path: string): void {
   (gdal.vsimem as any).release(path);
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export async function scanGribDir(dir: string): Promise<string[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true });

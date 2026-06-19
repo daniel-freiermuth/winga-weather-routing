@@ -3,7 +3,7 @@
 export interface SignalKResourceEntry {
   id?: string;
   name?: string;
-  feature?: { geometry?: any };
+  feature?: { geometry?: any }; // eslint-disable-line @typescript-eslint/no-explicit-any -- GeoJSON geometry is arbitrarily shaped
   [key: string]: unknown;
 }
 

@@ -11,6 +11,14 @@ module.exports = tseslint.config(
     },
   },
   {
+    // index.ts has many `any` at framework boundaries: Express req/res flush,
+    // SignalK app object, catch (e: any), schema migration. These are accepted.
+    files: ["src/index.ts"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
+  {
     ignores: ["dist/", "node_modules/", "data/", "claudisms/", ".opencode/"],
   },
 );

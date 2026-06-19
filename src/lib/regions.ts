@@ -7,8 +7,10 @@ import { pointInRing, segmentCrossesRing } from './landmask';
 // Accepts two formats:
 //   - array of { id, name?, feature: { geometry } } — from app.resourcesApi.listResources()
 //   - object keyed by UUID { "uuid": { name?, feature: { geometry } } } — from raw HTTP API
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- SignalK resource API returns untyped data
 export function buildRegionIndex(apiRegions: any): RegionIndex {
   const regions = new Map<string, RegionRing>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- GeoJSON geometry is arbitrarily shaped
   const entries: Array<{ id: string; name?: string; feature?: { geometry?: any } }> = [];
 
   if (Array.isArray(apiRegions)) {
@@ -17,6 +19,7 @@ export function buildRegionIndex(apiRegions: any): RegionIndex {
     }
   } else if (apiRegions && typeof apiRegions === 'object') {
     for (const [uuid, entry] of Object.entries(apiRegions)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SignalK resource entry shape varies
       const e = entry as any;
       if (e?.feature?.geometry) entries.push({ id: uuid, name: e.name, feature: e.feature });
     }

@@ -420,7 +420,7 @@ test('calculate: REQ-71 first-step frontier collapse throws RoutingError with re
   } catch (e) {
     caughtError = e;
   }
-  assert.ok(caughtError instanceof RoutingError, `expected RoutingError, got ${(caughtError as any)?.constructor?.name ?? 'nothing thrown'}`);
+  assert.ok(caughtError instanceof RoutingError, `expected RoutingError, got ${(caughtError as any)?.constructor?.name ?? 'nothing thrown'}`); // eslint-disable-line @typescript-eslint/no-explicit-any -- error type narrowing in test assertion
   assert.strictEqual((caughtError as RoutingError).reason, 'wind');
 });
 
