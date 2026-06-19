@@ -422,7 +422,10 @@ module.exports = (app: SignalKApp) => {
             f.meta.timeEnd.getTime() >= departureMs && (enabledPaths == null || enabledPaths.includes(f.meta.path)),
         );
         if (selectedEntries.length === 0) {
-          return void res.status(400).json({ error: 'No wind GRIB files cover the requested departure time — load a wind GRIB file that includes your departure time' });
+          return void res.status(400).json({
+            error:
+              'No wind GRIB files cover the requested departure time — load a wind GRIB file that includes your departure time',
+          });
         }
 
         // Nautical Safety Rule: hard error if departure is before the forecast starts.
