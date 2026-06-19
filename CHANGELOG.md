@@ -2,6 +2,8 @@
 
 ## Upcoming
 
+- Region avoidance checkbox label click no longer double-toggles (BUG-133)
+- Isochrones not drawn during routing when checkbox unticked (BUG-128)
 - Polar low-wind fix: boat speed linearly interpolates toward zero below polar minimum TWS instead of clamping to full speed (BUG-58)
 - Fixed scrubber time axis: uses actual GRIB times instead of even-spacing reconstruction (BUG-134: variable ICON-EU spacing caused 12+ hour divergence at later forecast steps)
 - Waypoint labels toggle with configurable interval (hours); Helsinki test destination updated (REQ-125, REQ-126)
