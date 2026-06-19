@@ -2014,12 +2014,6 @@
           .join('');
 
         container.querySelectorAll('.region-item').forEach((el) => {
-          el.addEventListener('click', async (e) => {
-            if (e.target.tagName === 'INPUT') return; // let checkbox handle its own click
-            const cb = el.querySelector('input[type="checkbox"]');
-            cb.checked = !cb.checked;
-            await toggleRegionAvoid(el.dataset.uuid, cb.checked);
-          });
           const cb = el.querySelector('input[type="checkbox"]');
           cb.addEventListener('change', async () => {
             await toggleRegionAvoid(el.dataset.uuid, cb.checked);
@@ -2256,7 +2250,7 @@
             if (j.type === 'progress') {
               progressBar.style.width = `${j.progress}%`;
               setStatus('', `Calculating… ${j.progress}%`);
-              if (j.frontier?.length) {
+              if (j.frontier?.length && document.getElementById('isochrone-toggle').checked) {
                 const pts = sortByBearing(
                   j.frontier.map(([lat, lon]) => [lat, lon]),
                   startLatLon,
