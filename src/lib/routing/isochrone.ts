@@ -502,15 +502,20 @@ function backtrack(
 
   let cur: IsochronePoint | undefined = arrived;
   while (cur) {
+    // Resample wind at each waypoint's own position and time (BUG-134).
+    // The stored tws/windDir come from the parent point's position at the
+    // current step — one position and one time step earlier. Resampling
+    // gives the actual wind at the displayed waypoint position.
+    const resampled = wind.getWind(cur.lat, cur.lon, nearestIdx(wind.times, cur.time));
     route.unshift({
       lat: cur.lat,
       lon: cur.lon,
       time: cur.time,
       heading: cur.heading,
       twa: cur.twa,
-      tws: cur.tws,
+      tws: windSpeedKnots(resampled.u, resampled.v),
       boatSpeed: cur.boatSpeed,
-      windDir: cur.windDir,
+      windDir: windDirection(resampled.u, resampled.v),
       legCalcMs: cur.stepCalcMs,
       waveHeight: wind.getWave(cur.lat, cur.lon, cur.time),
       gribFilePath: cur.gribFilePath,
