@@ -869,6 +869,29 @@
               "
             />
           </label>
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
+            <label class="layer-toggle" style="margin: 0">
+              <input type="checkbox" id="waypoint-labels-toggle" checked /> Waypoint labels every
+            </label>
+            <input
+              type="number"
+              id="waypoint-label-interval"
+              min="0"
+              max="48"
+              step="1"
+              value="0"
+              style="
+                background: #313244;
+                color: #cdd6f4;
+                border: 1px solid #45475a;
+                border-radius: 4px;
+                padding: 3px 6px;
+                font-size: 12px;
+                width: 50px;
+              "
+            />
+            <span style="font-size: 11px; color: #a6adc8">h (0 = all)</span>
+          </div>
         </div>
       </div>
 
@@ -2858,6 +2881,10 @@
           map.fitBounds(routeLayer.getBounds(), { padding: [20, 20] });
 
           const meta = route.feature?.properties?.coordinatesMeta ?? [];
+          const showLabels = document.getElementById('waypoint-labels-toggle').checked;
+          const intervalH = parseFloat(document.getElementById('waypoint-label-interval').value) || 0;
+          const intervalMs = intervalH * 3600000;
+          let lastLabeledMs = -Infinity;
           windBarbLayer = L.layerGroup();
           coords.forEach(([lng, lat], i) => {
             const m = meta[i];
@@ -2865,6 +2892,11 @@
               windBarbMarkers.push(null);
               return;
             }
+            const waypointMs = new Date(m.time).getTime();
+            const isFirstOrLast = i === 0 || i === coords.length - 1;
+            const showLabel =
+              showLabels && (intervalH === 0 || isFirstOrLast || waypointMs - lastLabeledMs >= intervalMs);
+            if (showLabel) lastLabeledMs = waypointMs;
             const eta = new Date(m.time).toLocaleString([], {
               month: 'short',
               day: 'numeric',
@@ -2874,7 +2906,9 @@
             const html =
               `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none">` +
               windBarbSvg(m.tws ?? 0, m.windDir ?? 0) +
-              `<div style="color:#cdd6f4;background:#313244cc;font-size:10px;padding:1px 4px;border-radius:3px;white-space:nowrap">${eta}</div>` +
+              (showLabel
+                ? `<div style="color:#cdd6f4;background:#313244cc;font-size:10px;padding:1px 4px;border-radius:3px;white-space:nowrap">${eta}</div>`
+                : '') +
               `</div>`;
             const marker = L.marker([lat, lng], {
               icon: L.divIcon({ html, iconSize: [30, 54], iconAnchor: [15, 33], className: '' }),
@@ -3346,7 +3380,7 @@
       }
 
       function runHelsinkiTest() {
-        setTestRoute(OREGRUND, { lat: 60.0902, lon: 24.9472 }, '2026-06-06T02:00');
+        setTestRoute(OREGRUND, { lat: 60.0881, lon: 24.953 }, '2026-06-06T02:00');
       }
 
       function runGothenburgTest() {
@@ -3551,6 +3585,14 @@
         if (document.getElementById('land-toggle').checked) {
           renderLandOverlay();
         }
+      });
+
+      // REQ-126: re-render route when label toggle/interval changes
+      document.getElementById('waypoint-labels-toggle').addEventListener('change', () => {
+        if (routeLayer) fetchAndDrawRoute();
+      });
+      document.getElementById('waypoint-label-interval').addEventListener('input', () => {
+        if (routeLayer) fetchAndDrawRoute();
       });
 
       const saveRouteBtn = document.getElementById('save-route-btn');
