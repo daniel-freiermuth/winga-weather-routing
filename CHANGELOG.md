@@ -2,6 +2,7 @@
 
 ## Upcoming
 
+- Error message clarifies "No wind GRIB files" when only current GRIB is loaded (BUG-83)
 - Region avoidance checkbox label click no longer double-toggles (BUG-133)
 - Isochrones not drawn during routing when checkbox unticked (BUG-128)
 - Polar low-wind fix: boat speed linearly interpolates toward zero below polar minimum TWS instead of clamping to full speed (BUG-58)
