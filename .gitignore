@@ -16,3 +16,6 @@ packages/*/binding/
 
 # opencode session marker (not for the repo)
 .opencode/confirmed
+
+# Local build server info (infrastructure-specific, not for the repo)
+.local-build-server.md
