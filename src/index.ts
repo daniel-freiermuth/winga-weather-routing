@@ -181,7 +181,7 @@ module.exports = (app: SignalKApp) => {
     if (stale.length > 0) {
       settings.avoidRegionIds = settings.avoidRegionIds.filter((id) => valid.has(id));
       try {
-        app.savePluginOptions?.({ avoidRegionIds: settings.avoidRegionIds });
+        app.savePluginOptions?.(settings);
       } catch {
         /* not critical */
       }
@@ -927,7 +927,7 @@ module.exports = (app: SignalKApp) => {
         if (settings) {
           settings.avoidRegionIds = filtered;
           try {
-            app.savePluginOptions?.({ avoidRegionIds: filtered });
+            app.savePluginOptions?.(settings);
           } catch {
             /* best-effort */
           }
