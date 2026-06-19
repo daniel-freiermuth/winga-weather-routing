@@ -4,6 +4,7 @@
 
 | # | Description |
 |---|---|
+| [BUG-130](https://github.com/kristianwiklund/signalk-weather-routing/issues/344) | CI fails — REQ-127 added eslint and prettier to CI but existing code has 8 eslint errors and many prettier formatting violations. Cleanup needed: run prettier, fix lint errors. |
 | [BUG-129](https://github.com/kristianwiklund/signalk-weather-routing/issues/339) | `getWind()` double-scans the files array after BUG-93 fix — `coversPointAtTime()` (.some()) runs before `selectFile()` (.find()), both scanning the same array with the same spatial+temporal predicate. Doubles per-call file-scan work on the isochrone hot path. |
 | [BUG-128](https://github.com/kristianwiklund/signalk-weather-routing/issues/334) | Isochrone lines are drawn on the map during route calculation even when the Isochrones checkbox in the Layers panel is unchecked. |
 | [BUG-127](https://github.com/kristianwiklund/signalk-weather-routing/issues/333) | Wave overlay exhibits state corruption when scrubbing: shows data for periods/regions without wave coverage; once overlay disappears it doesn't recover when moving back to covered time periods; behavior is semi-random; possibly triggered by moving scrubber during active routing. All frontend overlay state management issues. |
