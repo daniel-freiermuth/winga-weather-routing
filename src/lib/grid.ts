@@ -16,9 +16,12 @@ export interface GridBounds {
 // Computes the union bounding box and finest step across multiple GRIB files.
 // Used by grid overlay endpoints to iterate at native resolution.
 export function computeGridBounds(loaded: GribFileEntry[]): GridBounds {
-  const latStep = Math.min(...loaded.map(f => f.meta.latStep));
-  const lonStep = Math.min(...loaded.map(f => f.meta.lonStep));
-  let latMin = Infinity, latMax = -Infinity, lonMin = Infinity, lonMax = -Infinity;
+  const latStep = Math.min(...loaded.map((f) => f.meta.latStep));
+  const lonStep = Math.min(...loaded.map((f) => f.meta.lonStep));
+  let latMin = Infinity,
+    latMax = -Infinity,
+    lonMin = Infinity,
+    lonMax = -Infinity;
   for (const f of loaded) {
     if (f.meta.latMin < latMin) latMin = f.meta.latMin;
     if (f.meta.latMax > latMax) latMax = f.meta.latMax;

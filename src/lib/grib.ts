@@ -30,8 +30,8 @@ function vsimemRelease(path: string): void {
 export async function scanGribDir(dir: string): Promise<string[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
   return entries
-    .filter(e => e.isFile() && GRIB_EXTENSIONS.has(nodepath.extname(e.name).toLowerCase()))
-    .map(e => nodepath.join(dir, e.name))
+    .filter((e) => e.isFile() && GRIB_EXTENSIONS.has(nodepath.extname(e.name).toLowerCase()))
+    .map((e) => nodepath.join(dir, e.name))
     .sort();
 }
 
@@ -82,8 +82,8 @@ export async function readGribMeta(filePath: string): Promise<GribFileMeta> {
     if (windTimeMs.size === 0 && currentTimeMs.size === 0) {
       throw new Error(
         `GRIB2 file contains neither wind bands (${GRIB_U_ELEMENT}/${GRIB_HEIGHT_LEVEL}) ` +
-        `nor ocean current bands (${GRIB_CURRENT_U_ELEMENT}). ` +
-        `Supported formats: OpenSkiron/ICON-EU (wind), RTOFS/CMEMS (ocean current).`,
+          `nor ocean current bands (${GRIB_CURRENT_U_ELEMENT}). ` +
+          `Supported formats: OpenSkiron/ICON-EU (wind), RTOFS/CMEMS (ocean current).`,
       );
     }
 
@@ -95,7 +95,12 @@ export async function readGribMeta(filePath: string): Promise<GribFileMeta> {
       path: filePath,
       mtime: stat.mtimeMs,
       type,
-      latMin, latMax, lonMin, lonMax, latStep, lonStep,
+      latMin,
+      latMax,
+      lonMin,
+      lonMax,
+      latStep,
+      lonStep,
       timeStart: new Date(sortedMs[0]),
       timeEnd: new Date(sortedMs[sortedMs.length - 1]),
       nTimes: sortedMs.length,
@@ -110,7 +115,7 @@ export async function readGribMeta(filePath: string): Promise<GribFileMeta> {
 const GRIB_U_ELEMENT = 'UGRD';
 const GRIB_V_ELEMENT = 'VGRD';
 const GRIB_HEIGHT_LEVEL = '10-HTGL';
-const GRIB_SWH_ELEMENT = 'HTSGW';   // significant height of combined wind waves and swell
+const GRIB_SWH_ELEMENT = 'HTSGW'; // significant height of combined wind waves and swell
 const GRIB_SWH_SHORT_NAME = '0-SFC';
 
 // Ocean current GRIB element names (discipline=10, cat=1, parm=2/3), consistent across RTOFS and CMEMS.
@@ -133,7 +138,7 @@ export async function loadGrib(gribPath: string): Promise<GribData> {
     const oceanSwh = await readSwhFromOceanMessages(gribPath);
     if (oceanSwh) {
       gribData.swhByTime = oceanSwh.swhByTime;
-      gribData.swhGrid   = oceanSwh.swhGrid;
+      gribData.swhGrid = oceanSwh.swhGrid;
     }
     return gribData;
   } finally {
@@ -154,9 +159,15 @@ function extractDisciplineMessages(fileData: Buffer, discipline: number): Buffer
   while (offset < fileData.length - 16) {
     const idx = fileData.indexOf(GRIB_MARKER, offset);
     if (idx === -1) break;
-    if (fileData[idx + 7] !== 2) { offset = idx + 4; continue; }  // edition must be 2
+    if (fileData[idx + 7] !== 2) {
+      offset = idx + 4;
+      continue;
+    } // edition must be 2
     const msgLen = Number(fileData.readBigUInt64BE(idx + 8));
-    if (msgLen < 16 || msgLen > fileData.length) { offset = idx + 4; continue; }
+    if (msgLen < 16 || msgLen > fileData.length) {
+      offset = idx + 4;
+      continue;
+    }
     if (fileData[idx + 6] === discipline) chunks.push(fileData.subarray(idx, idx + msgLen));
     offset = idx + msgLen;
   }
@@ -221,7 +232,7 @@ async function readGrib(ds: gdal.Dataset): Promise<GribData> {
   const lonMin = gt[0];
   const lonStep = gt[1];
   const latMax = gt[3];
-  const latStep = -gt[5];  // gt[5] is negative in a north-up grid
+  const latStep = -gt[5]; // gt[5] is negative in a north-up grid
   const nLon = ds.rasterSize.x;
   const nLat = ds.rasterSize.y;
   const latMin = latMax - latStep * (nLat - 1);
@@ -245,8 +256,8 @@ async function readGrib(ds: gdal.Dataset): Promise<GribData> {
   if (entries.length === 0) {
     throw new Error(
       `No U10/V10 bands found in GRIB2 file. ` +
-      `Expected GRIB_ELEMENT=UGRD/VGRD and GRIB_SHORT_NAME=${GRIB_HEIGHT_LEVEL}. ` +
-      `This loader is scoped to OpenSkiron/ICON-EU format.`
+        `Expected GRIB_ELEMENT=UGRD/VGRD and GRIB_SHORT_NAME=${GRIB_HEIGHT_LEVEL}. ` +
+        `This loader is scoped to OpenSkiron/ICON-EU format.`,
     );
   }
 
@@ -266,7 +277,7 @@ async function readGrib(ds: gdal.Dataset): Promise<GribData> {
 
   for (const ms of sortedMs) {
     const slot = timeMap.get(ms)!;
-    if (!slot.u || !slot.v) continue;  // skip incomplete U/V pairs
+    if (!slot.u || !slot.v) continue; // skip incomplete U/V pairs
 
     const rawU = await readBandPixels(slot.u, nLon, nLat);
     const rawV = await readBandPixels(slot.v, nLon, nLat);
@@ -294,7 +305,15 @@ async function readGrib(ds: gdal.Dataset): Promise<GribData> {
   }
 
   return {
-    times, latMin, latStep, lonMin, lonStep, nLat, nLon, u10, v10,
+    times,
+    latMin,
+    latStep,
+    lonMin,
+    lonStep,
+    nLat,
+    nLon,
+    u10,
+    v10,
     ...(swhByTime.size > 0 ? { swhByTime } : {}),
   };
 }
@@ -310,10 +329,14 @@ function flipRows(grid: Float32Array, nLon: number, nLat: number): Float32Array 
 
 export function getWaveAt(grib: GribData, lat: number, lon: number, timeMs: number): number | undefined {
   if (!grib.swhByTime || grib.swhByTime.size === 0) return undefined;
-  let bestMs = -1, bestDiff = Infinity;
+  let bestMs = -1,
+    bestDiff = Infinity;
   for (const ms of grib.swhByTime.keys()) {
     const diff = Math.abs(ms - timeMs);
-    if (diff < bestDiff) { bestDiff = diff; bestMs = ms; }
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestMs = ms;
+    }
   }
   // Use swhGrid when present — wave data may be on a different grid than wind data.
   const gridParams = grib.swhGrid ?? grib;
@@ -367,7 +390,10 @@ export function nearestTimeIndex(grib: GribData, t: Date): number {
   let bestDiff = Math.abs(grib.times[0].getTime() - ms);
   for (let i = 1; i < grib.times.length; i++) {
     const diff = Math.abs(grib.times[i].getTime() - ms);
-    if (diff < bestDiff) { bestDiff = diff; best = i; }
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = i;
+    }
   }
   return best;
 }
@@ -396,7 +422,11 @@ async function readCurrentGrib(ds: gdal.Dataset): Promise<CurrentGribData> {
   const nLat = ds.rasterSize.y;
   const latMin = latMax - latStep * (nLat - 1);
 
-  interface CurrentBandEntry { band: gdal.RasterBand; element: string; validTimeMs: number }
+  interface CurrentBandEntry {
+    band: gdal.RasterBand;
+    element: string;
+    validTimeMs: number;
+  }
   const entries: CurrentBandEntry[] = [];
 
   for (let i = 1; i <= bandCount; i++) {
@@ -412,8 +442,8 @@ async function readCurrentGrib(ds: gdal.Dataset): Promise<CurrentGribData> {
   if (entries.length === 0) {
     throw new Error(
       `No ocean current bands (${GRIB_CURRENT_U_ELEMENT}/${GRIB_CURRENT_V_ELEMENT}) found. ` +
-      `Supported formats: RTOFS, CMEMS. ` +
-      `For wind data use OpenSkiron/ICON-EU format files.`,
+        `Supported formats: RTOFS, CMEMS. ` +
+        `For wind data use OpenSkiron/ICON-EU format files.`,
     );
   }
 
@@ -472,7 +502,10 @@ export function nearestCurrentTimeIndex(data: CurrentGribData, t: Date): number 
   let bestDiff = Math.abs(data.times[0].getTime() - ms);
   for (let i = 1; i < data.times.length; i++) {
     const diff = Math.abs(data.times[i].getTime() - ms);
-    if (diff < bestDiff) { bestDiff = diff; best = i; }
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = i;
+    }
   }
   return best;
 }

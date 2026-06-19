@@ -19,6 +19,13 @@ module.exports = tseslint.config(
     },
   },
   {
+    // Test files use `any` for error type narrowing and mock objects.
+    files: ["src/lib/__tests__/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
+  {
     ignores: ["dist/", "node_modules/", "data/", "claudisms/", ".opencode/"],
   },
 );

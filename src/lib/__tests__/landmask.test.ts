@@ -1,13 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildLandIndex, segmentCrossesLand, polygonsInBbox, buildLandEdgeIndex, segmentCrossesLandFast, isPointOnLand } from '../landmask';
+import {
+  buildLandIndex,
+  segmentCrossesLand,
+  polygonsInBbox,
+  buildLandEdgeIndex,
+  segmentCrossesLandFast,
+  isPointOnLand,
+} from '../landmask';
 import { LandPolygon } from '../../types';
 
 // A 2°×2° square island: lon 1–3, lat 1–3 (counterclockwise exterior ring)
 function makeSquarePoly(): LandPolygon {
-  const coords = [1,1, 3,1, 3,3, 1,3, 1,1]; // [lon,lat, ...]
+  const coords = [1, 1, 3, 1, 3, 3, 1, 3, 1, 1]; // [lon,lat, ...]
   const exterior = new Float64Array(coords.length);
-  coords.forEach((v, i) => { exterior[i] = v; });
+  coords.forEach((v, i) => {
+    exterior[i] = v;
+  });
   return { bboxLatMin: 1, bboxLatMax: 3, bboxLonMin: 1, bboxLonMax: 3, exterior };
 }
 
@@ -112,9 +121,13 @@ test('land-polygons serialization: exterior Float64Array converts to closed [lon
   const coords: [number, number][] = [];
   for (let j = 0; j < p.exterior.length; j += 2) coords.push([p.exterior[j], p.exterior[j + 1]]);
   if (coords.length > 0) coords.push(coords[0]);
-  const feature = JSON.parse(JSON.stringify({
-    type: 'Feature', geometry: { type: 'Polygon', coordinates: [coords] }, properties: null,
-  }));
+  const feature = JSON.parse(
+    JSON.stringify({
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [coords] },
+      properties: null,
+    }),
+  );
   assert.strictEqual(feature.type, 'Feature');
   assert.strictEqual(feature.geometry.type, 'Polygon');
   const ring: [number, number][] = feature.geometry.coordinates[0];

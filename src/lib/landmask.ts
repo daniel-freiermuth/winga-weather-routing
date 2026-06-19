@@ -7,14 +7,17 @@ const EDGE_CELL_DEG = 0.1;
 function edgeCellKey(latCell: number, lonCell: number): number {
   // At 0.1° resolution, lat cells span −900..+900 and lon cells span −1800..+1800;
   // formula produces a unique non-negative integer key for each (lat, lon) cell pair.
-  return (latCell + 900) * 3600 + ((lonCell % 3600) + 3600) % 3600;
+  return (latCell + 900) * 3600 + (((lonCell % 3600) + 3600) % 3600);
 }
 
 function insertEdgeIntoCells(
   accum: Map<number, number[]>,
-  lat1: number, lon1: number,
-  lat2: number, lon2: number,
-  pi: number, ei: number,
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+  pi: number,
+  ei: number,
 ): void {
   const D = EDGE_CELL_DEG;
   let latCell = Math.floor(lat1 / D);
@@ -25,7 +28,10 @@ function insertEdgeIntoCells(
   const push = (la: number, lo: number): void => {
     const key = edgeCellKey(la, lo);
     let cell = accum.get(key);
-    if (!cell) { cell = []; accum.set(key, cell); }
+    if (!cell) {
+      cell = [];
+      accum.set(key, cell);
+    }
     cell.push(pi, ei);
   };
 
@@ -49,8 +55,13 @@ function insertEdgeIntoCells(
 
   const maxSteps = Math.abs(latEnd - latCell) + Math.abs(lonEnd - lonCell); // Manhattan distance = max cell boundaries the segment can cross
   for (let s = 0; s < maxSteps; s++) {
-    if (tMLat < tMLon) { tMLat += tDLat; latCell += sLat; }
-    else { tMLon += tDLon; lonCell += sLon; }
+    if (tMLat < tMLon) {
+      tMLat += tDLat;
+      latCell += sLat;
+    } else {
+      tMLon += tDLon;
+      lonCell += sLon;
+    }
     push(latCell, lonCell);
     if (latCell === latEnd && lonCell === lonEnd) break;
   }
@@ -74,7 +85,10 @@ export function buildLandEdgeIndex(polygons: LandPolygon[]): LandEdgeIndex {
       for (let lo = lonLo; lo <= lonHi; lo++) {
         const key = (la + 90) * 360 + (lo + 180);
         let cell = polyGrid.get(key);
-        if (!cell) { cell = []; polyGrid.set(key, cell); }
+        if (!cell) {
+          cell = [];
+          polyGrid.set(key, cell);
+        }
         cell.push(pi);
       }
     }
@@ -101,8 +115,10 @@ export function buildLandEdgeIndex(polygons: LandPolygon[]): LandEdgeIndex {
 // Allocation-free on the hot path; safe to call per candidate in the isochrone loop.
 export function segmentCrossesLandFast(
   index: LandEdgeIndex,
-  lat1: number, lon1: number,
-  lat2: number, lon2: number,
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
 ): boolean {
   const D = EDGE_CELL_DEG;
   let latCell = Math.floor(lat1 / D);
@@ -136,16 +152,18 @@ export function segmentCrossesLandFast(
         const ring = index.polygons[pi].exterior;
         const nv = ring.length >> 1;
         const ni = ei + 1 < nv ? ei + 1 : 0;
-        if (segmentsIntersect(
-          lon1, lat1, lon2, lat2,
-          ring[ei * 2], ring[ei * 2 + 1],
-          ring[ni * 2], ring[ni * 2 + 1],
-        )) return true;
+        if (segmentsIntersect(lon1, lat1, lon2, lat2, ring[ei * 2], ring[ei * 2 + 1], ring[ni * 2], ring[ni * 2 + 1]))
+          return true;
       }
     }
     if (latCell === latEnd && lonCell === lonEnd) break;
-    if (tMLat < tMLon) { tMLat += tDLat; latCell += sLat; }
-    else { tMLon += tDLon; lonCell += sLon; }
+    if (tMLat < tMLon) {
+      tMLat += tDLat;
+      latCell += sLat;
+    } else {
+      tMLon += tDLon;
+      lonCell += sLon;
+    }
   }
 
   return false;
@@ -180,7 +198,10 @@ export function buildLandIndex(polygons: LandPolygon[]): LandIndex {
       for (let lo = lonLo; lo <= lonHi; lo++) {
         const key = (la + 90) * 360 + (lo + 180);
         let cell = grid.get(key);
-        if (!cell) { cell = []; grid.set(key, cell); }
+        if (!cell) {
+          cell = [];
+          grid.set(key, cell);
+        }
         cell.push(i);
       }
     }
@@ -189,11 +210,7 @@ export function buildLandIndex(polygons: LandPolygon[]): LandIndex {
   return { polygons, grid };
 }
 
-export function segmentCrossesLand(
-  index: LandIndex,
-  lat1: number, lon1: number,
-  lat2: number, lon2: number,
-): boolean {
+export function segmentCrossesLand(index: LandIndex, lat1: number, lon1: number, lat2: number, lon2: number): boolean {
   const latLo = Math.floor(Math.min(lat1, lat2));
   const latHi = Math.floor(Math.max(lat1, lat2));
   const lonLo = Math.floor(Math.min(lon1, lon2));
@@ -214,11 +231,7 @@ export function segmentCrossesLand(
   return false;
 }
 
-function segmentHitsPoly(
-  poly: LandPolygon,
-  lat1: number, lon1: number,
-  lat2: number, lon2: number,
-): boolean {
+function segmentHitsPoly(poly: LandPolygon, lat1: number, lon1: number, lat2: number, lon2: number): boolean {
   // bbox quick-reject for the segment
   if (Math.max(lat1, lat2) < poly.bboxLatMin) return false;
   if (Math.min(lat1, lat2) > poly.bboxLatMax) return false;
@@ -232,14 +245,23 @@ function segmentHitsPoly(
 
 // Parametric segment-segment intersection — exported for reuse by region checks.
 export function segmentsIntersect(
-  x1: number, y1: number, x2: number, y2: number,
-  x3: number, y3: number, x4: number, y4: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  x3: number,
+  y3: number,
+  x4: number,
+  y4: number,
 ): boolean {
-  const d1x = x2 - x1, d1y = y2 - y1;
-  const d2x = x4 - x3, d2y = y4 - y3;
+  const d1x = x2 - x1,
+    d1y = y2 - y1;
+  const d2x = x4 - x3,
+    d2y = y4 - y3;
   const cross = d1x * d2y - d1y * d2x;
   if (Math.abs(cross) < 1e-12) return false;
-  const dx = x3 - x1, dy = y3 - y1;
+  const dx = x3 - x1,
+    dy = y3 - y1;
   const t = (dx * d2y - dy * d2x) / cross;
   const u = (dx * d1y - dy * d1x) / cross;
   return t > 0 && t < 1 && u > 0 && u < 1;
@@ -247,16 +269,16 @@ export function segmentsIntersect(
 
 // True when segment crosses any edge of a closed ring — exported for region checks.
 export function segmentCrossesRing(
-  lat1: number, lon1: number,
-  lat2: number, lon2: number,
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
   ring: Float64Array,
 ): boolean {
   const n = ring.length >> 1;
   for (let i = 0, j = n - 1; i < n; j = i++) {
-    if (segmentsIntersect(
-      lon1, lat1, lon2, lat2,
-      ring[j * 2], ring[j * 2 + 1], ring[i * 2], ring[i * 2 + 1],
-    )) return true;
+    if (segmentsIntersect(lon1, lat1, lon2, lat2, ring[j * 2], ring[j * 2 + 1], ring[i * 2], ring[i * 2 + 1]))
+      return true;
   }
   return false;
 }
@@ -266,11 +288,11 @@ export function pointInRing(lat: number, lon: number, ring: Float64Array): boole
   const n = ring.length >> 1;
   let inside = false;
   for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = ring[i * 2];      // lon
+    const xi = ring[i * 2]; // lon
     const yi = ring[i * 2 + 1]; // lat
     const xj = ring[j * 2];
     const yj = ring[j * 2 + 1];
-    if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+    if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
       inside = !inside;
     }
   }
@@ -279,7 +301,10 @@ export function pointInRing(lat: number, lon: number, ring: Float64Array): boole
 
 export function polygonsInBbox(
   index: LandIndex,
-  latMin: number, lonMin: number, latMax: number, lonMax: number,
+  latMin: number,
+  lonMin: number,
+  latMax: number,
+  lonMax: number,
 ): LandPolygon[] {
   const seen = new Set<number>();
   const result: LandPolygon[] = [];
@@ -287,7 +312,10 @@ export function polygonsInBbox(
     for (let lon = Math.floor(lonMin); lon <= Math.floor(lonMax); lon++) {
       const key = (lat + 90) * 360 + (lon + 180);
       for (const idx of index.grid.get(key) ?? []) {
-        if (!seen.has(idx)) { seen.add(idx); result.push(index.polygons[idx]); }
+        if (!seen.has(idx)) {
+          seen.add(idx);
+          result.push(index.polygons[idx]);
+        }
       }
     }
   }

@@ -6,14 +6,14 @@ export interface LatLon {
 }
 
 export interface WindVector {
-  u: number;  // eastward m/s
-  v: number;  // northward m/s
+  u: number; // eastward m/s
+  v: number; // northward m/s
 }
 
 // Metadata read from a GRIB file at startup — no grid data loaded yet.
 export interface GribFileMeta {
   path: string;
-  mtime: number;     // file modification time, ms since epoch (used for conflict resolution)
+  mtime: number; // file modification time, ms since epoch (used for conflict resolution)
   type: 'wind' | 'current';
   latMin: number;
   latMax: number;
@@ -24,12 +24,12 @@ export interface GribFileMeta {
   timeStart: Date;
   timeEnd: Date;
   nTimes: number;
-  referenceTime: Date;  // model run time (GRIB_REF_TIME of first wind or current band)
+  referenceTime: Date; // model run time (GRIB_REF_TIME of first wind or current band)
 }
 
 // One entry per wind GRIB file; data is null until lazy-loaded at calculation time.
 export interface GribFileEntry {
-  meta: GribFileMeta;  // type === 'wind'
+  meta: GribFileMeta; // type === 'wind'
   data: GribData | null;
 }
 
@@ -42,19 +42,19 @@ export interface CurrentGribData {
   lonStep: number;
   nLat: number;
   nLon: number;
-  u: Float32Array[];  // [timeIdx][latIdx * nLon + lonIdx], m/s eastward, index 0 = latMin
-  v: Float32Array[];  // [timeIdx][latIdx * nLon + lonIdx], m/s northward
+  u: Float32Array[]; // [timeIdx][latIdx * nLon + lonIdx], m/s eastward, index 0 = latMin
+  v: Float32Array[]; // [timeIdx][latIdx * nLon + lonIdx], m/s northward
 }
 
 // One entry per ocean current GRIB file.
 export interface CurrentFileEntry {
-  meta: GribFileMeta;  // type === 'current'
+  meta: GribFileMeta; // type === 'current'
   data: CurrentGribData | null;
 }
 
 // Provides ocean current lookups for use by the routing algorithm.
 export interface CurrentProvider {
-  getCurrent(lat: number, lon: number, t: Date): WindVector;  // {u:0,v:0} when outside domain
+  getCurrent(lat: number, lon: number, t: Date): WindVector; // {u:0,v:0} when outside domain
   coversPoint(lat: number, lon: number): boolean;
   readonly times: Date[];
   readonly meta: GribFileMeta;
@@ -62,7 +62,7 @@ export interface CurrentProvider {
 
 // Abstraction over one or more loaded GRIB files; used by the routing algorithm.
 export interface WindProvider {
-  readonly times: Date[];  // merged, sorted, deduplicated time axis across all files
+  readonly times: Date[]; // merged, sorted, deduplicated time axis across all files
   getWind(lat: number, lon: number, timeIdx: number): WindVector;
   getWave(lat: number, lon: number, t: Date): number | undefined;
   coversPoint(lat: number, lon: number): boolean;
@@ -78,17 +78,17 @@ export interface GribData {
   lonStep: number;
   nLat: number;
   nLon: number;
-  u10: Float32Array[];  // [timeIdx][latIdx * nLon + lonIdx], m/s, index 0 = latMin
+  u10: Float32Array[]; // [timeIdx][latIdx * nLon + lonIdx], m/s, index 0 = latMin
   v10: Float32Array[];
-  swhByTime?: Map<number, Float32Array>;  // validTimeMs → swh grid (m), same layout as u10
+  swhByTime?: Map<number, Float32Array>; // validTimeMs → swh grid (m), same layout as u10
   // Present when wave data was loaded from a different grid than wind data (mixed-grid files).
   swhGrid?: { latMin: number; latStep: number; lonMin: number; lonStep: number; nLat: number; nLon: number };
 }
 
 export interface PolarData {
-  tws: number[];        // sorted ascending, knots
-  twa: number[];        // sorted ascending, 0–180 degrees
-  speeds: number[][];   // speeds[twaIdx][twsIdx], knots
+  tws: number[]; // sorted ascending, knots
+  twa: number[]; // sorted ascending, 0–180 degrees
+  speeds: number[][]; // speeds[twaIdx][twsIdx], knots
 }
 
 export interface LandPolygon {
@@ -96,13 +96,13 @@ export interface LandPolygon {
   bboxLatMax: number;
   bboxLonMin: number;
   bboxLonMax: number;
-  exterior: Float64Array;  // interleaved [lon0,lat0, lon1,lat1, ...]
+  exterior: Float64Array; // interleaved [lon0,lat0, lon1,lat1, ...]
 }
 
 // Spatial grid: cell key = (floor(lat)+90)*360 + (floor(lon)+180)
 export interface LandIndex {
   polygons: LandPolygon[];
-  grid: Map<number, number[]>;  // cell key → polygon indices
+  grid: Map<number, number[]>; // cell key → polygon indices
 }
 
 // Edge-tile index for fast segment-crossing checks.
@@ -133,11 +133,11 @@ export interface RoutePoint {
   lon: number;
   time: Date;
   heading: number;
-  twa: number;        // degrees, 0–180
-  tws: number;        // knots
+  twa: number; // degrees, 0–180
+  tws: number; // knots
   boatSpeed?: number; // knots; undefined on the departure waypoint
-  windDir: number;    // meteorological: degrees FROM which wind blows, 0–360
-  legCalcMs: number;  // wall-clock ms the algorithm spent computing this leg; 0 for start and destination
+  windDir: number; // meteorological: degrees FROM which wind blows, 0–360
+  legCalcMs: number; // wall-clock ms the algorithm spent computing this leg; 0 for start and destination
   waveHeight?: number; // significant wave height (m), present when swh data available in GRIB
   gribFilePath?: string; // path of the GRIB file that supplied weather data at this waypoint
 }
@@ -145,11 +145,11 @@ export interface RoutePoint {
 export interface CalculationRequest {
   start: LatLon;
   end: LatLon;
-  departureTime: string;             // ISO 8601
-  waypoints?: Array<LatLon>;         // intermediate required waypoints in order
+  departureTime: string; // ISO 8601
+  waypoints?: Array<LatLon>; // intermediate required waypoints in order
   useSafetyMargin?: boolean;
   useLandAvoidance?: boolean;
-  enabledGribPaths?: string[];       // if absent, all files are used
+  enabledGribPaths?: string[]; // if absent, all files are used
   avoidRegionIds?: string[];
   options?: Record<string, unknown>; // per-algorithm tuning
 }
@@ -165,8 +165,8 @@ export interface CalculationStatus {
 
 export interface GribInfoResponse {
   gribDir: string;
-  files: GribFileMeta[];          // wind GRIB files
-  currentFiles: GribFileMeta[];   // ocean current GRIB files
+  files: GribFileMeta[]; // wind GRIB files
+  currentFiles: GribFileMeta[]; // ocean current GRIB files
   failedFiles: Array<{ path: string; error: string }>;
 }
 
@@ -192,7 +192,7 @@ export interface RegionRing {
   bboxLatMax: number;
   bboxLonMin: number;
   bboxLonMax: number;
-  exterior: Float64Array;  // interleaved [lon0,lat0, lon1,lat1, ...]
+  exterior: Float64Array; // interleaved [lon0,lat0, lon1,lat1, ...]
 }
 
 // Simple index: UUID → RegionRing pair.

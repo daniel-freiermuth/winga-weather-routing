@@ -40,8 +40,10 @@ export function buildRegionIndex(apiRegions: any): RegionIndex {
       // ringCoords is [[lon,lat], [lon,lat], ...] — extract exterior ring only.
       const n = ringCoords.length;
       const exterior = new Float64Array(n * 2);
-      let latMin = Infinity, latMax = -Infinity;
-      let lonMin = Infinity, lonMax = -Infinity;
+      let latMin = Infinity,
+        latMax = -Infinity;
+      let lonMin = Infinity,
+        lonMax = -Infinity;
       for (let i = 0; i < n; i++) {
         const lon = ringCoords[i][0];
         const lat = ringCoords[i][1];
@@ -76,8 +78,10 @@ export function validRegionUuids(index: RegionIndex): Set<string> {
 export function segmentCrossesRegion(
   index: RegionIndex,
   avoidIds: Set<string>,
-  lat1: number, lon1: number,
-  lat2: number, lon2: number,
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
 ): boolean {
   for (const [key, ring] of index.regions) {
     const uuid = key.includes('__') ? key.split('__')[0] : key;
@@ -92,11 +96,7 @@ export function segmentCrossesRegion(
 }
 
 // Returns true if (lat, lon) falls inside any region whose UUID is in avoidIds.
-export function isPointInRegion(
-  index: RegionIndex,
-  avoidIds: Set<string>,
-  lat: number, lon: number,
-): boolean {
+export function isPointInRegion(index: RegionIndex, avoidIds: Set<string>, lat: number, lon: number): boolean {
   for (const [key, ring] of index.regions) {
     const uuid = key.includes('__') ? key.split('__')[0] : key;
     if (!avoidIds.has(uuid)) continue;

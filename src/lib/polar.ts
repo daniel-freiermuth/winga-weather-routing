@@ -4,14 +4,18 @@ import * as fs from 'node:fs';
 import { PolarData } from '../types';
 
 export function parsePolar(filePath: string): PolarData {
-  const lines = fs.readFileSync(filePath, 'utf-8')
+  const lines = fs
+    .readFileSync(filePath, 'utf-8')
     .split('\n')
-    .map(l => l.trim())
-    .filter(l => l.length > 0 && !l.startsWith('#'));
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !l.startsWith('#'));
 
   // Header: twa/tws;6;8;10;12;14;16;20
   const header = lines[0].split(';');
-  const tws = header.slice(1).map(Number).filter(v => !isNaN(v));
+  const tws = header
+    .slice(1)
+    .map(Number)
+    .filter((v) => !isNaN(v));
 
   const twa: number[] = [];
   const speeds: number[][] = [];
@@ -58,12 +62,7 @@ export function interpolateBoatSpeed(polar: PolarData, twaDeg: number, twsKnots:
   const s01 = polar.speeds[twaIdx][twsNext];
   const s11 = polar.speeds[twaNext][twsNext];
 
-  return (
-    (1 - tTwa) * (1 - tTws) * s00 +
-    tTwa * (1 - tTws) * s10 +
-    (1 - tTwa) * tTws * s01 +
-    tTwa * tTws * s11
-  );
+  return (1 - tTwa) * (1 - tTws) * s00 + tTwa * (1 - tTws) * s10 + (1 - tTwa) * tTws * s01 + tTwa * tTws * s11;
 }
 
 function bracketIndex(arr: number[], value: number): number {

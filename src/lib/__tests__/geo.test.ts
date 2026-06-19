@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { haversineNM, bearingTo, destinationPoint, windSpeedKnots, windDirection } from '../geo';
 
-const EPSILON = 0.01;  // 0.01 nm / 0.01 deg tolerance
+const EPSILON = 0.01; // 0.01 nm / 0.01 deg tolerance
 
 test('haversineNM: same point is zero', () => {
   assert.strictEqual(haversineNM(51, 4, 51, 4), 0);
@@ -56,7 +56,7 @@ test('windSpeedKnots: unit vector → 1.94384 kt', () => {
 });
 
 test('windSpeedKnots: pythagoras', () => {
-  const kt = windSpeedKnots(3, 4);  // magnitude 5 m/s
+  const kt = windSpeedKnots(3, 4); // magnitude 5 m/s
   assert.ok(Math.abs(kt - 5 * 1.94384) < 0.001);
 });
 
