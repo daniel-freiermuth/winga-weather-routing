@@ -49,30 +49,15 @@ git checkout -b <new-branch>
 
 Do this as the first action of every new sprint or feature, before writing any code.
 
-## Pull Request Guidelines
+## Definition of Done
 
-- Branch from latest `main`; rebase, never merge commits
-- Run `npm run build` and tests before opening PR
-- One logical change per PR
-- PR title is descriptive and self-contained
-- Description: motivation (why) and approach (how) — the diff shows what
-- **Version number changes** are only made as part of publishing to the App Store. Follow [Semantic Versioning](https://semver.org/) (MAJOR.MINOR.PATCH). Every feature or fix implemented must add an entry to `CHANGELOG.md` under the `## Upcoming` section at the top of the file. When a version is published, the `## Upcoming` header is replaced with the released version number (e.g. `## 0.8.0`).
-- Reference issues with `ref #N` in commit messages; use `gh issue close` after confirmation
-- Never pass `--delete-branch` to `gh pr merge` — branches are always kept after merge
+The Definition of Done is in **`DoD.md`** at the repo root. Before declaring a task complete, the agent must:
+1. Read `DoD.md`
+2. Print the checklist
+3. Verify each item
+4. Not report "done" until every item passes
 
-## PR and Merge Rule
-
-The GitHub CI workflow must pass on the branch before a PR is created. Run `gh pr checks` to verify CI status. If CI is not configured or the workflow does not exist, ask before proceeding.
-
-Once CI passes and implementation is confirmed working and both the Phase 1 and Phase 2 commits are done, ask before creating a PR and before merging. Do not create or merge a PR without explicit approval.
-
-Use `gh pr merge --merge` (regular merge commit). Never use `--squash` — squash merges create a new commit hash on main unrelated to the branch's history, making it impossible to use git history to reliably detect unmerged work.
-
-## User Documentation Rule
-
-User documentation (`README.md`) is part of the Definition of Done. Any commit that adds, changes, or removes a user-visible feature must include a corresponding update to `README.md` in the same commit. A feature is user-visible if it affects what the user sees, configures, or interacts with in the UI or plugin settings.
-
-Do not commit changes to `src/` or `public/` without either updating `README.md` or explicitly stating in the commit message that the change has no user-visible effect. A PreToolUse hook enforces this: it will block the commit if `src/` or `public/` files are staged without `README.md`.
+The DoD covers: build, lint, format, tests, documentation, commit workflow (Phase 1/Phase 2), PR/merge approval gates, and issue closure. All workflow rules (Commit Rule, Three-Table Rule, Issue Closure Rule, PR/Merge Rule, User Documentation Rule) are defined in `DoD.md`.
 
 ## Build and Deploy Rule
 
@@ -136,45 +121,9 @@ Format:
 
 Before writing any code or changing a technical decision, present a plan and wait for explicit approval.
 
-## Commit Rule
-
-Commit at logical boundaries, not at every file change. A logical boundary is: a requirement implemented, a bug fixed, or a coherent batch of related changes (e.g. several rule updates, a set of documentation corrections). Do not make a separate commit for each individual file edit — accumulate related changes and commit them together.
-
-Implementation and confirmation are two separate commits:
-
-**Phase 1 — implementation commit** (before confirmation):
-- Code changes only.
-- The row stays in the Open table in SPEC.md / BUGS.md.
-- Commit message uses `ref #N`.
-
-**Phase 2 — confirmation commit** (after user confirms it works):
-- Move the row from the Open table to the Closed table in SPEC.md or BUGS.md.
-- Commit message uses `ref #N`.
-- **Phase 2 requires explicit confirmation.** The user must say something like "confirmed", "it works", "looks good", or "DoD complete" — do not interpret general instructions like "continue", "proceed", "now for X", or "go on" as confirmation. When in doubt, ask: "Have you confirmed this works, or should I wait for your test results?"
-
-After the Phase 2 commit: **push the branch** (`git push origin <branch>`), then **wait for CI to pass** before closing the issue. Run `gh run list --branch <branch>` to check CI status. Only close the issue once CI succeeds.
-
-Never mark something as done or fixed in the docs before it has been confirmed.
-
-The commit message must reference the GitHub issue with `ref #N`. Do not use `closes #N` or `fixes #N` — these auto-close the issue on push, which violates the Issue Closure Rule. Close the issue explicitly with `gh issue close` only after confirmation.
-
 ## New Tooling Rule
 
 If implementing a verification, test, or validation task would require introducing automation tooling not already present in the project (e.g. Playwright, a new test framework, a new CI step), stop. Add the tooling as a new requirement to SPEC.md and wait for explicit approval before proceeding with installation or use.
-
-## Issue Closure Rule
-
-A GitHub issue must not be closed unless the fix or implementation has been confirmed solved — both explicit user confirmation AND automated CI passing. After the Phase 2 commit, push the branch and wait for CI to succeed before closing. Closing an issue solely because the code was written is not sufficient.
-
-## Three-Table Rule
-
-SPEC.md and BUGS.md each maintain three tables:
-
-1. **Open** — items not yet implemented or fixed (status `open`)
-2. **Won't Fix / Won't Implement** — items that will not be worked on; the decision is recorded here so it is not lost
-3. **Closed** — items confirmed done (status `done`, `fixed`, `superseded`, or `not needed`)
-
-Rows are sorted by ID number within each table. A row is moved from the Open table to either Won't Fix/Won't Implement or Closed only in the confirmation commit (Phase 2 of the Commit Rule) — never in the implementation commit.
 
 ## GitHub Issue Rule
 
