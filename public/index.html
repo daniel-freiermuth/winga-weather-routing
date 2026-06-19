@@ -1141,6 +1141,7 @@
       let scrubberLockedToRoute = false; // true when scrubber is locked to route duration
       let windNativeTimes = []; // wind-only timestamps, for checking coverage at timeIdx
       let windTimesLoaded = false;
+      let actualWindTimes = null;
       let currentFileTimes = []; // cached times from the loaded current GRIB
       let routeLayer = null;
       let windBarbLayer = null;
@@ -2777,9 +2778,19 @@
           if (!f.timeStart || !f.nTimes) return;
           const startMs = new Date(f.timeStart).getTime();
           const endMs = new Date(f.timeEnd).getTime();
-          const step = f.nTimes > 1 ? (endMs - startMs) / (f.nTimes - 1) : 0;
-          for (let k = 0; k < f.nTimes; k++) {
-            windSet.add(new Date(Math.round(startMs + k * step)).toISOString());
+          if (actualWindTimes) {
+            // Use actual time axis from backend — ICON-EU has variable spacing
+            // (hourly to 78h, then 3-hourly), not evenly spaced (BUG-134).
+            for (const t of actualWindTimes) {
+              const ms = new Date(t).getTime();
+              if (ms >= startMs && ms <= endMs) windSet.add(t);
+            }
+          } else {
+            // Fallback: reconstruct from metadata with even spacing (imprecise)
+            const step = f.nTimes > 1 ? (endMs - startMs) / (f.nTimes - 1) : 0;
+            for (let k = 0; k < f.nTimes; k++) {
+              windSet.add(new Date(Math.round(startMs + k * step)).toISOString());
+            }
           }
         });
         const windArr = Array.from(windSet).sort();
@@ -2829,7 +2840,11 @@
         }
         // Pre-load wind GRIB data so /wind-grid and /wave-grid don't return 503
         try {
-          await apiFetch(`${API}/wind-times`);
+          const wt = await apiFetch(`${API}/wind-times`);
+          if (wt.ok) {
+            const { times } = await wt.json();
+            actualWindTimes = times;
+          }
         } catch (_) {
           /* wind-times unavailable */
         }
@@ -2918,7 +2933,7 @@
                 (() => {
                   const tw = _fmt(m.tws ?? 0, 'speed', windSpeedMs);
                   const bs = _fmt(m.boatSpeed ?? 0, 'speed');
-                  return `${tw.num} ${tw.sym}, ${m.windDir ?? 0}° — boat ${bs.num} ${bs.sym}`;
+                  return `${tw.num} ${tw.sym}, ${m.windDir ?? 0}° — boat ${bs.num} ${bs.sym}<br><span style="font-size:10px;color:#a6adc8">${lat.toFixed(4)}°N ${lng.toFixed(4)}°E</span>`;
                 })(),
                 { direction: 'top', offset: [0, -10] },
               )
@@ -2957,7 +2972,7 @@
                 (() => {
                   const tw = _fmt(avgTws, 'speed', windSpeedMs);
                   const bs = _fmt(avgBoatSpeed, 'speed');
-                  return `${tw.num} ${tw.sym}, ${Math.round((avgDir + 360) % 360)}° — boat ${bs.num} ${bs.sym}`;
+                  return `${tw.num} ${tw.sym}, ${Math.round((avgDir + 360) % 360)}° — boat ${bs.num} ${bs.sym}<br><span style="font-size:10px;color:#a6adc8">${midLat.toFixed(4)}°N ${midLng.toFixed(4)}°E</span>`;
                 })(),
                 { direction: 'top', offset: [0, -10] },
               )
@@ -3507,7 +3522,9 @@
             const twsKn = Math.sqrt(wp.u * wp.u + wp.v * wp.v) * 1.94384;
             const twsFmt = _fmt(twsKn, 'speed', windSpeedMs);
             const dir = Math.round(((Math.atan2(-wp.u, -wp.v) * 180) / Math.PI + 360) % 360);
-            lines.push(`Wind: ${twsFmt.num} ${twsFmt.sym} from ${dir}°T`);
+            lines.push(
+              `Wind: ${twsFmt.num} ${twsFmt.sym} from ${dir}°T<br><span style="font-size:10px;color:#a6adc8">${wp.lat.toFixed(4)}°N ${wp.lon.toFixed(4)}°E</span>`,
+            );
           }
         }
 

@@ -2,6 +2,7 @@
 
 ## Upcoming
 
+- Fixed scrubber time axis: uses actual GRIB times instead of even-spacing reconstruction (BUG-134: variable ICON-EU spacing caused 12+ hour divergence at later forecast steps)
 - Waypoint labels toggle with configurable interval (hours); Helsinki test destination updated (REQ-125, REQ-126)
 - Scrubber coverage bar now updates when route locks the time range; added Full/Route range toggle button (BUG-132)
 - Fixed config corruption: toggling region avoidance no longer drops gribDir and polarPath (BUG-131: `savePluginOptions` now passes full settings object)
