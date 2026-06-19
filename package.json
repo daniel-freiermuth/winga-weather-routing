@@ -31,7 +31,8 @@
   "files": [
     "dist/",
     "public/",
-    "data/*.bin.gz",
+    "data/edge-index.bin.gz",
+    "data/dilated-edge-index.bin.gz",
     "wr-icon-128px.png",
     "route-to-route-demo.png",
     "screenshot2.jpg"
