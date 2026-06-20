@@ -1,5 +1,13 @@
 # Changelog
 
+## Upcoming
+
+- **Grib Manager** (REQ-131): the sidebar GRIB file list is replaced by a "Grib Manager" modal — each loaded file shown on a coverage timeline (to scale), with staleness/wave badges, a now line, a low-confidence band past the forecast skill horizon, and granularity-change markers. Includes an optimised-combination proposal (departure-aware) and Accept proposed / Enable all controls.
+- Wind GRIB selection now ranks by model run (`referenceTime`) → finest granularity → finest spatial resolution → file mtime, in a single pass — a re-downloaded old forecast no longer overrides a newer model run (resolves BUG-129).
+- New `/grib-times` (per-file actual timestep axes) and `/grib-combination` (departure-aware geographic stitch) endpoints.
+- Route coverage bar colours each leg by the GRIB file that supplied it (REQ-129); conditions graph shows a low-confidence band past the configurable `forecastSkillHorizonHours` (default 96) (REQ-132).
+- "Ocean current" label used consistently (sidebar + manager) to avoid confusion with the now-grib.
+
 ## 0.8.0
 
 - Error message clarifies "No wind GRIB files" when only current GRIB is loaded (BUG-83)

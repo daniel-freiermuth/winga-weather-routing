@@ -4,7 +4,6 @@
 
 | # | Description |
 |---|---|
-| [BUG-129](https://github.com/kristianwiklund/signalk-weather-routing/issues/339) | `getWind()` double-scans the files array after BUG-93 fix — `coversPointAtTime()` (.some()) runs before `selectFile()` (.find()), both scanning the same array with the same spatial+temporal predicate. Doubles per-call file-scan work on the isochrone hot path. |
 | [BUG-127](https://github.com/kristianwiklund/signalk-weather-routing/issues/333) | Wave overlay exhibits state corruption when scrubbing: shows data for periods/regions without wave coverage; once overlay disappears it doesn't recover when moving back to covered time periods; behavior is semi-random; possibly triggered by moving scrubber during active routing. All frontend overlay state management issues. |
 | [BUG-120](https://github.com/kristianwiklund/signalk-weather-routing/issues/323) | `nTimes: number` field in `GribFileMeta` is computed in `readGribMeta` but never referenced anywhere at runtime. Only test fixtures populate it. Discovered in code review 2026-06-14 (m2). |
 
@@ -24,6 +23,7 @@
 
 | # | Description |
 |---|---|---|
+| [~~BUG-129~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/339) | ~~`getWind()` double-scans the files array after BUG-93 fix — `coversPointAtTime()` (.some()) runs before `selectFile()` (.find()), both scanning the same array with the same spatial+temporal predicate. Doubles per-call file-scan work on the isochrone hot path.~~ — **fixed** (selection rewrite ranks referenceTime -> granularity -> spatial -> mtime and resolves coverage+selection in a single pass, removing the double .some()/.find() scan; confirmed 2026-06-20) |
 | [~~BUG-124~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/327) | ~~Rejection counters not included in failure error messages.~~ — **fixed** (counts now included: '(land: N, wind: N, grib: N)'; confirmed 2026-06-15) |
 | [~~BUG-123~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/326) | ~~Test file uses sync fs without crash-safe cleanup.~~ — **fixed** (uses `before`/`after` hooks with `mkdtemp`/`rm`; confirmed 2026-06-15) |
 | [~~BUG-125~~](https://github.com/kristianwiklund/signalk-weather-routing/issues/331) | ~~Region avoidance selection not persisted server-side.~~ — **fixed** (root cause: `app.savePluginConfig?.()` called a non-existent method; SignalK API method is `savePluginOptions(configuration, cb)`; the `?.` silently skipped the save; confirmed 2026-06-19) |
