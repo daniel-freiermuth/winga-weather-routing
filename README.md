@@ -125,6 +125,8 @@ When multiple overlapping files are loaded, **Accept proposed** applies an optim
 
 The routing algorithm always picks the highest-priority file that covers each point in space and time — newest model run, then finest granularity (a re-downloaded old forecast no longer overrides a newer model run). A loading indicator (spinner) appears while GRIB data is read at startup.
 
+**Upload GRIB…** in the Grib Manager uploads one or more `.grib2/.grib/.grb2/.grb` files straight into `gribDir` from the webapp (no need to copy files in by hand and reload). On a name collision you choose to archive the existing file and upload, or skip. Uploaded files are validated; a file that isn't a supported wind/current GRIB (e.g. a wave-only file) is rejected with a clear reason — see REQ-140 for standalone wave-GRIB support.
+
 If a file with the same name already exists in the archive folder, a serial number is inserted before the extension (e.g. `forecast.grb2` → `forecast.2.grb2`).
 
 ### Routing options

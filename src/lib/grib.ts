@@ -5,7 +5,17 @@ import * as nodepath from 'node:path';
 import * as gdal from 'gdal-async';
 import { CurrentGribData, GribData, GribFileMeta, WindVector } from '../types';
 
-const GRIB_EXTENSIONS = new Set(['.grib2', '.grib', '.grb2', '.grb']);
+export const GRIB_EXTENSIONS = new Set(['.grib2', '.grib', '.grb2', '.grb']);
+
+// Sanitize an uploaded/external filename: basename only (no path traversal) with a GRIB
+// extension. Returns null for anything that could escape the target directory or isn't a GRIB.
+export function sanitizeGribName(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  const base = nodepath.basename(raw);
+  if (!base || base === '.' || base === '..') return null;
+  if (!GRIB_EXTENSIONS.has(nodepath.extname(base).toLowerCase())) return null;
+  return base;
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- gdal-async typings incomplete (BUG-106) */
 // Typed wrappers for gdal-async APIs that have incomplete TypeScript definitions (BUG-106).

@@ -2,6 +2,7 @@
 
 import * as nodepath from 'node:path';
 import * as fs from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
 import express, { Router, Request, Response } from 'express';
 
 // Side-effect: copies gdal-async .node binary from optional dep — must run before ./lib/grib
@@ -28,6 +29,7 @@ import {
   readGribMeta,
   getCurrentAt,
   nearestCurrentTimeIndex,
+  sanitizeGribName,
 } from './lib/grib';
 import { MultiFileWindProvider } from './lib/windprovider';
 import { proposeCombination, combinationFileFromMeta } from './lib/gribCombination';
@@ -116,6 +118,23 @@ module.exports = (app: SignalKApp) => {
       serial++;
     }
     await fs.rename(filePath, dest);
+  }
+
+  // Stream a request body to a file. Cleans up the partial file on abort/error.
+  function streamReqToFile(req: Request, target: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const out = createWriteStream(target);
+      const fail = (err: unknown) => {
+        out.destroy();
+        fs.unlink(target).catch(() => {});
+        reject(err instanceof Error ? err : new Error(String(err)));
+      };
+      out.on('finish', () => resolve());
+      out.on('error', fail);
+      req.on('error', fail);
+      req.on('aborted', () => fail(new Error('upload aborted by client')));
+      req.pipe(out);
+    });
   }
 
   async function scanAndIndexGribDir(dir: string): Promise<void> {
@@ -985,6 +1004,63 @@ module.exports = (app: SignalKApp) => {
           setReady();
         } catch (e: any) {
           app.setPluginError(`GRIB reload failed: ${e.message}`);
+          res.status(500).json({ error: e.message });
+        }
+      });
+
+      // Pre-flight collision check for GRIB upload (REQ-139).
+      router.get('/grib-exists', async (req: Request, res: Response) => {
+        const dir = settings?.gribDir;
+        if (!dir) return void res.status(400).json({ error: 'No gribDir configured' });
+        const base = sanitizeGribName(req.query.name as string);
+        if (!base) return void res.status(400).json({ error: 'Invalid or non-GRIB filename' });
+        try {
+          await fs.stat(nodepath.join(dir, base));
+          res.json({ exists: true });
+        } catch {
+          res.json({ exists: false });
+        }
+      });
+
+      // Upload a GRIB into gribDir (REQ-139). Body is the raw file (octet-stream); name in query.
+      // On name collision, the client passes archive=1 after prompting the user — the existing
+      // file is moved to the archive folder (non-destructive) before writing the new one. An
+      // uploaded file that fails GRIB validation is deleted and a hard error is returned.
+      router.post('/upload-grib', async (req: Request, res: Response) => {
+        const dir = settings?.gribDir;
+        if (!dir) return void res.status(400).json({ error: 'No gribDir configured' });
+        const base = sanitizeGribName(req.query.name as string);
+        if (!base) return void res.status(400).json({ error: 'Invalid or non-GRIB filename' });
+        const target = nodepath.join(dir, base);
+        try {
+          if (req.query.archive === '1') {
+            try {
+              await fs.stat(target);
+              await archiveFile(dir, target);
+            } catch {
+              /* nothing to archive — proceed */
+            }
+          }
+          app.setPluginStatus(`Receiving GRIB upload: ${base}`);
+          await streamReqToFile(req, target);
+          try {
+            await readGribMeta(target); // validate: must be a readable wind/current GRIB
+          } catch (e: any) {
+            await fs.unlink(target).catch(() => {});
+            app.setPluginError(`Uploaded file rejected: ${e.message}`);
+            return void res.status(400).json({ error: `Uploaded file is not a supported GRIB: ${e.message}` });
+          }
+          await scanAndIndexGribDir(dir);
+          await loadRegions();
+          res.json({
+            success: true,
+            nFiles: gribFiles.length,
+            nCurrentFiles: currentFiles.length,
+            failedFiles: gribFailedFiles,
+          });
+          setReady();
+        } catch (e: any) {
+          app.setPluginError(`GRIB upload failed: ${e.message}`);
           res.status(500).json({ error: e.message });
         }
       });
