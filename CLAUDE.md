@@ -104,6 +104,8 @@ Before acting on any user message, ask: does this describe behavior that differs
 
 When a bug is reported: write one entry to BUGS.md and stop. No code reads, no root cause analysis, no proposed fix, no troubleshooting of any kind. There are no exceptions — even if the code was just written, even if the cause seems obvious.
 
+This rule is a focus/scope guardrail, not a format preference: investigating "why" is a rabbit hole that pulls effort off what the user is working on. Before writing any BUGS.md entry, re-read this rule and the worked example in `things-opencode-will-not-do-again.md`, then apply the self-check: the entry must be **symptom-only**. If you are writing "because", naming a function/class/file, or explaining a mechanism, stop and delete it — the entry records what was observed, nothing more. Investigation/root-cause notes are added to the entry only later, when explicitly authorised, and are documented as they happen.
+
 ## New Requirements Rule
 
 When any new feature or requirement is requested — regardless of how it is phrased ("feature:", "new requirement:", "add this", "we need X", or any other wording) — add one entry to SPEC.md and stop. Do not analyse it, do not plan it, do not propose an implementation, do not ask clarifying questions about implementation. Implementation happens later, explicitly on request.

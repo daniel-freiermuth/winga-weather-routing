@@ -65,3 +65,15 @@ Before coding any test-result fix, classify it:
 When several results are pending, fix the class-1 items and only log/ask the class-2 ones. Never replace a reported class-1 bug with a class-2 change I find more interesting.
 
 Future self: when a test result lands, FIRST ask "is this a defect in what I'm building, or is it a different subsystem / a new behaviour / a risky shared change?" If the latter, log it and stop — exactly as the Bug Report Rule and New Requirements Rule require. The rules were never the problem; triaging before acting is.
+
+## Bug Report Rule violation — root cause written into BUG-135 — 2026-06-20
+
+While logging BUG-135 (multiple ocean-current GRIBs mishandled) I wrote a "Root cause: SingleFileCurrentProvider loads only the single freshest current file…" into the BUGS.md entry and the GitHub issue, and referenced internal names (`currentEnabled`, `currentInfoFiles[0]`). The Bug Report Rule is explicit: a bug entry contains **only the observed symptom** — no code reads, no root cause, no analysis, "no exceptions." I broke it.
+
+Why the rule exists (the part I failed to internalise): it is a **focus and scope guardrail, not a formatting preference**. The moment I start investigating "why," I diverge into a rabbit hole — reading code, reasoning about internals, drafting fixes — and burn time on something other than what the user is actually working on. "Log the symptom and stop" exists to keep me on the user's current task and to defer investigation until the user explicitly authorises it. My root-cause paragraph was exactly the divergence the rule is designed to prevent.
+
+Root cause of *my* failure: I treated the rule as a format nit I could bend when I "already knew" the cause, instead of a hard stop. Knowing the cause is precisely not a reason to write it down in the entry.
+
+Structural fix (re-read before every bug log): before writing any BUGS.md entry, re-read the Bug Report Rule above and apply the self-check — the entry must be **symptom-only**. If I find myself writing "because", naming a function/class/file, or explaining a mechanism, STOP and delete that; the entry records what was observed, nothing more. Investigation notes go in the entry only later, when explicitly authorised, and are added as they happen.
+
+Future self: a bug entry answers "what was observed?" — never "why?". The "why" is a separate, authorised step. Writing "why" in the initial entry is the rabbit hole, and the rule exists to keep me out of it.
