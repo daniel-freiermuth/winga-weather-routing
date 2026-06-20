@@ -104,6 +104,42 @@ test('MultiFileWindProvider: getWind returns freshest file when files overlap sp
   assert.strictEqual(wind.v, 10, 'should use the newer file (mtime 2000)');
 });
 
+test('MultiFileWindProvider: getWind prefers newer referenceTime over newer file mtime', () => {
+  const t0 = new Date('2024-01-01T12:00:00Z');
+  const t1 = new Date('2024-01-01T13:00:00Z');
+  // fileA: older model run (referenceTime 00z) but a freshly re-downloaded file (high mtime)
+  const gA = makeGrib({ v: 5, times: [t0, t1] });
+  const entryA = makeEntry(gA, 9000, '/data/oldRun.grib2');
+  entryA.meta.referenceTime = new Date('2024-01-01T00:00:00Z');
+  // fileB: newer model run (referenceTime 06z) but an old download (low mtime)
+  const gB = makeGrib({ v: 10, times: [t0, t1] });
+  const entryB = makeEntry(gB, 1000, '/data/newRun.grib2');
+  entryB.meta.referenceTime = new Date('2024-01-01T06:00:00Z');
+  const provider = new MultiFileWindProvider([entryA, entryB]);
+  // Both cover (41,11) at t0; fileB has the newer prognosis despite an older mtime → B wins
+  assert.strictEqual(provider.getWind(41, 11, 0).v, 10, 'newer referenceTime must beat newer mtime');
+  assert.strictEqual(provider.getFilePathForPoint(41, 11, 0), '/data/newRun.grib2');
+});
+
+test('MultiFileWindProvider: getWind prefers finer temporal granularity on equal referenceTime', () => {
+  const t0 = new Date('2024-01-01T00:00:00Z');
+  // Coarse file: 3-hourly; fine file: hourly. Same referenceTime (t0), same mtime.
+  const coarse = makeGrib({
+    v: 5,
+    times: [t0, new Date('2024-01-01T03:00:00Z'), new Date('2024-01-01T06:00:00Z')],
+  });
+  const fine = makeGrib({
+    v: 10,
+    times: [t0, new Date('2024-01-01T01:00:00Z'), new Date('2024-01-01T02:00:00Z')],
+  });
+  const provider = new MultiFileWindProvider([
+    makeEntry(coarse, 1000, '/data/coarse.grib2'),
+    makeEntry(fine, 1000, '/data/fine.grib2'),
+  ]);
+  const idx0 = provider.times.findIndex((t) => t.getTime() === t0.getTime());
+  assert.strictEqual(provider.getWind(41, 11, idx0).v, 10, 'finer timestep must win on equal referenceTime');
+});
+
 test('MultiFileWindProvider: getWind returns {u:0,v:0} when point outside all bboxes (BUG-93)', () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');

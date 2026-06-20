@@ -117,15 +117,13 @@ Selecting a route in this dropdown overrides any manually placed start/end marke
 
 ### GRIB files
 
-The **GRIB Forecast** panel lists all `.grib2` files found in the configured `gribDir`. Each file has a checkbox — uncheck a file to exclude it from routing and remove its bounding box from the map. When multiple files are loaded they are combined automatically; the algorithm always picks the most recent file that covers each point in space and time. A loading indicator (spinner) appears in the panel and the status box while GRIB data is being read at startup; it disappears once the data is ready.
+The **GRIB Forecast** panel shows a compact summary — the number of wind and ocean-current GRIB files loaded and how many are enabled — and an **Open GRIB Manager** button. Files are managed in the **Grib Manager** modal rather than a flat list.
 
-Below each file's forecast range, the panel shows the model run timestamp — the time the NWP model was initialised to produce that forecast (e.g. `Run: Jun 10 06:00 (74h ago)`). If the run is older than 12 hours the label is shown in amber; older than 24 hours in red. This helps identify stale forecasts that may have been superseded by newer model runs.
+The Grib Manager shows each loaded file as a row on a coverage timeline (its real forecast span, drawn to scale), with a checkbox to include/exclude it from routing. Stale runs (older than 12 h amber, 24 h red) and files whose forecast has ended are flagged. Files that contain wave data (HTSGW bands, e.g. ICON-EU EWAM combined files) show a **~wave** badge. A yellow **now** line and a pink low-confidence band (beyond the configurable `forecastSkillHorizonHours`, default 96 h) mark the forecast skill horizon; vertical markers show where a file's timestep granularity coarsens (e.g. ICON-EU hourly → 3-hourly).
 
-Click **Reload GRIB directory** to pick up newly downloaded files without restarting SignalK.
+When multiple overlapping files are loaded, **Accept proposed** applies an optimised combination — the freshest model run (`referenceTime`) wins per region, then finest granularity, geographically stitched. **Enable all** restores every file. The proposal is departure-aware: scoped to the set departure time (set a past departure to propose a historical combination), or now-forward if no departure is set. **Reload GRIB directory** picks up newly downloaded files without restarting SignalK. Each row has a **🗑 archive** button (moves the file to an `archive/` subfolder after confirmation; files are never deleted). **Remove old GRIBs (N)** archives all files whose forecast has ended in one step.
 
-Each file row has a **🗑 archive** button. Clicking it opens a confirmation dialog; on confirmation the file is moved to an `archive/` subfolder inside `gribDir` and the file list is refreshed. Files are never deleted — they can be restored by moving them back from the archive folder.
-
-When one or more loaded files have a forecast period that has already ended (the `timeEnd` is in the past), a **Remove old GRIBs (N)** button appears below the file list. It archives all such files — both wind and ocean current GRIBs — in one operation after confirmation. Files whose forecast still covers the current time or the future are not affected.
+The routing algorithm always picks the highest-priority file that covers each point in space and time — newest model run, then finest granularity (a re-downloaded old forecast no longer overrides a newer model run). A loading indicator (spinner) appears while GRIB data is read at startup.
 
 If a file with the same name already exists in the archive folder, a serial number is inserted before the extension (e.g. `forecast.grb2` → `forecast.2.grb2`).
 
@@ -166,12 +164,12 @@ The map displays a GRIB wind overlay showing wind speed and direction as wind ba
 - Before a route is calculated the scrubber spans the union of all currently-checked GRIB files' time ranges; toggling a file checkbox updates the range immediately
 - After a route is calculated the scrubber range matches the route (departure to estimated arrival), aligned with the conditions graph
 - Dragging the scrubber highlights the route waypoint nearest in time and draws a pink overlay on the corresponding leg
-- A **colour bar** above the slider shows one coloured row per loaded GRIB file, each row spanning that file's forecast period in the colour assigned to it in the sidebar. Current-file time steps are shown in cyan; uncovered time positions appear in dark grey.
+- A **colour bar** above the slider shows one coloured row per loaded GRIB file, each row spanning that file's forecast period in the colour assigned to it in the Grib Manager. Current-file time steps are shown in cyan; uncovered time positions appear in dark grey.
 - A yellow downward-pointing **triangle marker** above the colour bar marks the current wall-clock time within the forecast range
 - **Now** button (right of the slider): snaps the scrubber to the nearest forecast timestep to the current time
 - **Use as departure** button (left of the scrubber): copies the current scrubber time into the departure time field, so you can browse to a forecast window and lock it in as the departure time with one click
 - **Collapse/expand** handle bar on the scrubber and conditions graph panels — click a panel's handle to collapse it to a thin strip, reclaiming map space. Click again to expand.
-- **⏮ jump button** on each GRIB file row in the sidebar: clicking it moves the scrubber to the start of that file's forecast range
+- **⏮ jump button** on each GRIB file row in the Grib Manager: clicking it moves the scrubber to the start of that file's forecast range
 
 Use the **Wind overlay** checkbox to toggle the overlay on or off without affecting the scrubber or route display.
 
@@ -186,7 +184,7 @@ OpenSkiron ICON-EU EWAM files are combined files containing atmospheric wind dat
 The plugin supports ocean current GRIB2 files from [RTOFS](https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod/) (NOAA, free, global), [BSH](https://www.bsh.de/EN/DATA/Predictions/Currents/Surface_currents_for_sailors/surface_currents_for_sailors_node.html) (German Federal Maritime and Hydrographic Agency, free, European waters), and [CMEMS](https://marine.copernicus.eu/) (Copernicus, free registration, global). Place any current GRIB file in the same `gribDir` as the wind files — the plugin detects it automatically by its GRIB metadata (UOGRD/VOGRD bands at ocean surface level) and applies the interpolated current vectors to the routing algorithm.
 
 When a current file is loaded:
-- The **GRIB Forecast** panel shows a "Ocean current" section listing the file with its model run age in the same amber/red staleness scheme as wind files.
+- The **Grib Manager** lists the current file with its model run age in the same amber/red staleness scheme as wind files (shown as an "ocean current" row).
 - The **Currents** layer checkbox in the Layers panel enables a current vector overlay on the map — cyan arrows showing current direction and speed, driven by the time scrubber.
 - Clicking the map while the Currents overlay is active shows current speed (kn) and direction (°T) in the popup.
 - The routing algorithm adds the current's eastward/northward velocity components to each frontier point's displacement, giving correct ground-track advancement globally.
