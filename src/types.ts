@@ -25,6 +25,7 @@ export interface GribFileMeta {
   timeEnd: Date;
   nTimes: number;
   referenceTime: Date; // model run time (GRIB_REF_TIME of first wind or current band)
+  hasWave?: boolean; // true when the file contains wave bands (HTSGW) — usually combined wind+wave EWAM files
 }
 
 // One entry per wind GRIB file; data is null until lazy-loaded at calculation time.

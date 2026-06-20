@@ -55,6 +55,7 @@ export async function readGribMeta(filePath: string): Promise<GribFileMeta> {
     const windTimeMs = new Set<number>();
     const currentTimeMs = new Set<number>();
     let referenceTimeMs: number | undefined;
+    let hasWave = false;
 
     for (let i = 1; i <= bandCount; i++) {
       const band = ds.bands.get(i);
@@ -76,6 +77,8 @@ export async function readGribMeta(filePath: string): Promise<GribFileMeta> {
           const refStr = md['GRIB_REF_TIME'];
           if (refStr) referenceTimeMs = parseInt(refStr, 10) * 1000;
         }
+      } else if (element === GRIB_SWH_ELEMENT) {
+        hasWave = true;
       }
     }
 
@@ -105,6 +108,7 @@ export async function readGribMeta(filePath: string): Promise<GribFileMeta> {
       timeEnd: new Date(sortedMs[sortedMs.length - 1]),
       nTimes: sortedMs.length,
       referenceTime: new Date(referenceTimeMs ?? sortedMs[0]),
+      hasWave,
     };
   } finally {
     ds.close();

@@ -30,6 +30,7 @@ import {
   nearestCurrentTimeIndex,
 } from './lib/grib';
 import { MultiFileWindProvider } from './lib/windprovider';
+import { proposeCombination, combinationFileFromMeta } from './lib/gribCombination';
 import { SingleFileCurrentProvider } from './lib/currentprovider';
 import { parsePolar } from './lib/polar';
 import { buildLandIndex, polygonsInBbox, isPointOnLand } from './lib/landmask';
@@ -148,7 +149,10 @@ module.exports = (app: SignalKApp) => {
         freshest.data = await loadCurrentGrib(freshest.meta.path);
         currentProvider = new SingleFileCurrentProvider(freshest);
       } catch (e: any) {
-        gribFailedFiles.push({ path: freshest.meta.path, error: `Current GRIB load failed: ${e.message}` });
+        gribFailedFiles.push({
+          path: freshest.meta.path,
+          error: `Current GRIB load failed: ${e.message}`,
+        });
         currentFiles = currentFiles.filter((f) => f !== freshest);
         currentProvider = null;
       }
@@ -350,6 +354,15 @@ module.exports = (app: SignalKApp) => {
           minimum: 80,
           maximum: 400,
         },
+        forecastSkillHorizonHours: {
+          type: 'number',
+          title: 'Forecast skill horizon (hours)',
+          description:
+            'Hours from the model reference time beyond which forecast skill is considered low. The Grib Manager timeline and the route conditions graph shade this region as low-confidence. Default: 96.',
+          default: 96,
+          minimum: 24,
+          maximum: 240,
+        },
         avoidRegionIds: {
           type: 'array',
           title: 'Avoided region UUIDs',
@@ -366,7 +379,9 @@ module.exports = (app: SignalKApp) => {
 
       router.post('/calculate', async (req: Request, res: Response) => {
         if (gribFiles.length === 0)
-          return void res.status(503).json({ error: 'No GRIB files indexed — configure gribDir and reload' });
+          return void res.status(503).json({
+            error: 'No GRIB files indexed — configure gribDir and reload',
+          });
         if (!polar) return void res.status(503).json({ error: 'Polar data not loaded' });
         if (calcStatus.status === 'calculating') {
           return void res.status(409).json({ error: 'Calculation already in progress' });
@@ -387,7 +402,11 @@ module.exports = (app: SignalKApp) => {
           maxHeadingChange: settings?.maxHeadingChange,
           ...options,
         };
-        const inputValidation = validateCalculateInput({ start, end, departureTime });
+        const inputValidation = validateCalculateInput({
+          start,
+          end,
+          departureTime,
+        });
         if (!inputValidation.valid) {
           return void res.status(400).json({ error: inputValidation.error });
         }
@@ -407,14 +426,20 @@ module.exports = (app: SignalKApp) => {
 
         if (useLandAvoidance && activeIndex) {
           if (isPointOnLand(activeIndex, start.lat, start.lon))
-            return void res.status(400).json({ error: 'Start point is on land — move it to open water' });
+            return void res.status(400).json({
+              error: 'Start point is on land — move it to open water',
+            });
           if (isPointOnLand(activeIndex, end.lat, end.lon))
-            return void res.status(400).json({ error: 'Destination is on land — move it to open water' });
+            return void res.status(400).json({
+              error: 'Destination is on land — move it to open water',
+            });
         }
 
         const departureMs = new Date(departureTime).getTime();
         if (isNaN(departureMs)) {
-          return void res.status(400).json({ error: 'Invalid departureTime — expected ISO 8601 string' });
+          return void res.status(400).json({
+            error: 'Invalid departureTime — expected ISO 8601 string',
+          });
         }
         const enabledPaths: string[] | undefined = req.body?.enabledGribPaths;
         const selectedEntries = gribFiles.filter(
@@ -459,7 +484,9 @@ module.exports = (app: SignalKApp) => {
           const wp = waypoints[i];
           if (useLandAvoidance && activeIndex) {
             if (isPointOnLand(activeIndex, wp.lat, wp.lon))
-              return void res.status(400).json({ error: `Waypoint ${i + 1} is on land — move it to open water` });
+              return void res.status(400).json({
+                error: `Waypoint ${i + 1} is on land — move it to open water`,
+              });
           }
           // GRIB coverage is independent of land avoidance — always checked.
           const wpCovered = selectedEntries.some(
@@ -483,7 +510,10 @@ module.exports = (app: SignalKApp) => {
                 entry.data = await loadGrib(entry.meta.path);
               } catch (e: any) {
                 app.debug(`Failed to load GRIB file ${entry.meta.path}: ${e.message}`);
-                calcFailedFiles.push({ path: entry.meta.path, error: e.message });
+                calcFailedFiles.push({
+                  path: entry.meta.path,
+                  error: e.message,
+                });
               }
             }
           }
@@ -535,10 +565,19 @@ module.exports = (app: SignalKApp) => {
                 polar,
                 activeIndex,
                 regionIndex,
-                { ...req.body, start: segStart, end: segEnd, departureTime: segDepartureTime },
+                {
+                  ...req.body,
+                  start: segStart,
+                  end: segEnd,
+                  departureTime: segDepartureTime,
+                },
                 (pct, frontier) => {
                   const mapped = progressBase * 100 + pct * (progressTop - progressBase);
-                  calcStatus = { status: 'calculating', progress: mapped, frontier };
+                  calcStatus = {
+                    status: 'calculating',
+                    progress: mapped,
+                    frontier,
+                  };
                   pushSse({ type: 'progress', progress: mapped, frontier });
                 },
                 mergedOptions,
@@ -567,7 +606,11 @@ module.exports = (app: SignalKApp) => {
             app.setPluginStatus(`Partial route: ${route.length} waypoints`);
             pushSse({ type: 'warning', warning: calcStatus.warning });
           } else if (loadWarning) {
-            calcStatus = { status: 'warning', progress: 100, warning: loadWarning };
+            calcStatus = {
+              status: 'warning',
+              progress: 100,
+              warning: loadWarning,
+            };
             app.setPluginStatus(`Route ready: ${route.length} waypoints (${loadWarning})`);
             pushSse({ type: 'warning', warning: loadWarning });
           } else {
@@ -579,7 +622,11 @@ module.exports = (app: SignalKApp) => {
         } catch (e: any) {
           calcStatus = { status: 'error', progress: 0, error: e.message };
           app.setPluginError(`Route calculation failed: ${e.message}`);
-          pushSse({ type: 'error', error: e.message, reason: e.reason ?? 'unknown' });
+          pushSse({
+            type: 'error',
+            error: e.message,
+            reason: e.reason ?? 'unknown',
+          });
           closeSseClients();
         }
       });
@@ -646,6 +693,62 @@ module.exports = (app: SignalKApp) => {
         res.json({ times: currentProvider.times.map((t) => t.toISOString()) });
       });
 
+      // Per-file actual timestep axis (wind + current). Unlike /wind-times (which returns the
+      // merged axis), this returns each file's real times[] so the UI can render an accurate
+      // Grib Manager timeline with true coverage and detect non-uniform granularity
+      // (e.g. ICON-EU hourly→3-hourly). Joins to /grib-info meta by path.
+      router.get('/grib-times', async (_req: Request, res: Response) => {
+        const files: Array<{
+          path: string;
+          type: 'wind' | 'current';
+          times: string[];
+        }> = [];
+        for (const entry of gribFiles) {
+          if (entry.data === null) {
+            try {
+              entry.data = await loadGrib(entry.meta.path);
+            } catch (e: any) {
+              return void res.status(503).json({ error: `Failed to load GRIB: ${e.message}` });
+            }
+          }
+          files.push({
+            path: entry.meta.path,
+            type: 'wind',
+            times: entry.data!.times.map((t) => t.toISOString()),
+          });
+        }
+        for (const entry of currentFiles) {
+          if (entry.data !== null) {
+            files.push({
+              path: entry.meta.path,
+              type: 'current',
+              times: entry.data!.times.map((t) => t.toISOString()),
+            });
+          }
+        }
+        res.json({ files });
+      });
+
+      // Departure-aware optimized combination proposal: which wind GRIBs to enable, ranked by
+      // referenceTime → granularity → spatial → mtime with a conservative geographic stitch.
+      // Optional departureTime (ISO) scopes the proposal; omit for now-forward. Advisory only —
+      // the user accepts/overrides; routing still selects per-point at runtime.
+      router.get('/grib-combination', (req: Request, res: Response) => {
+        const depRaw = req.query.departureTime as string | undefined;
+        let departureTime: Date | undefined;
+        if (depRaw !== undefined && depRaw !== '') {
+          const dep = new Date(depRaw);
+          if (isNaN(dep.getTime())) {
+            return void res.status(400).json({
+              error: 'Invalid departureTime — expected ISO 8601 string',
+            });
+          }
+          departureTime = dep;
+        }
+        const files = gribFiles.map((f) => combinationFileFromMeta(f.meta));
+        res.json(proposeCombination(files, { departureTime }));
+      });
+
       router.get('/wind-grid', (_req: Request, res: Response) => {
         const timeIdx = parseInt(_req.query.timeIdx as string);
         if (isNaN(timeIdx)) return void res.status(400).json({ error: 'timeIdx required' });
@@ -662,12 +765,19 @@ module.exports = (app: SignalKApp) => {
 
         const wind = new MultiFileWindProvider(loaded as GribFileEntry[]);
         if (timeIdx < 0 || timeIdx >= wind.times.length)
-          return void res.status(400).json({ error: `timeIdx out of range [0, ${wind.times.length - 1}]` });
+          return void res.status(400).json({
+            error: `timeIdx out of range [0, ${wind.times.length - 1}]`,
+          });
 
         const timeMs = wind.times[timeIdx].getTime();
         const { latMin, lonMin, latStep, lonStep, nLat, nLon } = computeGridBounds(loaded as GribFileEntry[]);
 
-        const points: Array<{ lat: number; lon: number; u: number; v: number }> = [];
+        const points: Array<{
+          lat: number;
+          lon: number;
+          u: number;
+          v: number;
+        }> = [];
         for (let i = 0; i <= nLat; i++) {
           const lat = latMin + i * latStep;
           for (let j = 0; j <= nLon; j++) {
@@ -704,7 +814,9 @@ module.exports = (app: SignalKApp) => {
 
         const wind = new MultiFileWindProvider(loaded as GribFileEntry[]);
         if (timeIdx < 0 || timeIdx >= wind.times.length)
-          return void res.status(400).json({ error: `timeIdx out of range [0, ${wind.times.length - 1}]` });
+          return void res.status(400).json({
+            error: `timeIdx out of range [0, ${wind.times.length - 1}]`,
+          });
 
         const timeMs = wind.times[timeIdx].getTime();
         const { latMin, latMax, lonMin, lonMax, latStep, lonStep, nLat, nLon } = computeGridBounds(
@@ -766,7 +878,12 @@ module.exports = (app: SignalKApp) => {
 
         const nLatSteps = Math.round((latMax - latMin) / latStep);
         const nLonSteps = Math.round((lonMax - lonMin) / lonStep);
-        const points: Array<{ lat: number; lon: number; u: number; v: number }> = [];
+        const points: Array<{
+          lat: number;
+          lon: number;
+          u: number;
+          v: number;
+        }> = [];
         for (let i = 0; i <= nLatSteps; i++) {
           const lat = latMin + i * latStep;
           for (let j = 0; j <= nLonSteps; j++) {
@@ -784,9 +901,9 @@ module.exports = (app: SignalKApp) => {
         const useDilated = req.query.dilated === 'true';
         const index = useDilated ? dilatedLandIndex : landIndex;
         if (!index) {
-          return void res
-            .status(503)
-            .json({ error: useDilated ? 'dilated land index not ready' : 'land index not ready' });
+          return void res.status(503).json({
+            error: useDilated ? 'dilated land index not ready' : 'land index not ready',
+          });
         }
         const latMin = parseFloat(req.query.latMin as string);
         const lonMin = parseFloat(req.query.lonMin as string);
@@ -902,7 +1019,10 @@ module.exports = (app: SignalKApp) => {
         try {
           for (const p of oldPaths) await archiveFile(dir, p);
           await scanAndIndexGribDir(dir);
-          res.json({ success: true, archived: oldPaths.map((p) => nodepath.basename(p)) });
+          res.json({
+            success: true,
+            archived: oldPaths.map((p) => nodepath.basename(p)),
+          });
           setReady();
         } catch (e: any) {
           res.status(500).json({ error: e.message });
@@ -924,7 +1044,9 @@ module.exports = (app: SignalKApp) => {
         // Validate: only accept UUIDs that actually exist in the current regionIndex.
         const valid = regionIndex ? validRegionUuids(regionIndex) : new Set<string>();
         if (valid.size === 0) {
-          return void res.status(400).json({ error: 'No SignalK regions available — cannot validate region IDs' });
+          return void res.status(400).json({
+            error: 'No SignalK regions available — cannot validate region IDs',
+          });
         }
         const filtered = ids.filter((id) => valid.has(id));
         if (settings) {
@@ -943,7 +1065,10 @@ module.exports = (app: SignalKApp) => {
         // The frontend typically fetches region polygons from the standard resources API,
         // but this endpoint provides them pre-parsed for convenience and consistency.
         if (!regionIndex) return void res.status(404).json({ error: 'No regions loaded' });
-        const entries: Array<{ uuid: string; rings: Array<Array<[number, number]>> }> = [];
+        const entries: Array<{
+          uuid: string;
+          rings: Array<Array<[number, number]>>;
+        }> = [];
         for (const [key, ring] of regionIndex.regions) {
           const n = ring.exterior.length / 2;
           const coords: Array<[number, number]> = [];

@@ -727,6 +727,154 @@
         filter: drop-shadow(0 0 8px #f5c2e7) brightness(1.35);
         z-index: 9999 !important;
       }
+
+      /* Grib Manager modal (REQ-131) */
+      .wr-modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        z-index: 5000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .grib-manager {
+        background: #1e1e2e;
+        border: 1px solid #45475a;
+        border-radius: 8px;
+        width: min(960px, 94vw);
+        max-height: 88vh;
+        display: flex;
+        flex-direction: column;
+        color: #cdd6f4;
+        font-size: 12px;
+      }
+      .grib-manager-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 14px;
+        border-bottom: 1px solid #313244;
+        font-weight: 600;
+      }
+      .grib-manager-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 14px;
+        border-bottom: 1px solid #313244;
+      }
+      .grib-manager-controls button,
+      .grib-manager-controls label {
+        font-size: 11px;
+        cursor: pointer;
+      }
+      #grib-manager-scope {
+        color: #a6adc8;
+        flex: 1;
+        min-width: 160px;
+      }
+      .grib-manager-body {
+        overflow: auto;
+        padding: 8px 14px 14px;
+      }
+      .gm-row {
+        display: grid;
+        grid-template-columns: 18px 150px 1fr 120px;
+        align-items: center;
+        gap: 8px;
+        padding: 3px 0;
+      }
+      .gm-bar {
+        position: relative;
+        height: 16px;
+        background: #313244;
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .gm-bar-fill {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        border-radius: 3px;
+      }
+      .gm-bar-past {
+        filter: brightness(0.55) saturate(0.6);
+        background-image: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.25) 0 4px, transparent 4px 8px);
+      }
+      .gm-now {
+        position: absolute;
+        top: -2px;
+        bottom: -2px;
+        width: 2px;
+        background: #f9e2af;
+        z-index: 3;
+      }
+      .gm-skill {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        background: repeating-linear-gradient(90deg, rgba(245, 194, 231, 0.18) 0 5px, transparent 5px 10px);
+        z-index: 2;
+      }
+      .gm-granule {
+        position: absolute;
+        top: -1px;
+        bottom: -1px;
+        width: 0;
+        border-left: 1.5px dashed #cba6f7;
+        z-index: 4;
+      }
+      .gm-name {
+        font-size: 11px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .gm-status {
+        font-size: 10px;
+        text-align: right;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .gm-axis {
+        display: grid;
+        grid-template-columns: 18px 150px 1fr 120px;
+        gap: 8px;
+        align-items: center;
+        padding: 4px 0 8px;
+        border-bottom: 1px dashed #313244;
+        margin-bottom: 4px;
+        color: #6c7086;
+        font-size: 10px;
+      }
+      .gm-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 8px 14px;
+        border-top: 1px solid #313244;
+        color: #6c7086;
+        font-size: 10px;
+      }
+      .gm-legend span b {
+        color: #cdd6f4;
+      }
+      .gm-mini-btns {
+        display: inline-flex;
+        gap: 4px;
+      }
+      .gm-mini-btns button {
+        font-size: 11px;
+        padding: 0 4px;
+        cursor: pointer;
+        background: transparent;
+        border: 1px solid #45475a;
+        border-radius: 3px;
+        color: #cdd6f4;
+      }
     </style>
   </head>
   <body>
@@ -902,15 +1050,11 @@
           id="current-info"
           style="display: none; margin-top: 8px; padding-top: 8px; border-top: 1px solid #313244"
         ></div>
-        <button id="remove-old-gribs-btn" style="display: none" title="Archive all GRIB files whose forecast has ended">
-          Remove old GRIBs
-        </button>
         <div id="grib-warning">
           <div id="grib-warning-msg"></div>
           <ul id="grib-warning-list"></ul>
           <button id="grib-warning-ack"></button>
         </div>
-        <button class="reload-btn" id="reload-grib">Reload GRIB directory</button>
       </div>
 
       <div class="section">
@@ -1260,6 +1404,82 @@
       let gribLoaded = false; // true when at least one GRIB file is indexed
       let gribWarningAcked = false;
       let calcStream = null;
+      let enabledGribPaths = new Set(); // wind GRIB paths enabled — single source of truth (REQ-131)
+      let currentInfoFiles = []; // ocean-current GRIB meta (single-file provider; rendered in the Grib Manager)
+      let gribTimesMap = new Map(); // path → ISO[] actual per-file timesteps from /grib-times
+      let forecastSkillHorizonHours = 96; // REQ-132 low-confidence horizon; from /config
+      let lastCombination = null; // last /grib-combination result for the Grib Manager UI
+
+      // --- enabled-set helpers (REQ-131): replace the old querySelector('[data-file-index]') checks ---
+      function windFileEnabled(f) {
+        return f.type !== 'current' && enabledGribPaths.has(f.path);
+      }
+      function enabledWindMeta() {
+        return gribInfoFiles.filter(windFileEnabled);
+      }
+      // Toggle one wind file: update state, bbox layer, scrubber axis, and overlays.
+      function setGribEnabled(path, enabled) {
+        const i = gribInfoFiles.findIndex((f) => f.path === path);
+        if (i < 0) return;
+        if (enabled) enabledGribPaths.add(path);
+        else enabledGribPaths.delete(path);
+        if (enabled) {
+          if (!gribBoundsLayers[i]) {
+            const f = gribInfoFiles[i];
+            const color = C64_PALETTE[i % C64_PALETTE.length];
+            gribBoundsLayers[i] = L.rectangle(
+              [
+                [f.latMin, f.lonMin],
+                [f.latMax, f.lonMax],
+              ],
+              { color, weight: 2, fill: false, dashArray: '6 4' },
+            ).addTo(map);
+          }
+        } else {
+          if (gribBoundsLayers[i]) {
+            map.removeLayer(gribBoundsLayers[i]);
+            gribBoundsLayers[i] = null;
+          }
+        }
+        rebuildScrubberTimes();
+        const idx = parseInt(document.getElementById('time-scrubber').value);
+        if (windTimesLoaded) fetchWindPoints(idx);
+        if (document.getElementById('wave-overlay-toggle').checked) fetchWavePoints(idx);
+        const summary = document.getElementById('grib-enabled-count');
+        if (summary) summary.textContent = String(enabledGribPaths.size);
+      }
+
+      // Toggle ocean-current use: update state, bbox layer, scrubber axis, and current overlay.
+      // (Extracted from the old sidebar current-toggle so the Grib Manager checkbox can drive it.)
+      function setCurrentEnabled(enabled) {
+        currentEnabled = enabled;
+        rebuildScrubberTimes();
+        if (currentEnabled) {
+          if (!currentBoundsLayer && currentInfoFiles[0]) {
+            const f = currentInfoFiles[0];
+            currentBoundsLayer = L.rectangle(
+              [
+                [f.latMin, f.lonMin],
+                [f.latMax, f.lonMax],
+              ],
+              { color: '#89dceb', weight: 2, fill: false, dashArray: '6 4' },
+            ).addTo(map);
+          }
+          const scrubberVal = parseInt(document.getElementById('time-scrubber').value);
+          const refMs = windTimes[scrubberVal] ? new Date(windTimes[scrubberVal]).getTime() : Date.now();
+          fetchCurrentPoints(refMs);
+        } else {
+          if (currentBoundsLayer) {
+            map.removeLayer(currentBoundsLayer);
+            currentBoundsLayer = null;
+          }
+          allCurrentPoints = [];
+          if (currentOverlayLayer) {
+            map.removeLayer(currentOverlayLayer);
+            currentOverlayLayer = null;
+          }
+        }
+      }
 
       const startMarker = L.marker([0, 0], { icon: greenIcon() }).addTo(map);
       const endMarker = L.marker([0, 0], { icon: redIcon() }).addTo(map);
@@ -1279,24 +1499,6 @@
 
       btnStart.addEventListener('click', () => activatePlacing('start'));
       btnEnd.addEventListener('click', () => activatePlacing('end'));
-
-      document.getElementById('reload-grib').addEventListener('click', async () => {
-        try {
-          const r = await apiFetch(`${API}/reload-grib`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: '{}',
-          });
-          const j = await r.json();
-          if (j.error) setStatus('error', j.error);
-          else {
-            loadGribInfo();
-            loadRegions();
-          }
-        } catch (e) {
-          setStatus('error', String(e));
-        }
-      });
 
       map.on('click', (e) => {
         if (!placing) return;
@@ -1595,6 +1797,9 @@
         if (cfg.configuration?.conditionsGraphHeight != null) {
           conditionsGraphHeight = cfg.configuration.conditionsGraphHeight;
         }
+        if (cfg.configuration?.forecastSkillHorizonHours != null) {
+          forecastSkillHorizonHours = cfg.configuration.forecastSkillHorizonHours;
+        }
 
         try {
           const up = await fetch('/signalk/v1/unitpreferences/active');
@@ -1750,155 +1955,46 @@
           });
           if (boundsUnion) map.fitBounds(boundsUnion);
 
-          // Sidebar: one checkbox-label per file
+          // Sidebar: compact summary + "Open GRIB Manager" button (REQ-131). Per-file
+          // selection, timeline, warnings, and the optimized-combination proposal live in
+          // the Grib Manager modal. Bounding-box rectangles stay on the map per enabled file.
+          enabledGribPaths = new Set(j.files.map((f) => f.path));
           gribInfo.innerHTML = !hasWindFiles
             ? '<span>No wind GRIB files loaded</span>'
-            : j.files
-                .map((f, i) => {
-                  const color = C64_PALETTE[i % C64_PALETTE.length];
-                  const start = f.timeStart ? f.timeStart.slice(0, 16).replace('T', ' ') : '?';
-                  const end = f.timeEnd ? f.timeEnd.slice(0, 16).replace('T', ' ') : '?';
-                  let runLine = '';
-                  if (f.referenceTime) {
-                    const refDate = new Date(f.referenceTime);
-                    const refFmt =
-                      refDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
-                      ' ' +
-                      refDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    const ageH = (Date.now() - refDate.getTime()) / 3_600_000;
-                    const ageColor = ageH > 24 ? '#f38ba8' : ageH > 12 ? '#fe640b' : '#6c7086';
-                    runLine =
-                      `<div style="padding-left:22px;font-size:10px;color:${ageColor}">` +
-                      `Run: ${refFmt} (${Math.round(ageH)}h ago)</div>`;
-                  }
-                  return (
-                    `<div style="display:flex;align-items:center;gap:4px">` +
-                    `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1">` +
-                    `<input type="checkbox" class="grib-file-toggle" data-file-index="${i}" checked ` +
-                    `style="accent-color:${color};cursor:pointer">` +
-                    `<span style="color:${color};font-size:11px">${f.nTimes} steps: ${start} &rarr; ${end}</span>` +
-                    `</label>` +
-                    `<button class="grib-jump-btn" data-time-start="${f.timeStart}" title="Jump scrubber to start of this file">&#x23EE;</button>` +
-                    `<button class="grib-remove-btn" data-file-path="${f.path}" title="Archive this file">&#x1F5D1;</button>` +
-                    `</div>${runLine}`
-                  );
-                })
-                .join('');
+            : '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+              `<span style="font-size:11px;color:#cdd6f4">${j.files.length} wind GRIB${j.files.length === 1 ? '' : 's'}</span>` +
+              (j.currentFiles && j.currentFiles.length > 0
+                ? `<span style="font-size:11px;color:#89dceb">${j.currentFiles.length} ocean current</span>`
+                : '') +
+              `<span style="font-size:10px;color:#a6adc8"><b id="grib-enabled-count">${j.files.length}</b> enabled</span>` +
+              `<button id="open-grib-manager-btn" style="font-size:11px;cursor:pointer">Open GRIB Manager…</button>` +
+              '</div>';
+          const openMgrBtn = document.getElementById('open-grib-manager-btn');
+          if (openMgrBtn) openMgrBtn.addEventListener('click', openGribManager);
 
-          // Wire checkbox toggle: show/hide the bounding box rectangle
-          gribInfo.querySelectorAll('.grib-file-toggle').forEach((cb) => {
-            cb.addEventListener('change', () => {
-              const i = parseInt(cb.dataset.fileIndex);
-              if (cb.checked) {
-                if (!gribBoundsLayers[i]) {
-                  const f = gribInfoFiles[i];
-                  const color = C64_PALETTE[i % C64_PALETTE.length];
-                  gribBoundsLayers[i] = L.rectangle(
-                    [
-                      [f.latMin, f.lonMin],
-                      [f.latMax, f.lonMax],
-                    ],
-                    { color, weight: 2, fill: false, dashArray: '6 4' },
-                  ).addTo(map);
-                }
-              } else {
-                if (gribBoundsLayers[i]) {
-                  map.removeLayer(gribBoundsLayers[i]);
-                  gribBoundsLayers[i] = null;
-                }
-              }
-              rebuildScrubberTimes();
-              const idx = parseInt(document.getElementById('time-scrubber').value);
-              if (windTimesLoaded) fetchWindPoints(idx);
-              if (document.getElementById('wave-overlay-toggle').checked) fetchWavePoints(idx);
-            });
-          });
-
-          // Current files section
-          if (j.currentFiles && j.currentFiles.length > 0) {
-            const CURRENT_COLOR = '#89dceb';
-            let html = '<div style="font-size:10px;color:#a6adc8;margin-bottom:4px">Ocean current</div>';
-            for (const f of j.currentFiles) {
-              const start = f.timeStart ? f.timeStart.slice(0, 16).replace('T', ' ') : '?';
-              const end = f.timeEnd ? f.timeEnd.slice(0, 16).replace('T', ' ') : '?';
-              let runLine = '';
-              if (f.referenceTime) {
-                const refDate = new Date(f.referenceTime);
-                const refFmt =
-                  refDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
-                  ' ' +
-                  refDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const ageH = (Date.now() - refDate.getTime()) / 3_600_000;
-                const ageColor = ageH > 24 ? '#f38ba8' : ageH > 12 ? '#fe640b' : '#6c7086';
-                runLine =
-                  `<div style="padding-left:22px;font-size:10px;color:${ageColor}">` +
-                  `Run: ${refFmt} (${Math.round(ageH)}h ago)</div>`;
-              }
-              html +=
-                `<div style="display:flex;align-items:center;gap:4px">` +
-                `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1">` +
-                `<input type="checkbox" id="current-file-toggle" style="accent-color:${CURRENT_COLOR};cursor:pointer" checked>` +
-                `<span style="color:${CURRENT_COLOR};font-size:11px">${f.nTimes} steps: ${start} &rarr; ${end}</span>` +
-                `</label>` +
-                `<button class="grib-jump-btn" data-time-start="${f.timeStart}" title="Jump scrubber to start of this file">&#x23EE;</button>` +
-                `<button class="grib-remove-btn" data-file-path="${escapeHtml(f.path)}" title="Archive this file">&#x1F5D1;</button>` +
-                `</div>${runLine}`;
-              // Draw bbox
-              if (currentBoundsLayer) {
-                map.removeLayer(currentBoundsLayer);
-              }
-              currentBoundsLayer = L.rectangle(
-                [
-                  [f.latMin, f.lonMin],
-                  [f.latMax, f.lonMax],
-                ],
-                { color: CURRENT_COLOR, weight: 2, fill: false, dashArray: '6 4' },
-              ).addTo(map);
-            }
-            html +=
-              '<div style="font-size:10px;color:#6c7086;margin-top:2px">Note: tidal streams are not modelled in ocean current GRIBs.</div>';
-            currentInfoEl.innerHTML = html;
-            currentInfoEl.style.display = 'block';
-
-            // Wire checkbox
-            currentEnabled = true;
-            document.getElementById('current-file-toggle').addEventListener('change', (e) => {
-              currentEnabled = e.target.checked;
-              rebuildScrubberTimes();
-              if (currentEnabled) {
-                if (!currentBoundsLayer && j.currentFiles[0]) {
-                  const f = j.currentFiles[0];
-                  currentBoundsLayer = L.rectangle(
-                    [
-                      [f.latMin, f.lonMin],
-                      [f.latMax, f.lonMax],
-                    ],
-                    { color: CURRENT_COLOR, weight: 2, fill: false, dashArray: '6 4' },
-                  ).addTo(map);
-                }
-                const scrubberVal = parseInt(document.getElementById('time-scrubber').value);
-                const refMs = windTimes[scrubberVal] ? new Date(windTimes[scrubberVal]).getTime() : Date.now();
-                fetchCurrentPoints(refMs);
-              } else {
-                if (currentBoundsLayer) {
-                  map.removeLayer(currentBoundsLayer);
-                  currentBoundsLayer = null;
-                }
-                allCurrentPoints = [];
-                if (currentOverlayLayer) {
-                  map.removeLayer(currentOverlayLayer);
-                  currentOverlayLayer = null;
-                }
-              }
-            });
-
-            // Fetch initial current overlay points
+          // Current files: stored for the Grib Manager (single-file provider). The sidebar
+          // current section is no longer rendered — current GRIBs are managed in the modal.
+          currentInfoFiles = j.currentFiles ?? [];
+          currentEnabled = true;
+          currentInfoEl.style.display = 'none';
+          if (currentInfoFiles.length > 0) {
+            const f = currentInfoFiles[0];
+            if (currentBoundsLayer) map.removeLayer(currentBoundsLayer);
+            currentBoundsLayer = L.rectangle(
+              [
+                [f.latMin, f.lonMin],
+                [f.latMax, f.lonMax],
+              ],
+              { color: '#89dceb', weight: 2, fill: false, dashArray: '6 4' },
+            ).addTo(map);
             const scrubberVal = parseInt(document.getElementById('time-scrubber').value);
             const refMs = windTimes[scrubberVal] ? new Date(windTimes[scrubberVal]).getTime() : Date.now();
             fetchCurrentPoints(refMs);
           } else {
-            currentEnabled = true;
-            currentInfoEl.style.display = 'none';
+            if (currentBoundsLayer) {
+              map.removeLayer(currentBoundsLayer);
+              currentBoundsLayer = null;
+            }
             allCurrentPoints = [];
             if (currentOverlayLayer) {
               map.removeLayer(currentOverlayLayer);
@@ -1906,14 +2002,7 @@
             }
           }
 
-          // Show/hide "Remove old GRIBs" button based on files with past timeEnd
-          const now = Date.now();
-          const oldCount = [...(j.files ?? []), ...(j.currentFiles ?? [])].filter(
-            (f) => f.timeEnd && new Date(f.timeEnd).getTime() < now,
-          ).length;
-          const removeOldBtn = document.getElementById('remove-old-gribs-btn');
-          removeOldBtn.style.display = oldCount > 0 ? '' : 'none';
-          removeOldBtn.textContent = `Remove old GRIBs (${oldCount})`;
+          // "Remove old GRIBs" visibility is driven from the Grib Manager (renderGribManagerBody).
 
           showGribWarning(j.failedFiles ?? []);
           updateCalcButton();
@@ -2182,10 +2271,7 @@
               useSafetyMargin: document.getElementById('safety-margin-toggle').checked,
               useLandAvoidance: document.getElementById('land-avoidance-toggle').checked,
               enabledGribPaths: gribInfoFiles
-                .filter((_, i) => {
-                  const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
-                  return !cb || cb.checked;
-                })
+                .filter((f) => f.type !== 'current' && enabledGribPaths.has(f.path))
                 .map((f) => f.path),
               useCurrentGrib: currentEnabled,
               options: {
@@ -2373,12 +2459,8 @@
       async function fetchWindPoints(timeIdx, signal) {
         // No wind GRIB checked — clear overlay without hitting backend
         // (backend with no path params returns all files, not an empty result)
-        let anyWindEnabled = false;
-        gribInfoFiles.forEach((f, i) => {
-          const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
-          if (!cb || cb.checked) anyWindEnabled = true;
-        });
-        if (!anyWindEnabled) {
+        const enabled = enabledWindMeta();
+        if (enabled.length === 0) {
           allWindPoints = [];
           if (windOverlayLayer) {
             map.removeLayer(windOverlayLayer);
@@ -2397,10 +2479,7 @@
           return;
         }
         const params = new URLSearchParams({ timeIdx: windNativeTimes.indexOf(timeStr) });
-        gribInfoFiles.forEach((f, i) => {
-          const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
-          if (!cb || cb.checked) params.append('path', f.path);
-        });
+        enabled.forEach((f) => params.append('path', f.path));
         let r;
         try {
           r = await apiFetch(`${API}/wind-grid?${params}`, { signal });
@@ -2426,14 +2505,10 @@
       }
 
       async function fetchWavePoints(timeIdx, signal) {
-        let anyEnabled = false;
-        gribInfoFiles.forEach((f, i) => {
-          const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
-          if (!cb || cb.checked) anyEnabled = true;
-        });
+        const enabled = enabledWindMeta();
         // No GRIB files are active — clear overlay immediately; don't hit the backend
         // (backend with no path params returns all files, not an empty result)
-        if (!anyEnabled) {
+        if (enabled.length === 0) {
           allWavePoints = [];
           if (waveOverlayLayer) {
             map.removeLayer(waveOverlayLayer);
@@ -2452,10 +2527,7 @@
           return;
         }
         const params = new URLSearchParams({ timeIdx: windNativeTimes.indexOf(timeStr) });
-        gribInfoFiles.forEach((f, i) => {
-          const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
-          if (!cb || cb.checked) params.append('path', f.path);
-        });
+        enabled.forEach((f) => params.append('path', f.path));
         let r;
         try {
           r = await apiFetch(`${API}/wave-grid?${params}`, { signal });
@@ -2682,11 +2754,9 @@
         currentOverlayLayer.addTo(map);
       }
 
-      // Recomputes windTimes from checked files and updates scrubber range.
-      // Uses GribFileMeta (timeStart, timeEnd, nTimes) to reconstruct per-file time steps
-      // client-side — avoids a backend round-trip on every toggle. Safe for ICON-EU and
-      // RTOFS which always have uniform time steps.
       // Renders the GRIB coverage bar scaled to [rangeStart, rangeEnd] (BUG-132).
+      // When the scrubber is locked to a calculated route, the bar is coloured by which GRIB
+      // file supplied each waypoint (REQ-129) instead of plain temporal overlap.
       function renderCoverageBar(rangeStart, rangeEnd) {
         const bar = document.getElementById('scrubber-coverage-bar');
         if (!bar) return;
@@ -2703,16 +2773,45 @@
           row.style.cssText = `height:4px;border-radius:2px;background:linear-gradient(to right,#313244 0% ${p1}%,${color} ${p1}% ${p2}%,#313244 ${p2}% 100%)`;
           bar.appendChild(row);
         };
-        gribInfoFiles.forEach((f, i) => {
-          if (f.type === 'current') return;
-          const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
-          if (cb && !cb.checked) return;
-          const startMs = new Date(f.timeStart).getTime();
-          const endMs = new Date(f.timeEnd).getTime();
-          const si = windTimes.findIndex((t) => new Date(t).getTime() >= startMs);
-          const ei = windTimes.findLastIndex((t) => new Date(t).getTime() <= endMs);
-          addRow(C64_PALETTE[i % C64_PALETTE.length], si, ei);
-        });
+
+        // REQ-129: route-locked view colours the bar by the GRIB supplying each leg.
+        if (scrubberLockedToRoute && graphMeta && graphMeta.some((m) => m.gribFile != null)) {
+          const stops = [];
+          for (let i = 0; i < graphMeta.length; i++) {
+            const tMs = new Date(graphMeta[i].time).getTime();
+            let si = windTimes.findIndex((t) => new Date(t).getTime() >= tMs);
+            if (si < 0) si = rangeEnd;
+            const nextMs =
+              i < graphMeta.length - 1
+                ? new Date(graphMeta[i + 1].time).getTime()
+                : windTimes[rangeEnd]
+                  ? new Date(windTimes[rangeEnd]).getTime()
+                  : tMs;
+            let ei = windTimes.findIndex((t) => new Date(t).getTime() >= nextMs);
+            if (ei < 0) ei = rangeEnd;
+            ei = Math.max(si, ei - 1);
+            const fp = graphMeta[i].gribFile;
+            const colorIdx = fp != null ? gribInfoFiles.findIndex((f) => f.path === fp) : -1;
+            const color = colorIdx >= 0 ? C64_PALETTE[colorIdx % C64_PALETTE.length] : '#45475a';
+            const a = (((Math.max(rangeStart, Math.min(rangeEnd, si)) - rangeStart) / span) * 100).toFixed(2);
+            const b = (((Math.max(rangeStart, Math.min(rangeEnd, ei)) - rangeStart) / span) * 100).toFixed(2);
+            stops.push(`${color} ${a}% ${b}%`);
+          }
+          if (stops.length > 0) {
+            const row = document.createElement('div');
+            row.style.cssText = `height:4px;border-radius:2px;background:linear-gradient(to right,${stops.join(',')})`;
+            bar.appendChild(row);
+          }
+        } else {
+          gribInfoFiles.forEach((f, i) => {
+            if (f.type === 'current' || !enabledGribPaths.has(f.path)) return;
+            const startMs = new Date(f.timeStart).getTime();
+            const endMs = new Date(f.timeEnd).getTime();
+            const si = windTimes.findIndex((t) => new Date(t).getTime() >= startMs);
+            const ei = windTimes.findLastIndex((t) => new Date(t).getTime() <= endMs);
+            addRow(C64_PALETTE[i % C64_PALETTE.length], si, ei);
+          });
+        }
         if (currentEnabled && currentFileTimes.length > 0) {
           const currentSet = new Set(currentFileTimes);
           const si = windTimes.findIndex((t) => currentSet.has(t));
@@ -2766,27 +2865,32 @@
 
       function rebuildScrubberTimes() {
         const windSet = new Set();
-        gribInfoFiles.forEach((f, i) => {
-          const cb = gribInfo.querySelector(`[data-file-index="${i}"]`);
-          if (cb && !cb.checked) return;
-          if (!f.timeStart || !f.nTimes) return;
+        const enabled = enabledWindMeta();
+        for (const f of enabled) {
+          if (!f.timeStart || !f.nTimes) continue;
           const startMs = new Date(f.timeStart).getTime();
           const endMs = new Date(f.timeEnd).getTime();
-          if (actualWindTimes) {
-            // Use actual time axis from backend — ICON-EU has variable spacing
-            // (hourly to 78h, then 3-hourly), not evenly spaced (BUG-134).
+          if (gribTimesMap.has(f.path)) {
+            // Actual per-file timesteps from /grib-times (REQ-130/REQ-131): reflects non-uniform
+            // spacing (ICON-EU hourly→3-hourly) without client-side reconstruction.
+            for (const t of gribTimesMap.get(f.path)) {
+              const ms = new Date(t).getTime();
+              if (ms >= startMs && ms <= endMs) windSet.add(t);
+            }
+          } else if (actualWindTimes) {
+            // Fallback A: merged backend axis filtered to this file's range.
             for (const t of actualWindTimes) {
               const ms = new Date(t).getTime();
               if (ms >= startMs && ms <= endMs) windSet.add(t);
             }
           } else {
-            // Fallback: reconstruct from metadata with even spacing (imprecise)
+            // Fallback B: reconstruct from metadata with even spacing (imprecise).
             const step = f.nTimes > 1 ? (endMs - startMs) / (f.nTimes - 1) : 0;
             for (let k = 0; k < f.nTimes; k++) {
               windSet.add(new Date(Math.round(startMs + k * step)).toISOString());
             }
           }
-        });
+        }
         const windArr = Array.from(windSet).sort();
         windTimesCount = windArr.length;
         windNativeTimes = windArr;
@@ -2841,6 +2945,17 @@
           }
         } catch (_) {
           /* wind-times unavailable */
+        }
+        // Per-file actual timestep axes (REQ-131): lets rebuildScrubberTimes honour each
+        // file's real (non-uniform) spacing and powers the Grib Manager timeline.
+        try {
+          const gt = await apiFetch(`${API}/grib-times`);
+          if (gt.ok) {
+            const { files } = await gt.json();
+            gribTimesMap = new Map((files ?? []).map((f) => [f.path, f.times]));
+          }
+        } catch (_) {
+          /* grib-times unavailable — rebuildScrubberTimes falls back to actualWindTimes */
         }
 
         rebuildScrubberTimes();
@@ -3110,8 +3225,37 @@
 
         el.push(`<defs><marker id="wdarrow" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
         <polygon points="0,0 5,2.5 0,5" fill="#a6adc8"/>
-      </marker></defs>`);
+      </marker>
+      <pattern id="gmSkillPat" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+        <rect width="6" height="6" fill="rgba(245,194,231,0.10)"/>
+        <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(245,194,231,0.35)" stroke-width="1"/>
+      </pattern></defs>`);
         el.push(`<rect x="0" y="0" width="${VW}" height="${VH}" fill="#1e2230"/>`);
+
+        // REQ-132: low-confidence band over waypoints forecast beyond the skill horizon from
+        // the freshest supplying model run (referenceTime). Shows where the route leaves
+        // reliable forecast skill — distinct from staleness and granularity.
+        if (hasGrib) {
+          const refMs = Math.max(
+            ...meta.map((m) => {
+              const f = m.gribFile ? gribInfoFiles.find((g) => g.path === m.gribFile) : null;
+              return f ? new Date(f.referenceTime).getTime() : -Infinity;
+            }),
+          );
+          if (isFinite(refMs)) {
+            const cutoff = refMs + forecastSkillHorizonHours * 3600000;
+            const firstOver = meta.findIndex((m) => new Date(m.time).getTime() > cutoff);
+            if (firstOver >= 0) {
+              const x0 = parseFloat(xOf(firstOver));
+              el.push(
+                `<rect x="${x0.toFixed(1)}" y="${mt}" width="${(VW - mr - x0).toFixed(1)}" height="${ph}" fill="url(#gmSkillPat)"/>`,
+              );
+              el.push(
+                `<text x="${((x0 + VW - mr) / 2).toFixed(1)}" y="${mt + 10}" text-anchor="middle" fill="#f5c2e7" font-size="8">low forecast confidence</text>`,
+              );
+            }
+          }
+        }
 
         // Left y-axis — single axis (normal) or dual axes (windSpeedMs)
         const twsAxisStep = windSpeedMs ? twsStep5 : maxLeft <= 15 ? 5 : 10;
@@ -3696,17 +3840,6 @@
         });
       });
 
-      document.getElementById('remove-old-gribs-btn').addEventListener('click', () => {
-        showConfirm(
-          'Archive old GRIBs',
-          'Move all GRIB files whose forecast has ended to the archive folder?',
-          async () => {
-            await apiFetch(`${API}/archive-old-gribs`, { method: 'POST' });
-            loadGribInfo();
-          },
-        );
-      });
-
       async function checkDilatedReady() {
         try {
           const r = await apiFetch(`${API}/status`);
@@ -3786,6 +3919,393 @@
       svgEl.addEventListener('mouseleave', () => {
         tooltip.style.display = 'none';
       });
+
+      // ─── Grib Manager (REQ-131) ─────────────────────────────────────────────────
+      // Modal: per-file timeline with real coverage, granularity transitions, staleness,
+      // the low-confidence skill band (REQ-132), the departure-aware optimized-combination
+      // proposal, and select/deselect. Replaces the sidebar checkbox list.
+      function gmFormat(ms) {
+        const d = new Date(ms);
+        return (
+          d.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
+          ' ' +
+          d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        );
+      }
+
+      // Positions (ms) where the timestep coarsens by >1.5× — marks non-uniform granularity.
+      function granularityChanges(times) {
+        if (!times || times.length < 3) return [];
+        const out = [];
+        let prev = new Date(times[1]).getTime() - new Date(times[0]).getTime();
+        for (let i = 2; i < times.length; i++) {
+          const step = new Date(times[i]).getTime() - new Date(times[i - 1]).getTime();
+          if (prev > 0 && step > prev * 1.5) out.push(new Date(times[i]).getTime());
+          prev = step;
+        }
+        return out;
+      }
+
+      // Ensure bbox rectangles match the enabled set (used after bulk enable/disable).
+      function syncBboxLayers() {
+        gribInfoFiles.forEach((f, i) => {
+          const want = enabledGribPaths.has(f.path);
+          const has = !!gribBoundsLayers[i];
+          if (want && !has) {
+            const color = C64_PALETTE[i % C64_PALETTE.length];
+            gribBoundsLayers[i] = L.rectangle(
+              [
+                [f.latMin, f.lonMin],
+                [f.latMax, f.lonMax],
+              ],
+              { color, weight: 2, fill: false, dashArray: '6 4' },
+            ).addTo(map);
+          } else if (!want && has) {
+            map.removeLayer(gribBoundsLayers[i]);
+            gribBoundsLayers[i] = null;
+          }
+        });
+      }
+
+      async function refreshCombination() {
+        const depInput = document.getElementById('departure-time').value;
+        let qs = '';
+        if (depInput) {
+          const depMs = new Date(depInput).getTime();
+          if (!isNaN(depMs)) qs = `?departureTime=${new Date(depMs).toISOString()}`;
+        }
+        try {
+          const r = await apiFetch(`${API}/grib-combination${qs}`);
+          if (r.ok) lastCombination = await r.json();
+        } catch (_) {
+          /* keep previous/null */
+        }
+      }
+
+      function openGribManager() {
+        document.getElementById('grib-manager-overlay').style.display = 'flex';
+        const body = document.getElementById('grib-manager-body');
+        body.innerHTML = '<div style="padding: 20px; color: #a6adc8">Loading…</div>';
+        (async () => {
+          try {
+            if (gribTimesMap.size === 0 && gribInfoFiles.length > 0) {
+              const r = await apiFetch(`${API}/grib-times`);
+              if (r.ok) {
+                const { files } = await r.json();
+                gribTimesMap = new Map((files ?? []).map((f) => [f.path, f.times]));
+              }
+            }
+            await refreshCombination();
+            renderGribManagerBody();
+          } catch (e) {
+            body.innerHTML = `<div style="padding: 20px; color: #f38ba8">Could not load: ${escapeHtml(e.message)}</div>`;
+          }
+        })();
+      }
+
+      function closeGribManager() {
+        document.getElementById('grib-manager-overlay').style.display = 'none';
+      }
+
+      function renderGribManagerBody() {
+        const body = document.getElementById('grib-manager-body');
+        const files = gribInfoFiles;
+        if (files.length === 0) {
+          body.innerHTML = '<div style="padding: 20px; color: #a6adc8">No GRIB files loaded.</div>';
+          return;
+        }
+        const showPast = document.getElementById('grib-manager-past').checked;
+        const nowMs = Date.now();
+        const horizonMs = forecastSkillHorizonHours * 3600000;
+
+        // Axis spans all loaded files (wind + current) so the full picture (incl. historical) is visible.
+        let minMs = Infinity,
+          maxMs = -Infinity;
+        for (const f of [...files, ...currentInfoFiles]) {
+          const s = new Date(f.timeStart).getTime();
+          const e = new Date(f.timeEnd).getTime();
+          if (s < minMs) minMs = s;
+          if (e > maxMs) maxMs = e;
+        }
+        const span = Math.max(1, maxMs - minMs);
+        const pct = (ms) => (((ms - minMs) / span) * 100).toFixed(2);
+
+        const comb = lastCombination;
+        const scopeEl = document.getElementById('grib-manager-scope');
+        const proposedCount = comb && comb.proposed ? comb.proposed.length : 0;
+        if (comb && comb.scope) {
+          const base =
+            comb.scope.mode === 'departure'
+              ? `Proposal scoped to departure ${gmFormat(new Date(comb.scope.departureTime).getTime())}`
+              : 'Proposal scoped to now-forward';
+          scopeEl.textContent =
+            proposedCount > 0
+              ? base
+              : `${base} — no files match. Set a departure time (past for historical data) or enable files manually.`;
+        } else {
+          scopeEl.textContent = '';
+        }
+        // "Accept proposed" is only meaningful when there is a proposal; hide it otherwise
+        // (an empty proposal would just disable every wind file — see result-9 guard).
+        const acceptBtn = document.getElementById('grib-manager-accept');
+        if (acceptBtn) acceptBtn.style.display = proposedCount > 0 ? '' : 'none';
+
+        const combByPath = new Map(((comb && comb.files) || []).map((f) => [f.path, f]));
+        const proposedSet = new Set((comb && comb.proposed) || []);
+
+        let html =
+          '<div class="gm-axis"><span></span><span>file</span><span>coverage timeline →</span><span>status</span></div>';
+        for (let i = 0; i < files.length; i++) {
+          const f = files[i];
+          const color = C64_PALETTE[i % C64_PALETTE.length];
+          const s = new Date(f.timeStart).getTime();
+          const e = new Date(f.timeEnd).getTime();
+          const isCurrent = f.type === 'current';
+          const isPast = e < nowMs;
+          if (isPast && !showPast && !isCurrent) continue;
+
+          const left = pct(s);
+          const width = (pct(e) - pct(s)).toFixed(2);
+          const enabled = isCurrent ? currentEnabled : enabledGribPaths.has(f.path);
+          const cf = combByPath.get(f.path);
+          const proposed = proposedSet.has(f.path);
+
+          // Skill band: low-confidence region past the forecast horizon from now.
+          let bar = '<div class="gm-bar">';
+          const skillStart = Math.max(nowMs + horizonMs, s);
+          if (skillStart < e) {
+            bar += `<div class="gm-skill" style="left:${pct(skillStart)}%;width:${(pct(e) - pct(skillStart)).toFixed(2)}%"></div>`;
+          }
+          const fillStyle = enabled
+            ? `background:${color}`
+            : `background:repeating-linear-gradient(45deg,${color}66 0 4px,transparent 4px 8px);opacity:0.55`;
+          const fillCls = isPast ? 'gm-bar-fill gm-bar-past' : 'gm-bar-fill';
+          bar += `<div class="${fillCls}" style="left:${left}%;width:${width}%;${fillStyle}"></div>`;
+          if (nowMs >= s && nowMs <= e) bar += `<div class="gm-now" style="left:${pct(nowMs)}%"></div>`;
+          if (!isCurrent) {
+            for (const gMs of granularityChanges(gribTimesMap.get(f.path))) {
+              if (gMs >= s && gMs <= e) bar += `<div class="gm-granule" style="left:${pct(gMs)}%"></div>`;
+            }
+          }
+          bar += '</div>';
+
+          let status;
+          if (isCurrent) status = '<span style="color: #89dceb">ocean current</span>';
+          else if (proposed) status = '<span style="color: #a6e3a1">◀ proposed</span>';
+          else if (cf && cf.reason && cf.reason.startsWith('redundant'))
+            status = '<span style="color: #6c7086">redundant</span>';
+          else if (cf && cf.reason && cf.reason.startsWith('past')) status = '<span style="color: #f38ba8">past</span>';
+          else if (cf && cf.reason)
+            status = `<span style="color: #6c7086">${escapeHtml(cf.reason.split(':')[0])}</span>`;
+          else status = '';
+
+          let ageBadge = '';
+          if (f.referenceTime) {
+            const ageH = (nowMs - new Date(f.referenceTime).getTime()) / 3_600_000;
+            const ageColor = ageH > 24 ? '#f38ba8' : ageH > 12 ? '#fe640b' : '#6c7086';
+            ageBadge = ` <span style="color:${ageColor}">${Math.round(ageH)}h</span>`;
+          }
+          const waveBadge = f.hasWave
+            ? ' <span style="color:#89b4fa" title="contains wave data (HTSGW)">~wave</span>'
+            : '';
+          const name = f.path.split('/').pop() || f.path;
+          const cb = `<input type="checkbox" class="gm-toggle" data-path="${escapeHtml(f.path)}" ${enabled ? 'checked' : ''} style="accent-color:${color};cursor:pointer" ${isCurrent ? 'disabled' : ''}>`;
+          const mini =
+            `<span class="gm-mini-btns">` +
+            `<button class="grib-jump-btn" data-time-start="${f.timeStart}" title="Jump scrubber to start">&#x23EE;</button>` +
+            `<button class="grib-remove-btn" data-file-path="${escapeHtml(f.path)}" title="Archive this file">&#x1F5D1;</button>` +
+            `</span>`;
+
+          html +=
+            `<div class="gm-row">` +
+            cb +
+            `<span class="gm-name" style="color:${color}" title="${escapeHtml(f.path)}">${escapeHtml(name)}${waveBadge}${ageBadge}</span>` +
+            `<span style="position:relative">${bar}</span>` +
+            `<span class="gm-status">${status} ${mini}</span>` +
+            `</div>`;
+        }
+
+        // Ocean-current rows (single-file provider; one global on/off toggle).
+        for (const f of currentInfoFiles) {
+          const color = '#89dceb';
+          const s = new Date(f.timeStart).getTime();
+          const e = new Date(f.timeEnd).getTime();
+          const isPast = e < nowMs;
+          const left = pct(s);
+          const width = (pct(e) - pct(s)).toFixed(2);
+          let bar = '<div class="gm-bar">';
+          const skillStart = Math.max(nowMs + horizonMs, s);
+          if (skillStart < e) {
+            bar += `<div class="gm-skill" style="left:${pct(skillStart)}%;width:${(pct(e) - pct(skillStart)).toFixed(2)}%"></div>`;
+          }
+          const fillStyle = currentEnabled
+            ? `background:${color}`
+            : `background:repeating-linear-gradient(45deg,${color}66 0 4px,transparent 4px 8px);opacity:0.55`;
+          const fillCls = isPast ? 'gm-bar-fill gm-bar-past' : 'gm-bar-fill';
+          bar += `<div class="${fillCls}" style="left:${left}%;width:${width}%;${fillStyle}"></div>`;
+          if (nowMs >= s && nowMs <= e) bar += `<div class="gm-now" style="left:${pct(nowMs)}%"></div>`;
+          bar += '</div>';
+          let ageBadge = '';
+          if (f.referenceTime) {
+            const ageH = (nowMs - new Date(f.referenceTime).getTime()) / 3_600_000;
+            const ageColor = ageH > 24 ? '#f38ba8' : ageH > 12 ? '#fe640b' : '#6c7086';
+            ageBadge = ` <span style="color:${ageColor}">${Math.round(ageH)}h</span>`;
+          }
+          const name = f.path.split('/').pop() || f.path;
+          const cb = `<input type="checkbox" class="gm-current-toggle" ${currentEnabled ? 'checked' : ''} style="accent-color:${color};cursor:pointer">`;
+          const mini =
+            `<span class="gm-mini-btns">` +
+            `<button class="grib-jump-btn" data-time-start="${f.timeStart}" title="Jump scrubber to start">&#x23EE;</button>` +
+            `<button class="grib-remove-btn" data-file-path="${escapeHtml(f.path)}" title="Archive this file">&#x1F5D1;</button>` +
+            `</span>`;
+          html +=
+            `<div class="gm-row">` +
+            cb +
+            `<span class="gm-name" style="color:${color}" title="${escapeHtml(f.path)}">${escapeHtml(name)}${ageBadge}</span>` +
+            `<span style="position:relative">${bar}</span>` +
+            `<span class="gm-status"><span style="color: #89dceb">ocean current</span> ${mini}</span>` +
+            `</div>`;
+        }
+        body.innerHTML = html;
+
+        body.querySelectorAll('.gm-toggle').forEach((cb) => {
+          cb.addEventListener('change', () => {
+            setGribEnabled(cb.dataset.path, cb.checked);
+            renderGribManagerBody();
+          });
+        });
+        body.querySelectorAll('.gm-current-toggle').forEach((cb) => {
+          cb.addEventListener('change', () => {
+            setCurrentEnabled(cb.checked);
+            renderGribManagerBody();
+          });
+        });
+        const cnt = document.getElementById('grib-enabled-count');
+        if (cnt) cnt.textContent = String(enabledGribPaths.size);
+        // "Remove old GRIBs" button (lives in the manager): show when there are past-end files.
+        const oldCount = [...gribInfoFiles, ...currentInfoFiles].filter(
+          (f) => f.timeEnd && new Date(f.timeEnd).getTime() < nowMs,
+        ).length;
+        const removeOldBtn = document.getElementById('remove-old-gribs-btn');
+        if (removeOldBtn) {
+          removeOldBtn.style.display = oldCount > 0 ? '' : 'none';
+          removeOldBtn.textContent = `Remove old GRIBs (${oldCount})`;
+        }
+      }
+
+      // Accept the proposed combination: enable proposed wind files, disable the rest, one rebuild.
+      function acceptProposedCombination() {
+        // Guard against an empty proposal (e.g. all-past dataset with no departure set, so the
+        // now-scoped proposal is []). Applying it would disable every wind file at once.
+        if (!lastCombination || !lastCombination.proposed || lastCombination.proposed.length === 0) return;
+        enabledGribPaths = new Set(lastCombination.proposed);
+        syncBboxLayers();
+        rebuildScrubberTimes();
+        const idx = parseInt(document.getElementById('time-scrubber').value);
+        if (windTimesLoaded) fetchWindPoints(idx);
+        if (document.getElementById('wave-overlay-toggle').checked) fetchWavePoints(idx);
+        renderGribManagerBody();
+      }
+
+      function enableAllGribs() {
+        enabledGribPaths = new Set(gribInfoFiles.filter((f) => f.type !== 'current').map((f) => f.path));
+        syncBboxLayers();
+        rebuildScrubberTimes();
+        const idx = parseInt(document.getElementById('time-scrubber').value);
+        if (windTimesLoaded) fetchWindPoints(idx);
+        if (document.getElementById('wave-overlay-toggle').checked) fetchWavePoints(idx);
+        renderGribManagerBody();
+      }
+
+      // Wire modal controls on DOMContentLoaded — the modal HTML is parsed AFTER this inline
+      // script, so the elements don't exist at script-load. Wiring them inline (before the
+      // modal markup) was the root cause of the inert close/accept/enable-all/past buttons.
+      document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('grib-manager-close').addEventListener('click', closeGribManager);
+        document.getElementById('grib-manager-overlay').addEventListener('click', (e) => {
+          if (e.target.id === 'grib-manager-overlay') closeGribManager();
+        });
+        document.getElementById('grib-manager-accept').addEventListener('click', acceptProposedCombination);
+        document.getElementById('grib-manager-reset').addEventListener('click', enableAllGribs);
+        document.getElementById('grib-manager-past').addEventListener('change', renderGribManagerBody);
+        document.getElementById('remove-old-gribs-btn').addEventListener('click', () => {
+          showConfirm(
+            'Archive old GRIBs',
+            'Move all GRIB files whose forecast has ended to the archive folder?',
+            async () => {
+              await apiFetch(`${API}/archive-old-gribs`, { method: 'POST' });
+              loadGribInfo();
+            },
+          );
+        });
+        document.getElementById('reload-grib').addEventListener('click', async () => {
+          try {
+            const r = await apiFetch(`${API}/reload-grib`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: '{}',
+            });
+            const j = await r.json();
+            if (j.error) setStatus('error', j.error);
+            else {
+              loadGribInfo();
+              loadRegions();
+              // refresh the manager if it's open
+              if (document.getElementById('grib-manager-overlay').style.display !== 'none') openGribManager();
+            }
+          } catch (e) {
+            setStatus('error', String(e));
+          }
+        });
+      });
+      document.getElementById('departure-time').addEventListener('change', () => {
+        if (document.getElementById('grib-manager-overlay').style.display !== 'none') {
+          (async () => {
+            await refreshCombination();
+            renderGribManagerBody();
+          })();
+        }
+      });
     </script>
+    <!-- Grib Manager modal (REQ-131) -->
+    <div id="grib-manager-overlay" class="wr-modal-overlay" style="display: none">
+      <div class="grib-manager">
+        <div class="grib-manager-header">
+          <span>GRIB Manager</span>
+          <button
+            id="grib-manager-close"
+            style="cursor: pointer; background: transparent; border: none; color: #cdd6f4; font-size: 18px"
+          >
+            ×
+          </button>
+        </div>
+        <div class="grib-manager-controls">
+          <span id="grib-manager-scope"></span>
+          <button id="grib-manager-accept">Accept proposed</button>
+          <button id="grib-manager-reset">Enable all</button>
+          <button
+            id="remove-old-gribs-btn"
+            style="display: none"
+            title="Archive all GRIB files whose forecast has ended"
+          >
+            Remove old GRIBs
+          </button>
+          <button id="reload-grib" class="reload-btn">Reload GRIB directory</button>
+          <label style="display: flex; align-items: center; gap: 4px"
+            ><input type="checkbox" id="grib-manager-past" checked /> Show past GRIBs</label
+          >
+        </div>
+        <div class="grib-manager-body" id="grib-manager-body"></div>
+        <div class="gm-legend">
+          <span><b>◼</b> enabled</span>
+          <span>striped = disabled</span>
+          <span>dimmed = past</span>
+          <span><b style="color: #f9e2af">|</b> now</span>
+          <span><b style="color: #f5c2e7">┄</b> low-confidence (&gt; horizon)</span>
+          <span><b style="color: #cba6f7">┊</b> coarser timesteps (granularity change)</span>
+          <span><b style="color: #a6e3a1">◀</b> proposed</span>
+        </div>
+      </div>
+    </div>
   </body>
 </html>
