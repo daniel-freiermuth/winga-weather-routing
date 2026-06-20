@@ -142,3 +142,7 @@ If two identical issues are present in github, this applies to the newest issue:
 ## Task Boundary Rule
 
 Deliver exactly what was asked, including any required follow-ups (e.g. creating a GitHub issue for a new SPEC.md entry), then stop. Do not resume prior work, do not take initiative on next steps, do not continue mid-task workflows. Wait for the next explicit instruction.
+
+## Test-Result Triage Rule
+
+Before coding any test-result fix, classify it: **(1) in-scope defect** of the feature currently being built → fix it; **(2) anything else** — a different subsystem, new or pre-existing behaviour, or a risky change to shared code → log to `BUGS.md`/`SPEC.md` + a GitHub issue and **ask before coding**. Fix the class-1 items; only log/ask the class-2 ones. Never replace a reported class-1 bug with a class-2 change. (Worked example: the 2026-06-20 scrubber incident in `things-opencode-will-not-do-again.md`.)
