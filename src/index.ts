@@ -3,12 +3,13 @@
 import * as nodepath from 'node:path';
 import * as fs from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
-import express, { Router, Request, Response } from 'express';
+import express from 'express';
+import type { Router, Request, Response } from 'express';
 
 // Side-effect: copies gdal-async .node binary from optional dep — must run before ./lib/grib
 import './lib/ensure-gdal-binary';
 
-import {
+import type {
   CurrentFileEntry,
   CurrentProvider,
   GribFileEntry,
@@ -47,12 +48,12 @@ import {
   loadHiresDilatedIndex,
 } from './lib/setup';
 import { validateCalculateInput } from './lib/validation';
-import { SignalKApp } from './lib/signalk-app';
+import type { SignalKApp } from './lib/signalk-app';
 import { computeGridBounds } from './lib/grid';
-import { RoutingAlgorithm } from './lib/routing/algorithm';
+import type { RoutingAlgorithm } from './lib/routing/algorithm';
 import { IsochroneAlgorithm } from './lib/routing/isochrone';
 
-const ALGORITHMS: Map<string, RoutingAlgorithm> = new Map([['isochrone', new IsochroneAlgorithm()]]);
+const ALGORITHMS = new Map<string, RoutingAlgorithm>([['isochrone', new IsochroneAlgorithm()]]);
 
 const DEFAULT_ALGORITHM = 'isochrone';
 
@@ -60,7 +61,7 @@ module.exports = (app: SignalKApp) => {
   let gribFiles: GribFileEntry[] = [];
   let currentFiles: CurrentFileEntry[] = [];
   let currentProvider: CurrentProvider | null = null;
-  let gribFailedFiles: Array<{ path: string; error: string }> = [];
+  let gribFailedFiles: { path: string; error: string }[] = [];
   let polar: PolarData | null = null;
   let landIndex: LandIndex | null = null; // polygon index — overlay only
   let edgeIndex: LandEdgeIndex | null = null; // edge-tile index — routing land checks
@@ -71,32 +72,40 @@ module.exports = (app: SignalKApp) => {
   let regionIndex: RegionIndex | null = null;
   let settings: PluginSettings | null = null;
   let calcStatus: CalculationStatus = { status: 'idle', progress: 0 };
-  let pendingRoute: import('./types').RoutePoint[] | null = null;
+  let pendingRoute: RoutePoint[] | null = null;
   const sseClients = new Set<Response>();
+
+  // Express Response extended by compression middleware with optional .flush().
+  type FlushableResponse = Response & { flush?: () => void };
 
   function pushSse(data: object): void {
     const payload = `data: ${JSON.stringify(data)}\n\n`;
     for (const client of sseClients) {
       client.write(payload);
-      if (typeof (client as any).flush === 'function') (client as any).flush();
+      (client as FlushableResponse).flush?.();
     }
   }
 
   function closeSseClients(): void {
     for (const client of sseClients) {
-      if (typeof (client as any).flush === 'function') (client as any).flush();
+      (client as FlushableResponse).flush?.();
       client.end();
     }
     sseClients.clear();
   }
 
+  // Narrow an Express ParsedQs query value to plain string; returns '' for arrays, objects, or absent.
+  function queryStr(val: unknown): string {
+    return typeof val === 'string' ? val : '';
+  }
+
   function setReady(): void {
     const parts: string[] = [];
-    if (gribFiles.length > 0) parts.push(`${gribFiles.length} wind GRIB file(s)`);
-    if (currentFiles.length > 0) parts.push(`${currentFiles.length} current GRIB file(s)`);
+    if (gribFiles.length > 0) parts.push(`${String(gribFiles.length)} wind GRIB file(s)`);
+    if (currentFiles.length > 0) parts.push(`${String(currentFiles.length)} current GRIB file(s)`);
     if (polar) parts.push('polar loaded');
-    if (edgeIndex) parts.push(`land index: ${edgeIndex.edgeGrid.size} cells`);
-    if (gribFailedFiles.length > 0) parts.push(`${gribFailedFiles.length} file(s) failed to index`);
+    if (edgeIndex) parts.push(`land index: ${String(edgeIndex.edgeGrid.size)} cells`);
+    if (gribFailedFiles.length > 0) parts.push(`${String(gribFailedFiles.length)} file(s) failed to index`);
     app.setPluginStatus(parts.join(' · '));
   }
 
@@ -108,31 +117,31 @@ module.exports = (app: SignalKApp) => {
     const stem = base.slice(0, base.length - ext.length);
     let dest = nodepath.join(archiveDir, base);
     let serial = 2;
-    while (true) {
+    for (;;) {
       try {
         await fs.access(dest);
       } catch {
         break;
       }
-      dest = nodepath.join(archiveDir, `${stem}.${serial}${ext}`);
+      dest = nodepath.join(archiveDir, `${stem}.${String(serial)}${ext}`);
       serial++;
     }
     await fs.rename(filePath, dest);
   }
 
   // Stream a request body to a file. Cleans up the partial file on abort/error.
-  function streamReqToFile(req: Request, target: string): Promise<void> {
-    return new Promise((resolve, reject) => {
+  async function streamReqToFile(req: Request, target: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
       const out = createWriteStream(target);
       const fail = (err: unknown) => {
         out.destroy();
-        fs.unlink(target).catch(() => {});
+        fs.unlink(target).catch(() => { /* ignored */ });
         reject(err instanceof Error ? err : new Error(String(err)));
       };
-      out.on('finish', () => resolve());
+      out.on('finish', () => { resolve(); });
       out.on('error', fail);
       req.on('error', fail);
-      req.on('aborted', () => fail(new Error('upload aborted by client')));
+      req.on('aborted', () => { fail(new Error('upload aborted by client')); });
       req.pipe(out);
     });
   }
@@ -145,8 +154,8 @@ module.exports = (app: SignalKApp) => {
     let paths: string[];
     try {
       paths = await scanGribDir(dir);
-    } catch (e: any) {
-      app.setPluginError(`Failed to scan GRIB directory: ${e.message}`);
+    } catch (err: unknown) {
+      app.setPluginError(`Failed to scan GRIB directory: ${err instanceof Error ? err.message : String(err)}`);
       return;
     }
     for (const p of paths) {
@@ -157,20 +166,21 @@ module.exports = (app: SignalKApp) => {
         } else {
           gribFiles.push({ meta, data: null });
         }
-      } catch (e: any) {
-        gribFailedFiles.push({ path: p, error: e.message });
+      } catch (err: unknown) {
+        gribFailedFiles.push({ path: p, error: err instanceof Error ? err.message : String(err) });
       }
     }
     // Build current provider from the freshest current file (highest mtime).
     if (currentFiles.length > 0) {
-      const freshest = [...currentFiles].sort((a, b) => b.meta.mtime - a.meta.mtime)[0];
+      const [freshest] = [...currentFiles].sort((a, b) => b.meta.mtime - a.meta.mtime);
+      if (!freshest) return; // cannot happen given length > 0 check above
       try {
         freshest.data = await loadCurrentGrib(freshest.meta.path);
         currentProvider = new SingleFileCurrentProvider(freshest);
-      } catch (e: any) {
+      } catch (err: unknown) {
         gribFailedFiles.push({
           path: freshest.meta.path,
-          error: `Current GRIB load failed: ${e.message}`,
+          error: `Current GRIB load failed: ${err instanceof Error ? err.message : String(err)}`,
         });
         currentFiles = currentFiles.filter((f) => f !== freshest);
         currentProvider = null;
@@ -187,8 +197,8 @@ module.exports = (app: SignalKApp) => {
       }
       const apiRegions = await app.resourcesApi.listResources('regions');
       regionIndex = buildRegionIndex(apiRegions);
-    } catch (e: any) {
-      app.debug(`Failed to load regions: ${e.message}`);
+    } catch (err: unknown) {
+      app.debug(`Failed to load regions: ${err instanceof Error ? err.message : String(err)}`);
       regionIndex = null;
     }
   }
@@ -196,13 +206,15 @@ module.exports = (app: SignalKApp) => {
   // Removes stale region UUIDs from plugin config. Called only from start() so that
   // frequent read-only loadRegions() calls (from /calculate, /reload-grib, /avoid-regions)
   // do not mutate persisted config as a side effect (BUG-116).
-  async function cleanStaleRegionIds(): Promise<void> {
-    if (!settings || !settings.avoidRegionIds || settings.avoidRegionIds.length === 0) return;
+  function cleanStaleRegionIds(): void {
+    if (settings === null) return;
     if (!regionIndex) return;
+    const ids = settings.avoidRegionIds ?? [];
+    if (ids.length === 0) return;
     const valid = validRegionUuids(regionIndex);
-    const stale = settings.avoidRegionIds.filter((id) => !valid.has(id));
+    const stale = ids.filter((id) => !valid.has(id));
     if (stale.length > 0) {
-      settings.avoidRegionIds = settings.avoidRegionIds.filter((id) => valid.has(id));
+      settings.avoidRegionIds = ids.filter((id) => valid.has(id));
       try {
         app.savePluginOptions?.(settings);
       } catch {
@@ -211,14 +223,24 @@ module.exports = (app: SignalKApp) => {
     }
   }
 
+  // Wraps an async Express handler so it returns void (satisfies no-misused-promises).
+  function asyncRoute(
+    fn: (req: Request, res: Response) => Promise<void>,
+  ): (req: Request, res: Response) => void {
+    return (req: Request, res: Response): void => {
+      void fn(req, res);
+    };
+  }
+
   const plugin = {
     id: 'signalk-weather-routing',
     name: 'Weather Routing',
 
     start: async (cfg: PluginSettings) => {
       // Schema migration: saved configs from before REQ-32 have gribPath instead of gribDir.
-      if (!cfg.gribDir && (cfg as any).gribPath) {
-        cfg.gribDir = nodepath.dirname((cfg as any).gribPath);
+      const legacyCfg = cfg as PluginSettings & { gribPath?: string };
+      if (!cfg.gribDir && legacyCfg.gribPath !== undefined) {
+        cfg.gribDir = nodepath.dirname(legacyCfg.gribPath);
       }
       settings = cfg;
       app.setPluginStatus('Starting...');
@@ -226,8 +248,8 @@ module.exports = (app: SignalKApp) => {
       if (cfg.polarPath) {
         try {
           polar = parsePolar(cfg.polarPath);
-        } catch (e: any) {
-          app.setPluginError(`Failed to load polar file: ${e.message}`);
+        } catch (err: unknown) {
+          app.setPluginError(`Failed to load polar file: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
 
@@ -247,8 +269,8 @@ module.exports = (app: SignalKApp) => {
         }
         dilatedLandIndex = buildLandIndex(dilatedEdgeIndex.polygons);
         dilatedIndexReady = true;
-      } catch (e: any) {
-        app.setPluginError(`Failed to load land data: ${e.message}`);
+      } catch (err: unknown) {
+        app.setPluginError(`Failed to load land data: ${err instanceof Error ? err.message : String(err)}`);
         return;
       }
 
@@ -260,7 +282,7 @@ module.exports = (app: SignalKApp) => {
       app.setPluginStatus('Indexing GRIB directory...');
       await scanAndIndexGribDir(cfg.gribDir);
       await loadRegions();
-      await cleanStaleRegionIds();
+      cleanStaleRegionIds();
       setReady();
     },
 
@@ -394,9 +416,25 @@ module.exports = (app: SignalKApp) => {
 
     registerWithRouter: (router: Router) => {
       const leafletDist = nodepath.join(nodepath.dirname(require.resolve('leaflet/package.json')), 'dist');
-      router.use('/leaflet', express.static(leafletDist));
+      const leafletStatic = express.static(leafletDist);
+      // express.static returns a handler typed as (...) => any; wrap to ensure void return
+      router.use('/leaflet', (req, res, next) => { leafletStatic(req, res, next); });
 
-      router.post('/calculate', async (req: Request, res: Response) => {
+      // Typed shape of the /calculate request body (req.body is `any` at Express boundary).
+      interface CalcBody {
+        start: LatLon;
+        end: LatLon;
+        departureTime: string;
+        options?: Record<string, unknown>;
+        useLandAvoidance?: boolean;
+        useSafetyMargin?: boolean;
+        waypoints?: LatLon[];
+        useCurrentGrib?: boolean;
+        enabledGribPaths?: string[];
+        avoidRegionIds?: string[];
+      }
+
+      router.post('/calculate', asyncRoute(async (req: Request, res: Response) => {
         if (gribFiles.length === 0)
           return void res.status(503).json({
             error: 'No GRIB files indexed — configure gribDir and reload',
@@ -409,7 +447,9 @@ module.exports = (app: SignalKApp) => {
         // even if they were added after plugin startup (REQ-98).
         await loadRegions();
 
-        const { start, end, departureTime, options } = req.body ?? {};
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Express req.body typed as any at framework boundary; validated by validateCalculateInput below
+        const body = (req.body ?? {}) as CalcBody;
+        const { start, end, departureTime, options } = body;
         // Plugin settings act as defaults; per-request options override.
         const mergedOptions: Record<string, unknown> = {
           headingStep: settings?.headingStep,
@@ -436,8 +476,8 @@ module.exports = (app: SignalKApp) => {
           return void res.status(400).json({ error: `Unknown algorithm: ${algorithmId}` });
         }
 
-        const useLandAvoidance = req.body?.useLandAvoidance !== false; // default true
-        const useSafetyMargin = req.body?.useSafetyMargin === true;
+        const useLandAvoidance = body.useLandAvoidance !== false; // default true
+        const useSafetyMargin = body.useSafetyMargin === true;
         if (useSafetyMargin && !dilatedEdgeIndex) {
           return void res.status(503).json({ error: 'Safety margin index not ready yet' });
         }
@@ -460,7 +500,7 @@ module.exports = (app: SignalKApp) => {
             error: 'Invalid departureTime — expected ISO 8601 string',
           });
         }
-        const enabledPaths: string[] | undefined = req.body?.enabledGribPaths;
+        const enabledPaths: string[] | undefined = body.enabledGribPaths;
         const selectedEntries = gribFiles.filter(
           (f) =>
             f.meta.timeEnd.getTime() >= departureMs && (enabledPaths == null || enabledPaths.includes(f.meta.path)),
@@ -498,13 +538,12 @@ module.exports = (app: SignalKApp) => {
           });
         }
 
-        const waypoints: Array<LatLon> = Array.isArray(req.body?.waypoints) ? req.body.waypoints : [];
-        for (let i = 0; i < waypoints.length; i++) {
-          const wp = waypoints[i];
+        const waypoints: LatLon[] = Array.isArray(body.waypoints) ? body.waypoints : [];
+        for (const [i, wp] of waypoints.entries()) {
           if (useLandAvoidance && activeIndex) {
             if (isPointOnLand(activeIndex, wp.lat, wp.lon))
               return void res.status(400).json({
-                error: `Waypoint ${i + 1} is on land — move it to open water`,
+                error: `Waypoint ${String(i + 1)} is on land — move it to open water`,
               });
           }
           // GRIB coverage is independent of land avoidance — always checked.
@@ -514,7 +553,7 @@ module.exports = (app: SignalKApp) => {
           );
           if (!wpCovered)
             return void res.status(400).json({
-              error: `Waypoint ${i + 1} is outside the GRIB coverage area — load a GRIB file covering all waypoints`,
+              error: `Waypoint ${String(i + 1)} is outside the GRIB coverage area — load a GRIB file covering all waypoints`,
             });
         }
 
@@ -522,16 +561,17 @@ module.exports = (app: SignalKApp) => {
         res.json({ status: 'calculating' });
 
         try {
-          const calcFailedFiles: Array<{ path: string; error: string }> = [];
+          const calcFailedFiles: { path: string; error: string }[] = [];
           for (const entry of selectedEntries) {
             if (entry.data === null) {
               try {
                 entry.data = await loadGrib(entry.meta.path);
-              } catch (e: any) {
-                app.debug(`Failed to load GRIB file ${entry.meta.path}: ${e.message}`);
+              } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                app.debug(`Failed to load GRIB file ${entry.meta.path}: ${msg}`);
                 calcFailedFiles.push({
                   path: entry.meta.path,
-                  error: e.message,
+                  error: msg,
                 });
               }
             }
@@ -547,7 +587,7 @@ module.exports = (app: SignalKApp) => {
           let route: RoutePoint[];
           let warning: string | undefined;
 
-          const activeCurrentProvider = req.body.useCurrentGrib === false ? null : currentProvider;
+          const activeCurrentProvider = body.useCurrentGrib === false ? null : currentProvider;
 
           if (waypoints.length === 0) {
             const result = await algorithm.calculate(
@@ -556,7 +596,7 @@ module.exports = (app: SignalKApp) => {
               polar,
               activeIndex,
               regionIndex,
-              req.body,
+              body,
               (pct, frontier) => {
                 calcStatus = { status: 'calculating', progress: pct, frontier };
                 pushSse({ type: 'progress', progress: pct, frontier });
@@ -566,15 +606,27 @@ module.exports = (app: SignalKApp) => {
             route = result.route;
             warning = result.warning;
           } else {
-            const points: Array<LatLon> = [start, ...waypoints, end];
+            const points: LatLon[] = [start, ...waypoints, end];
             const segCount = points.length - 1;
             const fullRoute: RoutePoint[] = [];
             const warnings: string[] = [];
 
+            // Factory declared outside the loop so the closure over calcStatus is not
+            // flagged by no-loop-func — the inner function is syntactically outside the loop body.
+            const makeSegmentProgressCb = (base: number, top: number): ((pct: number, frontier: [number, number][]) => void) =>
+              (pct, frontier) => {
+                const mapped = base * 100 + pct * (top - base);
+                calcStatus = { status: 'calculating', progress: mapped, frontier };
+                pushSse({ type: 'progress', progress: mapped, frontier });
+              };
+
             for (let i = 0; i < segCount; i++) {
               const segStart = points[i];
               const segEnd = points[i + 1];
-              const segDepartureTime = i === 0 ? departureTime : fullRoute[fullRoute.length - 1].time.toISOString();
+              if (segStart === undefined || segEnd === undefined) continue; // index-checked, cannot happen
+              const lastPoint = fullRoute[fullRoute.length - 1];
+              const segDepartureTime =
+                i === 0 ? departureTime : lastPoint?.time.toISOString() ?? departureTime;
               const progressBase = i / segCount;
               const progressTop = (i + 1) / segCount;
 
@@ -585,24 +637,16 @@ module.exports = (app: SignalKApp) => {
                 activeIndex,
                 regionIndex,
                 {
-                  ...req.body,
+                  ...body,
                   start: segStart,
                   end: segEnd,
                   departureTime: segDepartureTime,
                 },
-                (pct, frontier) => {
-                  const mapped = progressBase * 100 + pct * (progressTop - progressBase);
-                  calcStatus = {
-                    status: 'calculating',
-                    progress: mapped,
-                    frontier,
-                  };
-                  pushSse({ type: 'progress', progress: mapped, frontier });
-                },
+                makeSegmentProgressCb(progressBase, progressTop),
                 mergedOptions,
               );
 
-              if (segResult.warning) warnings.push(`Leg ${i + 1}: ${segResult.warning}`);
+              if (segResult.warning !== undefined && segResult.warning.length > 0) warnings.push(`Leg ${String(i + 1)}: ${segResult.warning}`);
               // Skip the first point of subsequent segments to avoid duplicate junction waypoints.
               fullRoute.push(...(i === 0 ? segResult.route : segResult.route.slice(1)));
             }
@@ -614,41 +658,48 @@ module.exports = (app: SignalKApp) => {
           pendingRoute = route;
           const loadWarning =
             calcFailedFiles.length > 0
-              ? `${calcFailedFiles.length} GRIB file(s) failed to load: ${calcFailedFiles.map((f) => f.path.split('/').pop()).join(', ')}`
+              ? `${String(calcFailedFiles.length)} GRIB file(s) failed to load: ${calcFailedFiles.map((f) => f.path.split('/').pop()).join(', ')}`
               : undefined;
-          if (warning) {
+          if (warning !== undefined) {
             calcStatus = {
               status: 'warning',
               progress: 100,
-              warning: loadWarning ? `${warning}; ${loadWarning}` : warning,
+              warning: loadWarning !== undefined ? `${warning}; ${loadWarning}` : warning,
             };
-            app.setPluginStatus(`Partial route: ${route.length} waypoints`);
+            app.setPluginStatus(`Partial route: ${String(route.length)} waypoints`);
             pushSse({ type: 'warning', warning: calcStatus.warning });
-          } else if (loadWarning) {
+          } else if (loadWarning !== undefined) {
             calcStatus = {
               status: 'warning',
               progress: 100,
               warning: loadWarning,
             };
-            app.setPluginStatus(`Route ready: ${route.length} waypoints (${loadWarning})`);
+            app.setPluginStatus(`Route ready: ${String(route.length)} waypoints (${loadWarning})`);
             pushSse({ type: 'warning', warning: loadWarning });
           } else {
             calcStatus = { status: 'done', progress: 100 };
-            app.setPluginStatus(`Route ready: ${route.length} waypoints`);
+            app.setPluginStatus(`Route ready: ${String(route.length)} waypoints`);
             pushSse({ type: 'done' });
           }
           closeSseClients();
-        } catch (e: any) {
-          calcStatus = { status: 'error', progress: 0, error: e.message };
-          app.setPluginError(`Route calculation failed: ${e.message}`);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          const reason = (() => {
+            if (!(err instanceof Error) || !('reason' in err)) return 'unknown';
+            const errWithReason = err as Error & { reason?: unknown };
+            const raw = errWithReason.reason;
+            return typeof raw === 'string' ? raw : 'unknown';
+          })();
+          calcStatus = { status: 'error', progress: 0, error: msg };
+          app.setPluginError(`Route calculation failed: ${msg}`);
           pushSse({
             type: 'error',
-            error: e.message,
-            reason: e.reason ?? 'unknown',
+            error: msg,
+            reason,
           });
           closeSseClients();
         }
-      });
+      }));
 
       router.get('/status', (_req: Request, res: Response) => {
         res.json({
@@ -666,7 +717,7 @@ module.exports = (app: SignalKApp) => {
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders();
-        if (typeof (res as any).flush === 'function') (res as any).flush();
+        (res as FlushableResponse).flush?.();
 
         sseClients.add(res);
         req.on('close', () => {
@@ -692,20 +743,22 @@ module.exports = (app: SignalKApp) => {
         res.json(info);
       });
 
-      router.get('/wind-times', async (_req: Request, res: Response) => {
+      router.get('/wind-times', asyncRoute(async (_req: Request, res: Response) => {
         if (gribFiles.length === 0) return void res.status(503).json({ error: 'No GRIB files indexed' });
         for (const entry of gribFiles) {
           if (entry.data === null) {
             try {
               entry.data = await loadGrib(entry.meta.path);
-            } catch (e: any) {
-              return void res.status(503).json({ error: `Failed to load GRIB: ${e.message}` });
+            } catch (err: unknown) {
+              return void res
+                .status(503)
+                .json({ error: `Failed to load GRIB: ${err instanceof Error ? err.message : String(err)}` });
             }
           }
         }
-        const wind = new MultiFileWindProvider(gribFiles as GribFileEntry[]);
+        const wind = new MultiFileWindProvider(gribFiles);
         res.json({ times: wind.times.map((t) => t.toISOString()) });
-      });
+      }));
 
       router.get('/current-times', (_req: Request, res: Response) => {
         if (!currentProvider) return void res.json({ times: [] });
@@ -716,24 +769,22 @@ module.exports = (app: SignalKApp) => {
       // merged axis), this returns each file's real times[] so the UI can render an accurate
       // Grib Manager timeline with true coverage and detect non-uniform granularity
       // (e.g. ICON-EU hourly→3-hourly). Joins to /grib-info meta by path.
-      router.get('/grib-times', async (_req: Request, res: Response) => {
-        const files: Array<{
-          path: string;
-          type: 'wind' | 'current';
-          times: string[];
-        }> = [];
+      router.get('/grib-times', asyncRoute(async (_req: Request, res: Response) => {
+        const files: { path: string; type: 'wind' | 'current'; times: string[] }[] = [];
         for (const entry of gribFiles) {
           if (entry.data === null) {
             try {
               entry.data = await loadGrib(entry.meta.path);
-            } catch (e: any) {
-              return void res.status(503).json({ error: `Failed to load GRIB: ${e.message}` });
+            } catch (err: unknown) {
+              return void res
+                .status(503)
+                .json({ error: `Failed to load GRIB: ${err instanceof Error ? err.message : String(err)}` });
             }
           }
           files.push({
             path: entry.meta.path,
             type: 'wind',
-            times: entry.data!.times.map((t) => t.toISOString()),
+            times: entry.data.times.map((t) => t.toISOString()),
           });
         }
         for (const entry of currentFiles) {
@@ -741,19 +792,19 @@ module.exports = (app: SignalKApp) => {
             files.push({
               path: entry.meta.path,
               type: 'current',
-              times: entry.data!.times.map((t) => t.toISOString()),
+              times: entry.data.times.map((t) => t.toISOString()),
             });
           }
         }
         res.json({ files });
-      });
+      }));
 
       // Departure-aware optimized combination proposal: which wind GRIBs to enable, ranked by
       // referenceTime → granularity → spatial → mtime with a conservative geographic stitch.
       // Optional departureTime (ISO) scopes the proposal; omit for now-forward. Advisory only —
       // the user accepts/overrides; routing still selects per-point at runtime.
       router.get('/grib-combination', (req: Request, res: Response) => {
-        const depRaw = req.query.departureTime as string | undefined;
+        const depRaw = typeof req.query['departureTime'] === 'string' ? req.query['departureTime'] : undefined;
         let departureTime: Date | undefined;
         if (depRaw !== undefined && depRaw !== '') {
           const dep = new Date(depRaw);
@@ -765,16 +816,21 @@ module.exports = (app: SignalKApp) => {
           departureTime = dep;
         }
         const files = gribFiles.map((f) => combinationFileFromMeta(f.meta));
-        res.json(proposeCombination(files, { departureTime }));
+        const combinationOpts: { departureTime?: Date; now?: Date } = {};
+        if (departureTime !== undefined) combinationOpts.departureTime = departureTime;
+        res.json(proposeCombination(files, combinationOpts));
       });
 
       router.get('/wind-grid', (_req: Request, res: Response) => {
-        const timeIdx = parseInt(_req.query.timeIdx as string);
+        const timeIdx = parseInt(queryStr(_req.query['timeIdx']));
         if (isNaN(timeIdx)) return void res.status(400).json({ error: 'timeIdx required' });
 
-        const enabledPaths = _req.query.path
-          ? ((Array.isArray(_req.query.path) ? _req.query.path : [_req.query.path]) as string[])
-          : undefined;
+        const pathRaw = _req.query['path'];
+        const enabledPaths: string[] | undefined = pathRaw === undefined
+          ? undefined
+          : Array.isArray(pathRaw)
+            ? pathRaw.filter((x): x is string => typeof x === 'string')
+            : typeof pathRaw === 'string' ? [pathRaw] : undefined;
 
         const loaded = gribFiles.filter(
           (f) => f.data !== null && (!enabledPaths || enabledPaths.includes(f.meta.path)),
@@ -782,21 +838,18 @@ module.exports = (app: SignalKApp) => {
         if (loaded.length === 0)
           return void res.status(503).json({ error: 'GRIB data not loaded — fetch /wind-times first' });
 
-        const wind = new MultiFileWindProvider(loaded as GribFileEntry[]);
+        const wind = new MultiFileWindProvider(loaded);
         if (timeIdx < 0 || timeIdx >= wind.times.length)
           return void res.status(400).json({
-            error: `timeIdx out of range [0, ${wind.times.length - 1}]`,
+            error: `timeIdx out of range [0, ${String(wind.times.length - 1)}]`,
           });
 
-        const timeMs = wind.times[timeIdx].getTime();
-        const { latMin, lonMin, latStep, lonStep, nLat, nLon } = computeGridBounds(loaded as GribFileEntry[]);
+        // Safe: timeIdx < wind.times.length was just validated above.
+        const windTime = wind.times[timeIdx] ?? new Date(0);
+        const timeMs = windTime.getTime();
+        const { latMin, lonMin, latStep, lonStep, nLat, nLon } = computeGridBounds(loaded);
 
-        const points: Array<{
-          lat: number;
-          lon: number;
-          u: number;
-          v: number;
-        }> = [];
+        const points: { lat: number; lon: number; u: number; v: number }[] = [];
         for (let i = 0; i <= nLat; i++) {
           const lat = latMin + i * latStep;
           for (let j = 0; j <= nLon; j++) {
@@ -818,12 +871,15 @@ module.exports = (app: SignalKApp) => {
       });
 
       router.get('/wave-grid', (_req: Request, res: Response) => {
-        const timeIdx = parseInt(_req.query.timeIdx as string);
+        const timeIdx = parseInt(queryStr(_req.query['timeIdx']));
         if (isNaN(timeIdx)) return void res.status(400).json({ error: 'timeIdx required' });
 
-        const enabledPaths = _req.query.path
-          ? ((Array.isArray(_req.query.path) ? _req.query.path : [_req.query.path]) as string[])
-          : undefined;
+        const pathRaw = _req.query['path'];
+        const enabledPaths: string[] | undefined = pathRaw === undefined
+          ? undefined
+          : Array.isArray(pathRaw)
+            ? pathRaw.filter((x): x is string => typeof x === 'string')
+            : typeof pathRaw === 'string' ? [pathRaw] : undefined;
 
         const loaded = gribFiles.filter(
           (f) => f.data !== null && (!enabledPaths || enabledPaths.includes(f.meta.path)),
@@ -831,18 +887,18 @@ module.exports = (app: SignalKApp) => {
         if (loaded.length === 0)
           return void res.status(503).json({ error: 'GRIB data not loaded — fetch /wind-times first' });
 
-        const wind = new MultiFileWindProvider(loaded as GribFileEntry[]);
+        const wind = new MultiFileWindProvider(loaded);
         if (timeIdx < 0 || timeIdx >= wind.times.length)
           return void res.status(400).json({
-            error: `timeIdx out of range [0, ${wind.times.length - 1}]`,
+            error: `timeIdx out of range [0, ${String(wind.times.length - 1)}]`,
           });
 
-        const timeMs = wind.times[timeIdx].getTime();
-        const { latMin, latMax, lonMin, lonMax, latStep, lonStep, nLat, nLon } = computeGridBounds(
-          loaded as GribFileEntry[],
-        );
+        // Safe: timeIdx < wind.times.length was just validated above.
+        const waveWindTime = wind.times[timeIdx] ?? new Date(0);
+        const timeMs = waveWindTime.getTime();
+        const { latMin, latMax, lonMin, lonMax, latStep, lonStep, nLat, nLon } = computeGridBounds(loaded);
 
-        const points: Array<{ lat: number; lon: number; waveHeight?: number }> = [];
+        const points: { lat: number; lon: number; waveHeight?: number }[] = [];
         for (let i = 0; i <= nLat; i++) {
           const lat = latMin + i * latStep;
           for (let j = 0; j <= nLon; j++) {
@@ -851,7 +907,7 @@ module.exports = (app: SignalKApp) => {
             if (
               !loaded.some(
                 (f) =>
-                  f.data?.swhByTime?.size &&
+                  (f.data?.swhByTime?.size ?? 0) > 0 &&
                   f.meta.latMin <= lat &&
                   lat <= f.meta.latMax &&
                   f.meta.lonMin <= lon &&
@@ -882,7 +938,7 @@ module.exports = (app: SignalKApp) => {
       });
 
       router.get('/current-grid', (_req: Request, res: Response) => {
-        const timeMsParam = parseInt(_req.query.timeMs as string);
+        const timeMsParam = parseInt(queryStr(_req.query['timeMs']));
         if (isNaN(timeMsParam)) return void res.status(400).json({ error: 'timeMs required' });
 
         if (!currentProvider || currentFiles.length === 0)
@@ -897,12 +953,7 @@ module.exports = (app: SignalKApp) => {
 
         const nLatSteps = Math.round((latMax - latMin) / latStep);
         const nLonSteps = Math.round((lonMax - lonMin) / lonStep);
-        const points: Array<{
-          lat: number;
-          lon: number;
-          u: number;
-          v: number;
-        }> = [];
+        const points: { lat: number; lon: number; u: number; v: number }[] = [];
         for (let i = 0; i <= nLatSteps; i++) {
           const lat = latMin + i * latStep;
           for (let j = 0; j <= nLonSteps; j++) {
@@ -916,39 +967,43 @@ module.exports = (app: SignalKApp) => {
         res.json({ timeMs: timeMsParam, points });
       });
 
-      router.get('/land-polygons', async (req: Request, res: Response) => {
-        const useDilated = req.query.dilated === 'true';
+      router.get('/land-polygons', asyncRoute(async (req: Request, res: Response) => {
+        const useDilated = req.query['dilated'] === 'true';
         const index = useDilated ? dilatedLandIndex : landIndex;
         if (!index) {
           return void res.status(503).json({
             error: useDilated ? 'dilated land index not ready' : 'land index not ready',
           });
         }
-        const latMin = parseFloat(req.query.latMin as string);
-        const lonMin = parseFloat(req.query.lonMin as string);
-        const latMax = parseFloat(req.query.latMax as string);
-        const lonMax = parseFloat(req.query.lonMax as string);
+        const latMin = parseFloat(queryStr(req.query['latMin']));
+        const lonMin = parseFloat(queryStr(req.query['lonMin']));
+        const latMax = parseFloat(queryStr(req.query['latMax']));
+        const lonMax = parseFloat(queryStr(req.query['lonMax']));
         if ([latMin, lonMin, latMax, lonMax].some(isNaN)) {
           return void res.status(400).json({ error: 'latMin, lonMin, latMax, lonMax required' });
         }
         const polys = polygonsInBbox(index, latMin, lonMin, latMax, lonMax);
         res.setHeader('Content-Type', 'application/json');
         res.write('{"type":"FeatureCollection","features":[');
-        for (let i = 0; i < polys.length; i++) {
-          const p = polys[i];
+        for (const [i, p] of polys.entries()) {
           const coords: [number, number][] = [];
-          for (let j = 0; j < p.exterior.length; j += 2) coords.push([p.exterior[j], p.exterior[j + 1]]);
-          if (coords.length > 0) coords.push(coords[0]);
+          for (let j = 0; j + 1 < p.exterior.length; j += 2) {
+            const lon = p.exterior[j];
+            const lat = p.exterior[j + 1];
+            if (lon !== undefined && lat !== undefined) coords.push([lon, lat]);
+          }
+          const firstCoord = coords[0];
+          if (coords.length > 0 && firstCoord !== undefined) coords.push(firstCoord);
           const feature = JSON.stringify({
             type: 'Feature',
             geometry: { type: 'Polygon', coordinates: [coords] },
             properties: null,
           });
           res.write(i === 0 ? feature : `,${feature}`);
-          await new Promise<void>((r) => setImmediate(r));
+          await new Promise<void>((r) => { setImmediate(r); });
         }
         res.end(']}');
-      });
+      }));
 
       router.get('/pending-route', (_req: Request, res: Response) => {
         if (!pendingRoute) return void res.status(404).json({ error: 'No pending route' });
@@ -977,20 +1032,22 @@ module.exports = (app: SignalKApp) => {
         });
       });
 
-      router.post('/save-route', async (req: Request, res: Response) => {
+      router.post('/save-route', asyncRoute(async (req: Request, res: Response) => {
         if (!pendingRoute) return void res.status(404).json({ error: 'No pending route to save' });
-        const name: string = req.body?.name?.trim() || `Weather Route ${new Date().toLocaleString()}`;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Express req.body typed as any at framework boundary
+        const saveBody = req.body as { name?: string } | undefined;
+        const name: string = saveBody?.name?.trim() ?? `Weather Route ${new Date().toLocaleString()}`;
         try {
           const routeId = await saveRoute(app, pendingRoute, name);
           res.json({ routeId });
-        } catch (e: any) {
-          res.status(500).json({ error: e.message });
+        } catch (err: unknown) {
+          res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
         }
-      });
+      }));
 
-      router.post('/reload-grib', async (req: Request, res: Response) => {
+      router.post('/reload-grib', asyncRoute(async (_req: Request, res: Response) => {
         const dir = settings?.gribDir;
-        if (!dir) return void res.status(400).json({ error: 'No gribDir configured' });
+        if (dir === undefined || dir.length === 0) return void res.status(400).json({ error: 'No gribDir configured' });
         try {
           app.setPluginStatus('Re-indexing GRIB directory...');
           await scanAndIndexGribDir(dir);
@@ -1002,38 +1059,39 @@ module.exports = (app: SignalKApp) => {
             failedFiles: gribFailedFiles,
           });
           setReady();
-        } catch (e: any) {
-          app.setPluginError(`GRIB reload failed: ${e.message}`);
-          res.status(500).json({ error: e.message });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          app.setPluginError(`GRIB reload failed: ${msg}`);
+          res.status(500).json({ error: msg });
         }
-      });
+      }));
 
       // Pre-flight collision check for GRIB upload (REQ-139).
-      router.get('/grib-exists', async (req: Request, res: Response) => {
+      router.get('/grib-exists', asyncRoute(async (req: Request, res: Response) => {
         const dir = settings?.gribDir;
-        if (!dir) return void res.status(400).json({ error: 'No gribDir configured' });
-        const base = sanitizeGribName(req.query.name as string);
-        if (!base) return void res.status(400).json({ error: 'Invalid or non-GRIB filename' });
+        if (dir === undefined || dir.length === 0) return void res.status(400).json({ error: 'No gribDir configured' });
+        const base = sanitizeGribName(queryStr(req.query['name']));
+        if (base === null || base.length === 0) return void res.status(400).json({ error: 'Invalid or non-GRIB filename' });
         try {
           await fs.stat(nodepath.join(dir, base));
           res.json({ exists: true });
         } catch {
           res.json({ exists: false });
         }
-      });
+      }));
 
       // Upload a GRIB into gribDir (REQ-139). Body is the raw file (octet-stream); name in query.
       // On name collision, the client passes archive=1 after prompting the user — the existing
       // file is moved to the archive folder (non-destructive) before writing the new one. An
       // uploaded file that fails GRIB validation is deleted and a hard error is returned.
-      router.post('/upload-grib', async (req: Request, res: Response) => {
+      router.post('/upload-grib', asyncRoute(async (req: Request, res: Response) => {
         const dir = settings?.gribDir;
-        if (!dir) return void res.status(400).json({ error: 'No gribDir configured' });
-        const base = sanitizeGribName(req.query.name as string);
-        if (!base) return void res.status(400).json({ error: 'Invalid or non-GRIB filename' });
+        if (dir === undefined || dir.length === 0) return void res.status(400).json({ error: 'No gribDir configured' });
+        const base = sanitizeGribName(queryStr(req.query['name']));
+        if (base === null || base.length === 0) return void res.status(400).json({ error: 'Invalid or non-GRIB filename' });
         const target = nodepath.join(dir, base);
         try {
-          if (req.query.archive === '1') {
+          if (req.query['archive'] === '1') {
             try {
               await fs.stat(target);
               await archiveFile(dir, target);
@@ -1045,10 +1103,11 @@ module.exports = (app: SignalKApp) => {
           await streamReqToFile(req, target);
           try {
             await readGribMeta(target); // validate: must be a readable wind/current GRIB
-          } catch (e: any) {
-            await fs.unlink(target).catch(() => {});
-            app.setPluginError(`Uploaded file rejected: ${e.message}`);
-            return void res.status(400).json({ error: `Uploaded file is not a supported GRIB: ${e.message}` });
+          } catch (err: unknown) {
+            await fs.unlink(target).catch(() => { /* ignored */ });
+            const msg = err instanceof Error ? err.message : String(err);
+            app.setPluginError(`Uploaded file rejected: ${msg}`);
+            return void res.status(400).json({ error: `Uploaded file is not a supported GRIB: ${msg}` });
           }
           await scanAndIndexGribDir(dir);
           await loadRegions();
@@ -1059,17 +1118,19 @@ module.exports = (app: SignalKApp) => {
             failedFiles: gribFailedFiles,
           });
           setReady();
-        } catch (e: any) {
-          app.setPluginError(`GRIB upload failed: ${e.message}`);
-          res.status(500).json({ error: e.message });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          app.setPluginError(`GRIB upload failed: ${msg}`);
+          res.status(500).json({ error: msg });
         }
-      });
+      }));
 
-      router.post('/archive-grib-file', async (req: Request, res: Response) => {
+      router.post('/archive-grib-file', asyncRoute(async (req: Request, res: Response) => {
         const dir = settings?.gribDir;
-        if (!dir) return void res.status(400).json({ error: 'No gribDir configured' });
+        if (dir === undefined || dir.length === 0) return void res.status(400).json({ error: 'No gribDir configured' });
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Express req.body typed as any at framework boundary
         const { path: filePath } = req.body as { path?: string };
-        if (!filePath) return void res.status(400).json({ error: 'Missing path' });
+        if (filePath === undefined || filePath.length === 0) return void res.status(400).json({ error: 'Missing path' });
         const resolvedDir = nodepath.resolve(dir);
         const resolvedPath = nodepath.resolve(filePath);
         if (!resolvedPath.startsWith(resolvedDir + nodepath.sep))
@@ -1079,14 +1140,14 @@ module.exports = (app: SignalKApp) => {
           await scanAndIndexGribDir(dir);
           res.json({ success: true });
           setReady();
-        } catch (e: any) {
-          res.status(500).json({ error: e.message });
+        } catch (err: unknown) {
+          res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
         }
-      });
+      }));
 
-      router.post('/archive-old-gribs', async (req: Request, res: Response) => {
+      router.post('/archive-old-gribs', asyncRoute(async (_req: Request, res: Response) => {
         const dir = settings?.gribDir;
-        if (!dir) return void res.status(400).json({ error: 'No gribDir configured' });
+        if (dir === undefined || dir.length === 0) return void res.status(400).json({ error: 'No gribDir configured' });
         const now = new Date();
         const oldPaths = [
           ...gribFiles.filter((f) => f.meta.timeEnd < now).map((f) => f.meta.path),
@@ -1100,10 +1161,10 @@ module.exports = (app: SignalKApp) => {
             archived: oldPaths.map((p) => nodepath.basename(p)),
           });
           setReady();
-        } catch (e: any) {
-          res.status(500).json({ error: e.message });
+        } catch (err: unknown) {
+          res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
         }
-      });
+      }));
 
       // REQ-98: Standard SignalK Resources API for region data.
       // The frontend fetches region geometry directly from /signalk/v2/api/resources/regions.
@@ -1113,10 +1174,13 @@ module.exports = (app: SignalKApp) => {
         res.json({ avoidRegionIds: settings?.avoidRegionIds ?? [] });
       });
 
-      router.put('/avoid-regions', async (req: Request, res: Response) => {
+      router.put('/avoid-regions', asyncRoute(async (req: Request, res: Response) => {
         // Refresh the region index so newly-created regions are recognised.
         await loadRegions();
-        const ids: string[] = Array.isArray(req.body?.avoidRegionIds) ? req.body.avoidRegionIds : [];
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Express req.body typed as any at framework boundary
+        const avoidBody = req.body as { avoidRegionIds?: unknown } | undefined;
+        const rawIds = avoidBody?.avoidRegionIds;
+        const ids: string[] = Array.isArray(rawIds) ? rawIds.filter((x): x is string => typeof x === 'string') : [];
         // Validate: only accept UUIDs that actually exist in the current regionIndex.
         const valid = regionIndex ? validRegionUuids(regionIndex) : new Set<string>();
         if (valid.size === 0) {
@@ -1134,21 +1198,22 @@ module.exports = (app: SignalKApp) => {
           }
         }
         res.json({ avoidRegionIds: filtered });
-      });
+      }));
 
       router.get('/region-index', (_req: Request, res: Response) => {
         // Serves the parsed region index (ring arrays) for frontend overlay rendering.
         // The frontend typically fetches region polygons from the standard resources API,
         // but this endpoint provides them pre-parsed for convenience and consistency.
         if (!regionIndex) return void res.status(404).json({ error: 'No regions loaded' });
-        const entries: Array<{
-          uuid: string;
-          rings: Array<Array<[number, number]>>;
-        }> = [];
+        const entries: { uuid: string; rings: [number, number][][] }[] = [];
         for (const [key, ring] of regionIndex.regions) {
           const n = ring.exterior.length / 2;
-          const coords: Array<[number, number]> = [];
-          for (let i = 0; i < n; i++) coords.push([ring.exterior[i * 2], ring.exterior[i * 2 + 1]]);
+          const coords: [number, number][] = [];
+          for (let i = 0; i < n; i++) {
+            const lon = ring.exterior[i * 2];
+            const lat = ring.exterior[i * 2 + 1];
+            if (lon !== undefined && lat !== undefined) coords.push([lon, lat]);
+          }
           entries.push({ uuid: key, rings: [coords] });
         }
         res.json(entries);

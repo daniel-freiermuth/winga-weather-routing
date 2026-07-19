@@ -33,10 +33,13 @@ const FALLBACK_SYMBOL: Record<Category, string> = { speed: 'kn', depth: 'm', dis
 
 // Safe formula evaluator for "value * N" / "value / N" / "value + N" / "value - N"
 export function evalFormula(formula: string, value: number): number {
-  const m = formula.match(/^value\s*([*/+-])\s*([\d.]+)$/);
+  const m = /^value\s*([*/+-])\s*([\d.]+)$/.exec(formula);
   if (!m) return value;
-  const n = parseFloat(m[2]);
-  switch (m[1]) {
+  const op = m[1];
+  const numStr = m[2];
+  if (op === undefined || numStr === undefined) return value; // regex guarantees these; guard satisfies noUncheckedIndexedAccess
+  const n = parseFloat(numStr);
+  switch (op) {
     case '*':
       return value * n;
     case '/':
@@ -55,7 +58,7 @@ export function evalFormula(formula: string, value: number): number {
 export function toDisplay(value: number, category: Category, prefs: UnitPrefs | null, forceMs = false): number {
   if (forceMs) return toSI[category](value);
   const p = prefs?.[category];
-  if (!p?.formula) return value;
+  if (p === undefined || p.formula === '') return value;
   return evalFormula(p.formula, toSI[category](value));
 }
 
@@ -70,7 +73,7 @@ export function fmt(
     return { num: toSI[category](value).toFixed(2), sym: 'm/s' };
   }
   const p = prefs?.[category];
-  if (!p?.formula) {
+  if (p === undefined || p.formula === '') {
     return { num: value.toFixed(1), sym: FALLBACK_SYMBOL[category] };
   }
   const raw = evalFormula(p.formula, toSI[category](value));
@@ -84,6 +87,6 @@ export function fmt(
 export function parseUnit(displayVal: number, category: Category, prefs: UnitPrefs | null, forceMs = false): number {
   if (forceMs) return displayVal * 1.94384; // m/s → kn
   const p = prefs?.[category];
-  if (!p?.inverseFormula) return displayVal;
+  if (p === undefined || p.inverseFormula === '') return displayVal;
   return fromSI[category](evalFormula(p.inverseFormula, displayVal));
 }

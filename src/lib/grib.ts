@@ -3,39 +3,47 @@
 import * as fs from 'node:fs/promises';
 import * as nodepath from 'node:path';
 import * as gdal from 'gdal-async';
-import { CurrentGribData, GribData, GribFileMeta, WindVector } from '../types';
+import type { CurrentGribData, GribData, GribFileMeta, WindVector } from '../types';
 
 export const GRIB_EXTENSIONS = new Set(['.grib2', '.grib', '.grb2', '.grb']);
 
 // Sanitize an uploaded/external filename: basename only (no path traversal) with a GRIB
 // extension. Returns null for anything that could escape the target directory or isn't a GRIB.
 export function sanitizeGribName(raw: string | undefined | null): string | null {
-  if (!raw) return null;
+  if (raw == null || raw === '') return null;
   const base = nodepath.basename(raw);
   if (!base || base === '.' || base === '..') return null;
   if (!GRIB_EXTENSIONS.has(nodepath.extname(base).toLowerCase())) return null;
   return base;
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any -- gdal-async typings incomplete (BUG-106) */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- gdal-async typings incomplete (BUG-106) */
 // Typed wrappers for gdal-async APIs that have incomplete TypeScript definitions (BUG-106).
 // The `as any` escapes are centralised here so the rest of the file is type-checked normally.
 type GdalBand = gdal.RasterBand;
 
 async function readBandPixels(band: GdalBand, nLon: number, nLat: number): Promise<Float32Array> {
   const buf = new Float32Array(nLon * nLat);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- gdal-async: band.pixels not typed in @types/gdal-async
   await (band.pixels as any).readAsync(0, 0, nLon, nLat, buf);
   return buf;
 }
 
 function vsimemCopy(data: Buffer, path: string): void {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- gdal-async: vsimem not typed in @types/gdal-async
   (gdal.vsimem as any).copy(data, path);
 }
 
 function vsimemRelease(path: string): void {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- gdal-async: vsimem not typed in @types/gdal-async
   (gdal.vsimem as any).release(path);
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+
+// gdal-async: RasterBand.getMetadata() is typed as returning `any`.
+function getBandMetadata(band: GdalBand): Record<string, string | undefined> {
+  return band.getMetadata();
+}
+/* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
 
 export async function scanGribDir(dir: string): Promise<string[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -52,10 +60,12 @@ export async function readGribMeta(filePath: string): Promise<GribFileMeta> {
     const gt = ds.geoTransform;
     if (!gt) throw new Error('GRIB2 file has no geotransform');
 
-    const lonMin = gt[0];
-    const lonStep = gt[1];
-    const latMax = gt[3];
-    const latStep = -gt[5];
+    // GDAL geoTransform: [lonMin, lonStep, 0, latMax, 0, -latStep] — always 6 elements.
+    const lonMin = gt[0] ?? 0;
+    const lonStep = gt[1] ?? 0;
+    const latMax = gt[3] ?? 0;
+    const latNegStep = gt[5] ?? 0;
+    const latStep = -latNegStep;
     const nLon = ds.rasterSize.x;
     const nLat = ds.rasterSize.y;
     const latMin = latMax - latStep * (nLat - 1);
@@ -69,23 +79,23 @@ export async function readGribMeta(filePath: string): Promise<GribFileMeta> {
 
     for (let i = 1; i <= bandCount; i++) {
       const band = ds.bands.get(i);
-      const md = band.getMetadata() as Record<string, string>;
+      const md = getBandMetadata(band)
       const element = md['GRIB_ELEMENT'] ?? '';
       const vtStr = md['GRIB_VALID_TIME'];
-      if (!vtStr) continue;
+      if (vtStr === undefined || vtStr === '') continue;
       const ms = parseInt(vtStr, 10) * 1000;
 
       if (element === GRIB_U_ELEMENT && md['GRIB_SHORT_NAME'] === GRIB_HEIGHT_LEVEL) {
         windTimeMs.add(ms);
         if (referenceTimeMs === undefined) {
           const refStr = md['GRIB_REF_TIME'];
-          if (refStr) referenceTimeMs = parseInt(refStr, 10) * 1000;
+          if (refStr !== undefined && refStr !== '') referenceTimeMs = parseInt(refStr, 10) * 1000;
         }
       } else if (element === GRIB_CURRENT_U_ELEMENT) {
         currentTimeMs.add(ms);
         if (referenceTimeMs === undefined) {
           const refStr = md['GRIB_REF_TIME'];
-          if (refStr) referenceTimeMs = parseInt(refStr, 10) * 1000;
+          if (refStr !== undefined && refStr !== '') referenceTimeMs = parseInt(refStr, 10) * 1000;
         }
       } else if (element === GRIB_SWH_ELEMENT) {
         hasWave = true;
@@ -114,10 +124,11 @@ export async function readGribMeta(filePath: string): Promise<GribFileMeta> {
       lonMax,
       latStep,
       lonStep,
-      timeStart: new Date(sortedMs[0]),
-      timeEnd: new Date(sortedMs[sortedMs.length - 1]),
+      // sortedMs.length > 0 guaranteed by the windTimeMs/currentTimeMs size check above.
+      timeStart: new Date(sortedMs[0] ?? 0),
+      timeEnd: new Date(sortedMs[sortedMs.length - 1] ?? 0),
       nTimes: sortedMs.length,
-      referenceTime: new Date(referenceTimeMs ?? sortedMs[0]),
+      referenceTime: new Date(referenceTimeMs ?? sortedMs[0] ?? 0),
       hasWave,
     };
   } finally {
@@ -160,8 +171,8 @@ export async function loadGrib(gribPath: string): Promise<GribData> {
   }
 }
 
-type SwhGrid = { latMin: number; latStep: number; lonMin: number; lonStep: number; nLat: number; nLon: number };
-type SwhResult = { swhByTime: Map<number, Float32Array>; swhGrid: SwhGrid };
+interface SwhGrid { latMin: number; latStep: number; lonMin: number; lonStep: number; nLat: number; nLon: number }
+interface SwhResult { swhByTime: Map<number, Float32Array>; swhGrid: SwhGrid }
 
 // Scans a GRIB2 file buffer and returns all messages with the given discipline number.
 // Each GRIB2 message starts with the 4-byte "GRIB" marker; discipline is at byte offset 6,
@@ -197,7 +208,7 @@ async function readSwhFromOceanMessages(gribPath: string): Promise<SwhResult | n
   const oceanChunks = extractDisciplineMessages(fileData, 10);
   if (oceanChunks.length === 0) return null;
 
-  const vsimemPath = `/vsimem/wave_${Date.now()}_${Math.trunc(Math.random() * 1e9)}.grb2`;
+  const vsimemPath = `/vsimem/wave_${String(Date.now())}_${String(Math.trunc(Math.random() * 1e9))}.grb2`;
   vsimemCopy(Buffer.concat(oceanChunks), vsimemPath);
   const wds = await gdal.openAsync(vsimemPath);
   try {
@@ -205,12 +216,17 @@ async function readSwhFromOceanMessages(gribPath: string): Promise<SwhResult | n
     if (!gt) return null;
     const nLon = wds.rasterSize.x;
     const nLat = wds.rasterSize.y;
-    const lonStep = gt[1];
-    const latStep = -gt[5];
+    // GDAL geoTransform: [lonMin_px, lonStep, 0, latMax_px, 0, -latStep] — always 6 elements.
+    const gt0 = gt[0] ?? 0;
+    const gt1 = gt[1] ?? 0;
+    const gt3 = gt[3] ?? 0;
+    const gt5 = gt[5] ?? 0;
+    const lonStep = gt1;
+    const latStep = -gt5;
     // GDAL geoTransform is pixel-corner convention; GRIB data points are pixel centers.
     // Add half a step to recover the actual data-point coordinates (= La1, Lo1 from GRIB metadata).
-    const latMax = gt[3] - latStep / 2;
-    const lonMin = gt[0] + lonStep / 2;
+    const latMax = gt3 - latStep / 2;
+    const lonMin = gt0 + lonStep / 2;
     const latMin = latMax - latStep * (nLat - 1);
     const swhGrid: SwhGrid = { latMin, latStep, lonMin, lonStep, nLat, nLon };
 
@@ -218,10 +234,10 @@ async function readSwhFromOceanMessages(gribPath: string): Promise<SwhResult | n
     const bandCount = wds.bands.count();
     for (let i = 1; i <= bandCount; i++) {
       const band = wds.bands.get(i);
-      const md = band.getMetadata() as Record<string, string>;
+      const md = getBandMetadata(band)
       if (md['GRIB_ELEMENT'] !== GRIB_SWH_ELEMENT) continue;
       const vtStr = md['GRIB_VALID_TIME'];
-      if (!vtStr) continue;
+      if (vtStr === undefined || vtStr === '') continue;
       const ms = parseInt(vtStr, 10) * 1000;
       const raw = await readBandPixels(band, nLon, nLat);
       swhByTime.set(ms, flipRows(raw, nLon, nLat));
@@ -242,11 +258,12 @@ async function readGrib(ds: gdal.Dataset): Promise<GribData> {
   const gt = ds.geoTransform;
   if (!gt) throw new Error('GRIB2 file has no geotransform');
 
-  // gt = [lonMin, lonStep, 0, latMax, 0, -latStep]
-  const lonMin = gt[0];
-  const lonStep = gt[1];
-  const latMax = gt[3];
-  const latStep = -gt[5]; // gt[5] is negative in a north-up grid
+  // gt = [lonMin, lonStep, 0, latMax, 0, -latStep] — always 6 elements.
+  const lonMin = gt[0] ?? 0;
+  const lonStep = gt[1] ?? 0;
+  const latMax = gt[3] ?? 0;
+  const latNegStep = gt[5] ?? 0;
+  const latStep = -latNegStep; // gt[5] is negative in a north-up grid
   const nLon = ds.rasterSize.x;
   const nLat = ds.rasterSize.y;
   const latMin = latMax - latStep * (nLat - 1);
@@ -255,10 +272,10 @@ async function readGrib(ds: gdal.Dataset): Promise<GribData> {
 
   for (let i = 1; i <= bandCount; i++) {
     const band = ds.bands.get(i);
-    const md = band.getMetadata();
-    const element: string = (md as Record<string, string>)['GRIB_ELEMENT'] ?? '';
-    const shortName: string = (md as Record<string, string>)['GRIB_SHORT_NAME'] ?? '';
-    const validTimeStr: string = (md as Record<string, string>)['GRIB_VALID_TIME'] ?? '';
+    const md = getBandMetadata(band)
+    const element: string = md['GRIB_ELEMENT'] ?? '';
+    const shortName: string = md['GRIB_SHORT_NAME'] ?? '';
+    const validTimeStr: string = md['GRIB_VALID_TIME'] ?? '';
 
     if (shortName !== GRIB_HEIGHT_LEVEL) continue;
     if (element !== GRIB_U_ELEMENT && element !== GRIB_V_ELEMENT) continue;
@@ -278,8 +295,11 @@ async function readGrib(ds: gdal.Dataset): Promise<GribData> {
   // Group U and V bands by valid time
   const timeMap = new Map<number, { u?: gdal.RasterBand; v?: gdal.RasterBand }>();
   for (const e of entries) {
-    if (!timeMap.has(e.validTimeMs)) timeMap.set(e.validTimeMs, {});
-    const slot = timeMap.get(e.validTimeMs)!;
+    let slot = timeMap.get(e.validTimeMs);
+    if (!slot) {
+      slot = {};
+      timeMap.set(e.validTimeMs, slot);
+    }
     if (e.element === GRIB_U_ELEMENT) slot.u = e.band;
     else slot.v = e.band;
   }
@@ -290,8 +310,8 @@ async function readGrib(ds: gdal.Dataset): Promise<GribData> {
   const times: Date[] = [];
 
   for (const ms of sortedMs) {
-    const slot = timeMap.get(ms)!;
-    if (!slot.u || !slot.v) continue; // skip incomplete U/V pairs
+    const slot = timeMap.get(ms);
+    if (!slot?.u || !slot.v) continue; // skip incomplete U/V pairs
 
     const rawU = await readBandPixels(slot.u, nLon, nLat);
     const rawV = await readBandPixels(slot.v, nLon, nLat);
@@ -308,10 +328,10 @@ async function readGrib(ds: gdal.Dataset): Promise<GribData> {
   const swhByTime = new Map<number, Float32Array>();
   for (let i = 1; i <= bandCount; i++) {
     const band = ds.bands.get(i);
-    const md = band.getMetadata();
-    if ((md as Record<string, string>)['GRIB_ELEMENT'] !== GRIB_SWH_ELEMENT) continue;
-    if ((md as Record<string, string>)['GRIB_SHORT_NAME'] !== GRIB_SWH_SHORT_NAME) continue;
-    const vtStr: string = (md as Record<string, string>)['GRIB_VALID_TIME'] ?? '';
+    const md = getBandMetadata(band)
+    if (md['GRIB_ELEMENT'] !== GRIB_SWH_ELEMENT) continue;
+    if (md['GRIB_SHORT_NAME'] !== GRIB_SWH_SHORT_NAME) continue;
+    const vtStr: string = md['GRIB_VALID_TIME'] ?? '';
     if (!vtStr) continue;
     const ms = parseInt(vtStr, 10) * 1000;
     const raw = await readBandPixels(band, nLon, nLat);
@@ -360,7 +380,10 @@ export function getWaveAt(grib: GribData, lat: number, lon: number, timeMs: numb
   const latMax = gridParams.latMin + gridParams.latStep * (gridParams.nLat - 1);
   const lonMax = gridParams.lonMin + gridParams.lonStep * (gridParams.nLon - 1);
   if (lat < gridParams.latMin || lat > latMax || lon < gridParams.lonMin || lon > lonMax) return undefined;
-  const v = bilinear(grib.swhByTime.get(bestMs)!, gridParams, lat, lon);
+  // bestMs was set from swhByTime.keys() above (size > 0), so get() is guaranteed non-null.
+  const swhArr = grib.swhByTime.get(bestMs);
+  if (swhArr === undefined) return undefined;
+  const v = bilinear(swhArr, gridParams, lat, lon);
   // GRIB wave bands use 9999 as a fill value for land/out-of-domain cells.
   // Bilinear interpolation near land boundaries produces intermediate bogus values.
   // 100 m is safely above any real significant wave height (~30 m record).
@@ -368,8 +391,12 @@ export function getWaveAt(grib: GribData, lat: number, lon: number, timeMs: numb
 }
 
 export function getWindAt(grib: GribData, lat: number, lon: number, timeIdx: number): WindVector {
-  const u = bilinear(grib.u10[timeIdx], grib, lat, lon);
-  const v = bilinear(grib.v10[timeIdx], grib, lat, lon);
+  // timeIdx from nearestTimeIndex() is always a valid index into u10/v10.
+  const u10Grid = grib.u10[timeIdx];
+  const v10Grid = grib.v10[timeIdx];
+  if (u10Grid === undefined || v10Grid === undefined) return { u: 0, v: 0 };
+  const u = bilinear(u10Grid, grib, lat, lon);
+  const v = bilinear(v10Grid, grib, lat, lon);
   return { u, v };
 }
 
@@ -390,20 +417,22 @@ function bilinear(grid: Float32Array, grib: GridParams, lat: number, lon: number
   const i01 = latI * grib.nLon + (lonI + 1);
   const i11 = (latI + 1) * grib.nLon + (lonI + 1);
 
+  // Indices are clamped to [0, nLat-2] × [0, nLon-2], so all four accesses are in bounds.
   return (
-    (1 - tLat) * (1 - tLon) * grid[i00] +
-    tLat * (1 - tLon) * grid[i10] +
-    (1 - tLat) * tLon * grid[i01] +
-    tLat * tLon * grid[i11]
+    (1 - tLat) * (1 - tLon) * (grid[i00] ?? 0) +
+    tLat * (1 - tLon) * (grid[i10] ?? 0) +
+    (1 - tLat) * tLon * (grid[i01] ?? 0) +
+    tLat * tLon * (grid[i11] ?? 0)
   );
 }
 
 export function nearestTimeIndex(grib: GribData, t: Date): number {
   const ms = t.getTime();
   let best = 0;
-  let bestDiff = Math.abs(grib.times[0].getTime() - ms);
+  // grib.times.length > 0 guaranteed by readGrib throwing when no complete time steps found.
+  let bestDiff = Math.abs((grib.times[0]?.getTime() ?? 0) - ms);
   for (let i = 1; i < grib.times.length; i++) {
-    const diff = Math.abs(grib.times[i].getTime() - ms);
+    const diff = Math.abs((grib.times[i]?.getTime() ?? 0) - ms);
     if (diff < bestDiff) {
       bestDiff = diff;
       best = i;
@@ -428,10 +457,12 @@ async function readCurrentGrib(ds: gdal.Dataset): Promise<CurrentGribData> {
   const gt = ds.geoTransform;
   if (!gt) throw new Error('GRIB2 file has no geotransform');
 
-  const lonMin = gt[0];
-  const lonStep = gt[1];
-  const latMax = gt[3];
-  const latStep = -gt[5];
+  // gt = [lonMin, lonStep, 0, latMax, 0, -latStep] — always 6 elements.
+  const lonMin = gt[0] ?? 0;
+  const lonStep = gt[1] ?? 0;
+  const latMax = gt[3] ?? 0;
+  const latNegStep = gt[5] ?? 0;
+  const latStep = -latNegStep;
   const nLon = ds.rasterSize.x;
   const nLat = ds.rasterSize.y;
   const latMin = latMax - latStep * (nLat - 1);
@@ -445,7 +476,7 @@ async function readCurrentGrib(ds: gdal.Dataset): Promise<CurrentGribData> {
 
   for (let i = 1; i <= bandCount; i++) {
     const band = ds.bands.get(i);
-    const md = band.getMetadata() as Record<string, string>;
+    const md = getBandMetadata(band)
     const element = md['GRIB_ELEMENT'] ?? '';
     const validTimeStr = md['GRIB_VALID_TIME'] ?? '';
     if (element !== GRIB_CURRENT_U_ELEMENT && element !== GRIB_CURRENT_V_ELEMENT) continue;
@@ -463,8 +494,11 @@ async function readCurrentGrib(ds: gdal.Dataset): Promise<CurrentGribData> {
 
   const timeMap = new Map<number, { u?: gdal.RasterBand; v?: gdal.RasterBand }>();
   for (const e of entries) {
-    if (!timeMap.has(e.validTimeMs)) timeMap.set(e.validTimeMs, {});
-    const slot = timeMap.get(e.validTimeMs)!;
+    let slot = timeMap.get(e.validTimeMs);
+    if (!slot) {
+      slot = {};
+      timeMap.set(e.validTimeMs, slot);
+    }
     if (e.element === GRIB_CURRENT_U_ELEMENT) slot.u = e.band;
     else slot.v = e.band;
   }
@@ -475,16 +509,17 @@ async function readCurrentGrib(ds: gdal.Dataset): Promise<CurrentGribData> {
   const times: Date[] = [];
 
   for (const ms of sortedMs) {
-    const slot = timeMap.get(ms)!;
-    if (!slot.u || !slot.v) continue;
+    const slot = timeMap.get(ms);
+    if (!slot?.u || !slot.v) continue;
 
     const rawU = await readBandPixels(slot.u, nLon, nLat);
     const rawV = await readBandPixels(slot.v, nLon, nLat);
     // Zero fill values (noDataValue = 9999 in RTOFS/BSH GRIBs) so bilinear
     // interpolation near land boundaries does not produce bogus huge values.
     for (let i = 0; i < rawU.length; i++) {
-      if (rawU[i] >= 9000) rawU[i] = 0;
-      if (rawV[i] >= 9000) rawV[i] = 0;
+      // i < rawU.length guarantees access is in bounds.
+      if ((rawU[i] ?? 0) >= 9000) rawU[i] = 0;
+      if ((rawV[i] ?? 0) >= 9000) rawV[i] = 0;
     }
 
     u.push(flipRows(rawU, nLon, nLat));
@@ -504,18 +539,23 @@ export function getCurrentAt(data: CurrentGribData, lat: number, lon: number, ti
   const latMax = data.latMin + data.latStep * (data.nLat - 1);
   const lonMax = data.lonMin + data.lonStep * (data.nLon - 1);
   if (lat < data.latMin || lat > latMax || lon < data.lonMin || lon > lonMax) return { u: 0, v: 0 };
+  // timeIdx from nearestCurrentTimeIndex() is always a valid index into u/v.
+  const uGrid = data.u[timeIdx];
+  const vGrid = data.v[timeIdx];
+  if (uGrid === undefined || vGrid === undefined) return { u: 0, v: 0 };
   return {
-    u: bilinear(data.u[timeIdx], data, lat, lon),
-    v: bilinear(data.v[timeIdx], data, lat, lon),
+    u: bilinear(uGrid, data, lat, lon),
+    v: bilinear(vGrid, data, lat, lon),
   };
 }
 
 export function nearestCurrentTimeIndex(data: CurrentGribData, t: Date): number {
   const ms = t.getTime();
   let best = 0;
-  let bestDiff = Math.abs(data.times[0].getTime() - ms);
+  // data.times.length > 0 guaranteed by readCurrentGrib throwing when no time step pairs found.
+  let bestDiff = Math.abs((data.times[0]?.getTime() ?? 0) - ms);
   for (let i = 1; i < data.times.length; i++) {
-    const diff = Math.abs(data.times[i].getTime() - ms);
+    const diff = Math.abs((data.times[i]?.getTime() ?? 0) - ms);
     if (diff < bestDiff) {
       bestDiff = diff;
       best = i;

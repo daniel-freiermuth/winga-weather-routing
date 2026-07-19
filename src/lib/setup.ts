@@ -4,8 +4,8 @@ import * as zlib from 'node:zlib';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { LandPolygon, LandEdgeIndex } from '../types';
-import { SignalKApp } from './signalk-app';
+import type { LandPolygon, LandEdgeIndex } from '../types';
+import type { SignalKApp } from './signalk-app';
 
 export const EDGE_INDEX_MAGIC = 0x4c4e4458; // 'LNDX'
 export const EDGE_INDEX_VERSION = 2; // v2: polygon data included

@@ -4,7 +4,7 @@
 // files as redundant. Departure-aware: scoped to files covering the set departure time, or
 // now-forward when no departure is set.
 
-import { GribFileMeta } from '../types';
+import type { GribFileMeta } from '../types';
 
 export interface CombinationFile {
   path: string;
@@ -88,7 +88,8 @@ export function proposeCombination(
 ): CombinationResult {
   const now = opts.now ?? new Date();
   const nowMs = now.getTime();
-  const depMs = opts.departureTime ? opts.departureTime.getTime() : undefined;
+  const dep = opts.departureTime;
+  const depMs = dep?.getTime();
   const mode: 'departure' | 'now' = depMs !== undefined ? 'departure' : 'now';
 
   const results: CombinationFileResult[] = [];
@@ -104,7 +105,7 @@ export function proposeCombination(
       candidate = f.timeEnd.getTime() >= nowMs;
       reason = candidate
         ? ''
-        : `past: forecast period ended ${Math.round((nowMs - f.timeEnd.getTime()) / 3600000)}h ago`;
+        : `past: forecast period ended ${String(Math.round((nowMs - f.timeEnd.getTime()) / 3600000))}h ago`;
     }
     if (candidate) candidates.push(f);
     else results.push({ path: f.path, recommended: false, reason });
@@ -133,7 +134,7 @@ export function proposeCombination(
   return {
     scope: {
       mode,
-      ...(depMs !== undefined ? { departureTime: opts.departureTime!.toISOString() } : {}),
+      ...(dep !== undefined ? { departureTime: dep.toISOString() } : {}),
       now: now.toISOString(),
     },
     proposed: recommended.map((f) => f.path).sort(),

@@ -1,6 +1,6 @@
 // GSHHG land polygon indices: edge-tile index for segment-crossing checks, polygon grid for point-in-polygon.
 
-import { LandPolygon, LandIndex, LandEdgeIndex } from '../types';
+import type { LandPolygon, LandIndex, LandEdgeIndex } from '../types';
 
 const EDGE_CELL_DEG = 0.1;
 
@@ -71,8 +71,7 @@ export function buildLandEdgeIndex(polygons: LandPolygon[]): LandEdgeIndex {
   const edgeAccum = new Map<number, number[]>();
   const polyGrid = new Map<number, number[]>();
 
-  for (let pi = 0; pi < polygons.length; pi++) {
-    const poly = polygons[pi];
+  for (const [pi, poly] of polygons.entries()) {
     const ring = poly.exterior;
     const nv = ring.length >> 1;
 
@@ -98,7 +97,10 @@ export function buildLandEdgeIndex(polygons: LandPolygon[]): LandEdgeIndex {
       const lon1 = ring[ei * 2];
       const lat1 = ring[ei * 2 + 1];
       const ni = ei + 1 < nv ? ei + 1 : 0;
-      insertEdgeIntoCells(edgeAccum, lat1, lon1, ring[ni * 2 + 1], ring[ni * 2], pi, ei);
+      const lon2 = ring[ni * 2];
+      const lat2 = ring[ni * 2 + 1];
+      if (lon1 === undefined || lat1 === undefined || lon2 === undefined || lat2 === undefined) continue;
+      insertEdgeIntoCells(edgeAccum, lat1, lon1, lat2, lon2, pi, ei);
     }
   }
 
@@ -149,10 +151,18 @@ export function segmentCrossesLandFast(
       for (let i = 0; i < entries.length; i += 2) {
         const pi = entries[i];
         const ei = entries[i + 1];
-        const ring = index.polygons[pi].exterior;
+        if (pi === undefined || ei === undefined) continue;
+        const poly = index.polygons[pi];
+        if (!poly) continue;
+        const ring = poly.exterior;
         const nv = ring.length >> 1;
         const ni = ei + 1 < nv ? ei + 1 : 0;
-        if (segmentsIntersect(lon1, lat1, lon2, lat2, ring[ei * 2], ring[ei * 2 + 1], ring[ni * 2], ring[ni * 2 + 1]))
+        const x3 = ring[ei * 2];
+        const y3 = ring[ei * 2 + 1];
+        const x4 = ring[ni * 2];
+        const y4 = ring[ni * 2 + 1];
+        if (x3 === undefined || y3 === undefined || x4 === undefined || y4 === undefined) continue;
+        if (segmentsIntersect(lon1, lat1, lon2, lat2, x3, y3, x4, y4))
           return true;
       }
     }
@@ -177,6 +187,7 @@ export function isPointOnLand(index: LandEdgeIndex, lat: number, lon: number): b
   if (!candidates) return false;
   for (const pi of candidates) {
     const poly = index.polygons[pi];
+    if (!poly) continue;
     if (lat < poly.bboxLatMin || lat > poly.bboxLatMax) continue;
     if (lon < poly.bboxLonMin || lon > poly.bboxLonMax) continue;
     if (pointInRing(lat, lon, poly.exterior)) return true;
@@ -187,8 +198,7 @@ export function isPointOnLand(index: LandEdgeIndex, lat: number, lon: number): b
 export function buildLandIndex(polygons: LandPolygon[]): LandIndex {
   const grid = new Map<number, number[]>();
 
-  for (let i = 0; i < polygons.length; i++) {
-    const p = polygons[i];
+  for (const [i, p] of polygons.entries()) {
     const latLo = Math.floor(p.bboxLatMin);
     const latHi = Math.floor(p.bboxLatMax);
     const lonLo = Math.floor(p.bboxLonMin);
@@ -224,7 +234,9 @@ export function segmentCrossesLand(index: LandIndex, lat1: number, lon1: number,
       for (const idx of cell) {
         if (seen.has(idx)) continue;
         seen.add(idx);
-        if (segmentHitsPoly(index.polygons[idx], lat1, lon1, lat2, lon2)) return true;
+        const poly = index.polygons[idx];
+        if (!poly) continue;
+        if (segmentHitsPoly(poly, lat1, lon1, lat2, lon2)) return true;
       }
     }
   }
@@ -276,9 +288,19 @@ export function segmentCrossesRing(
   ring: Float64Array,
 ): boolean {
   const n = ring.length >> 1;
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    if (segmentsIntersect(lon1, lat1, lon2, lat2, ring[j * 2], ring[j * 2 + 1], ring[i * 2], ring[i * 2 + 1]))
+  if (n === 0) return false;
+  // carry-forward prev vertex to avoid double indexing; initialise from last vertex
+  let xj = ring[(n - 1) * 2];
+  let yj = ring[(n - 1) * 2 + 1];
+  if (xj === undefined || yj === undefined) return false;
+  for (let i = 0; i < n; i++) {
+    const xi = ring[i * 2];
+    const yi = ring[i * 2 + 1];
+    if (xi === undefined || yi === undefined) break;
+    if (segmentsIntersect(lon1, lat1, lon2, lat2, xj, yj, xi, yi))
       return true;
+    xj = xi;
+    yj = yi;
   }
   return false;
 }
@@ -286,15 +308,21 @@ export function segmentCrossesRing(
 // Ray-cast point-in-ring test — exported for region checks.
 export function pointInRing(lat: number, lon: number, ring: Float64Array): boolean {
   const n = ring.length >> 1;
+  if (n === 0) return false;
   let inside = false;
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = ring[i * 2]; // lon
-    const yi = ring[i * 2 + 1]; // lat
-    const xj = ring[j * 2];
-    const yj = ring[j * 2 + 1];
+  // carry-forward prev vertex; initialise from last vertex
+  let xj = ring[(n - 1) * 2];
+  let yj = ring[(n - 1) * 2 + 1];
+  if (xj === undefined || yj === undefined) return false;
+  for (let i = 0; i < n; i++) {
+    const xi = ring[i * 2];
+    const yi = ring[i * 2 + 1];
+    if (xi === undefined || yi === undefined) break;
     if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
       inside = !inside;
     }
+    xj = xi;
+    yj = yi;
   }
   return inside;
 }
@@ -314,7 +342,8 @@ export function polygonsInBbox(
       for (const idx of index.grid.get(key) ?? []) {
         if (!seen.has(idx)) {
           seen.add(idx);
-          result.push(index.polygons[idx]);
+          const poly = index.polygons[idx];
+          if (poly) result.push(poly);
         }
       }
     }

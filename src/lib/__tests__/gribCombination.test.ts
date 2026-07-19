@@ -19,7 +19,7 @@ function mk(over: Partial<CombinationFile> & Pick<CombinationFile, 'path'>): Com
   };
 }
 
-test('proposeCombination: newer referenceTime fully covering an older file marks the older redundant', () => {
+void test('proposeCombination: newer referenceTime fully covering an older file marks the older redundant', () => {
   const newer = mk({
     path: '/new.grib2',
     referenceTime: new Date('2026-06-20T06:00:00Z'),
@@ -33,11 +33,12 @@ test('proposeCombination: newer referenceTime fully covering an older file marks
   });
   assert.deepStrictEqual(res.proposed, ['/new.grib2']);
   const oldResult = res.files.find((f) => f.path === '/old.grib2');
-  assert.equal(oldResult?.recommended, false);
-  assert.match(oldResult?.reason ?? '', /redundant: fully covered by \/new\.grib2/);
+  assert.ok(oldResult !== undefined, 'expected oldResult to be found');
+  assert.equal(oldResult.recommended, false);
+  assert.match(oldResult.reason, /redundant: fully covered by \/new\.grib2/);
 });
 
-test('proposeCombination: partially overlapping files are both recommended (geographic stitch)', () => {
+void test('proposeCombination: partially overlapping files are both recommended (geographic stitch)', () => {
   // A covers lon 10–20, B covers lon 15–25 — neither contains the other → both kept.
   const a = mk({ path: '/a.grib2', lonMin: 10, lonMax: 20 });
   const b = mk({ path: '/b.grib2', lonMin: 15, lonMax: 25 });
@@ -47,7 +48,7 @@ test('proposeCombination: partially overlapping files are both recommended (geog
   assert.deepStrictEqual(res.proposed.sort(), ['/a.grib2', '/b.grib2']);
 });
 
-test('proposeCombination: now-scoped excludes files whose forecast period has ended', () => {
+void test('proposeCombination: now-scoped excludes files whose forecast period has ended', () => {
   const past = mk({
     path: '/past.grib2',
     timeStart: new Date('2026-06-10T00:00:00Z'),
@@ -64,11 +65,12 @@ test('proposeCombination: now-scoped excludes files whose forecast period has en
   assert.deepStrictEqual(res.proposed, ['/future.grib2']);
   assert.equal(res.scope.mode, 'now');
   const pastResult = res.files.find((f) => f.path === '/past.grib2');
-  assert.equal(pastResult?.recommended, false);
-  assert.match(pastResult?.reason ?? '', /past: forecast period ended/);
+  assert.ok(pastResult !== undefined, 'expected pastResult to be found');
+  assert.equal(pastResult.recommended, false);
+  assert.match(pastResult.reason, /past: forecast period ended/);
 });
 
-test('proposeCombination: departure-scoped to a past time proposes past files (learning/test use)', () => {
+void test('proposeCombination: departure-scoped to a past time proposes past files (learning/test use)', () => {
   const past = mk({
     path: '/past.grib2',
     timeStart: new Date('2026-06-10T00:00:00Z'),
@@ -86,10 +88,11 @@ test('proposeCombination: departure-scoped to a past time proposes past files (l
   assert.equal(res.scope.mode, 'departure');
   assert.deepStrictEqual(res.proposed, ['/past.grib2']);
   const futureResult = res.files.find((f) => f.path === '/future.grib2');
-  assert.match(futureResult?.reason ?? '', /does not cover the set departure time/);
+  assert.ok(futureResult !== undefined, 'expected futureResult to be found');
+  assert.match(futureResult.reason, /does not cover the set departure time/);
 });
 
-test('proposeCombination: finer granularity wins on equal referenceTime', () => {
+void test('proposeCombination: finer granularity wins on equal referenceTime', () => {
   const coarse = mk({ path: '/coarse.grib2', meanStepMs: 3 * 3600000 });
   const fine = mk({ path: '/fine.grib2', meanStepMs: 1 * 3600000 });
   // Same coverage → finer fully contains coarse? No: same bbox+time means each contains the other;
@@ -99,5 +102,6 @@ test('proposeCombination: finer granularity wins on equal referenceTime', () => 
   });
   assert.deepStrictEqual(res.proposed, ['/fine.grib2']);
   const coarseResult = res.files.find((f) => f.path === '/coarse.grib2');
-  assert.match(coarseResult?.reason ?? '', /redundant: fully covered by \/fine\.grib2/);
+  assert.ok(coarseResult !== undefined, 'expected coarseResult to be found');
+  assert.match(coarseResult.reason, /redundant: fully covered by \/fine\.grib2/);
 });

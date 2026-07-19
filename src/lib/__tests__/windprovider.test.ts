@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { MultiFileWindProvider, nearestIdx } from '../windprovider';
-import { GribData, GribFileEntry } from '../../types';
+import type { GribData, GribFileEntry } from '../../types';
 
 function makeGrib(opts: {
   latMin?: number;
@@ -41,6 +41,9 @@ function makeGrib(opts: {
 }
 
 function makeEntry(grib: GribData, mtime: number, path_ = 'test.grib2'): GribFileEntry {
+  const timeStart = grib.times[0];
+  const timeEnd = grib.times[grib.times.length - 1];
+  if (timeStart === undefined || timeEnd === undefined) throw new Error('times array must be non-empty');
   return {
     meta: {
       path: path_,
@@ -52,26 +55,26 @@ function makeEntry(grib: GribData, mtime: number, path_ = 'test.grib2'): GribFil
       lonMax: grib.lonMin + grib.lonStep * (grib.nLon - 1),
       latStep: grib.latStep,
       lonStep: grib.lonStep,
-      timeStart: grib.times[0],
-      timeEnd: grib.times[grib.times.length - 1],
+      timeStart,
+      timeEnd,
       nTimes: grib.times.length,
-      referenceTime: grib.times[0],
+      referenceTime: timeStart,
     },
     data: grib,
   };
 }
 
-test('nearestIdx: returns 0 for single-element array', () => {
+void test('nearestIdx: returns 0 for single-element array', () => {
   const times = [new Date('2024-01-01T00:00:00Z')];
   assert.strictEqual(nearestIdx(times, new Date('2024-01-01T06:00:00Z')), 0);
 });
 
-test('nearestIdx: finds exact match', () => {
+void test('nearestIdx: finds exact match', () => {
   const times = [new Date('2024-01-01T00:00:00Z'), new Date('2024-01-01T01:00:00Z'), new Date('2024-01-01T02:00:00Z')];
   assert.strictEqual(nearestIdx(times, new Date('2024-01-01T01:00:00Z')), 1);
 });
 
-test('nearestIdx: rounds to nearest', () => {
+void test('nearestIdx: rounds to nearest', () => {
   const times = [new Date('2024-01-01T00:00:00Z'), new Date('2024-01-01T02:00:00Z')];
   // 30 minutes past midnight is closer to index 0
   assert.strictEqual(nearestIdx(times, new Date('2024-01-01T00:30:00Z')), 0);
@@ -79,7 +82,7 @@ test('nearestIdx: rounds to nearest', () => {
   assert.strictEqual(nearestIdx(times, new Date('2024-01-01T01:30:00Z')), 1);
 });
 
-test('MultiFileWindProvider: merged times axis contains entries from all files', () => {
+void test('MultiFileWindProvider: merged times axis contains entries from all files', () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');
   const t2 = new Date('2024-01-01T02:00:00Z');
@@ -88,12 +91,16 @@ test('MultiFileWindProvider: merged times axis contains entries from all files',
   const provider = new MultiFileWindProvider([makeEntry(g1, 1000), makeEntry(g2, 2000)]);
   // t1 appears in both files — should be deduplicated
   assert.strictEqual(provider.times.length, 3);
-  assert.strictEqual(provider.times[0].getTime(), t0.getTime());
-  assert.strictEqual(provider.times[1].getTime(), t1.getTime());
-  assert.strictEqual(provider.times[2].getTime(), t2.getTime());
+  const pt0 = provider.times[0];
+  const pt1 = provider.times[1];
+  const pt2 = provider.times[2];
+  assert.ok(pt0 instanceof Date && pt1 instanceof Date && pt2 instanceof Date, 'all times must be Dates');
+  assert.strictEqual(pt0.getTime(), t0.getTime());
+  assert.strictEqual(pt1.getTime(), t1.getTime());
+  assert.strictEqual(pt2.getTime(), t2.getTime());
 });
 
-test('MultiFileWindProvider: getWind returns freshest file when files overlap spatially', () => {
+void test('MultiFileWindProvider: getWind returns freshest file when files overlap spatially', () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');
   // Older file: v=5 (southerly), newer file: v=10 (stronger southerly)
@@ -104,7 +111,7 @@ test('MultiFileWindProvider: getWind returns freshest file when files overlap sp
   assert.strictEqual(wind.v, 10, 'should use the newer file (mtime 2000)');
 });
 
-test('MultiFileWindProvider: getWind prefers newer referenceTime over newer file mtime', () => {
+void test('MultiFileWindProvider: getWind prefers newer referenceTime over newer file mtime', () => {
   const t0 = new Date('2024-01-01T12:00:00Z');
   const t1 = new Date('2024-01-01T13:00:00Z');
   // fileA: older model run (referenceTime 00z) but a freshly re-downloaded file (high mtime)
@@ -121,7 +128,7 @@ test('MultiFileWindProvider: getWind prefers newer referenceTime over newer file
   assert.strictEqual(provider.getFilePathForPoint(41, 11, 0), '/data/newRun.grib2');
 });
 
-test('MultiFileWindProvider: getWind prefers finer temporal granularity on equal referenceTime', () => {
+void test('MultiFileWindProvider: getWind prefers finer temporal granularity on equal referenceTime', () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   // Coarse file: 3-hourly; fine file: hourly. Same referenceTime (t0), same mtime.
   const coarse = makeGrib({
@@ -140,7 +147,7 @@ test('MultiFileWindProvider: getWind prefers finer temporal granularity on equal
   assert.strictEqual(provider.getWind(41, 11, idx0).v, 10, 'finer timestep must win on equal referenceTime');
 });
 
-test('MultiFileWindProvider: getWind returns {u:0,v:0} when point outside all bboxes (BUG-93)', () => {
+void test('MultiFileWindProvider: getWind returns {u:0,v:0} when point outside all bboxes (BUG-93)', () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');
   const g = makeGrib({ latMin: 40, lonMin: 10, v: 7, times: [t0, t1] });
@@ -151,7 +158,7 @@ test('MultiFileWindProvider: getWind returns {u:0,v:0} when point outside all bb
   assert.strictEqual(wind.v, 0, 'v should be 0 (no wind data outside coverage)');
 });
 
-test('MultiFileWindProvider: getWind prefers temporally-correct file over newer file outside the requested time', () => {
+void test('MultiFileWindProvider: getWind prefers temporally-correct file over newer file outside the requested time', () => {
   const may24 = new Date('2026-05-24T00:00:00Z');
   const may25 = new Date('2026-05-25T00:00:00Z');
   const jun6 = new Date('2026-06-06T00:00:00Z');
@@ -169,7 +176,7 @@ test('MultiFileWindProvider: getWind prefers temporally-correct file over newer 
   assert.strictEqual(wind.v, 5, 'should use the May 24 file which covers the requested time');
 });
 
-test('MultiFileWindProvider: getWind returns {u:0,v:0} when point covered spatially but not temporally (BUG-93)', () => {
+void test('MultiFileWindProvider: getWind returns {u:0,v:0} when point covered spatially but not temporally (BUG-93)', () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');
   const t2 = new Date('2024-01-01T02:00:00Z');
@@ -186,7 +193,7 @@ test('MultiFileWindProvider: getWind returns {u:0,v:0} when point covered spatia
   assert.strictEqual(wind.v, 0, 'v should be 0 (no spatiotemporal coverage)');
 });
 
-test('MultiFileWindProvider: coversPointAtTime rejects point covered spatially by wrong-time file (BUG-75)', () => {
+void test('MultiFileWindProvider: coversPointAtTime rejects point covered spatially by wrong-time file (BUG-75)', () => {
   const may24 = new Date('2026-05-24T00:00:00Z');
   const may25 = new Date('2026-05-25T00:00:00Z');
   const jun6 = new Date('2026-06-06T00:00:00Z');
@@ -219,13 +226,13 @@ test('MultiFileWindProvider: coversPointAtTime rejects point covered spatially b
   );
 });
 
-test('MultiFileWindProvider: getWave returns undefined when no file has swh data', () => {
+void test('MultiFileWindProvider: getWave returns undefined when no file has swh data', () => {
   const g = makeGrib({});
   const provider = new MultiFileWindProvider([makeEntry(g, 1000)]);
   assert.strictEqual(provider.getWave(41, 11, new Date('2024-01-01T00:00:00Z')), undefined);
 });
 
-test('MultiFileWindProvider: getWave returns undefined when no file covers point temporally (BUG-101)', () => {
+void test('MultiFileWindProvider: getWave returns undefined when no file covers point temporally (BUG-101)', () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');
   const t2 = new Date('2024-01-01T02:00:00Z');
@@ -245,18 +252,21 @@ test('MultiFileWindProvider: getWave returns undefined when no file covers point
   );
 });
 
-test('MultiFileWindProvider: single file times axis matches grib.times', () => {
+void test('MultiFileWindProvider: single file times axis matches grib.times', () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');
   const t2 = new Date('2024-01-01T02:00:00Z');
   const g = makeGrib({ times: [t0, t1, t2] });
   const provider = new MultiFileWindProvider([makeEntry(g, 1000)]);
   assert.strictEqual(provider.times.length, 3);
-  assert.strictEqual(provider.times[0].getTime(), t0.getTime());
-  assert.strictEqual(provider.times[2].getTime(), t2.getTime());
+  const st0 = provider.times[0];
+  const st2 = provider.times[2];
+  assert.ok(st0 instanceof Date && st2 instanceof Date, 'times must be Dates');
+  assert.strictEqual(st0.getTime(), t0.getTime());
+  assert.strictEqual(st2.getTime(), t2.getTime());
 });
 
-test('MultiFileWindProvider: getFilePathForPoint returns path of the file getWind selects', () => {
+void test('MultiFileWindProvider: getFilePathForPoint returns path of the file getWind selects', () => {
   // Two spatially overlapping files; file B is fresher (higher mtime) and covers all times.
   // getWind prefers the fresher file → getFilePathForPoint must return file B's path.
   const t0 = new Date('2024-01-01T00:00:00Z');
@@ -270,7 +280,7 @@ test('MultiFileWindProvider: getFilePathForPoint returns path of the file getWin
   assert.strictEqual(provider.getFilePathForPoint(41, 11, 0), '/data/fileB.grib2');
 });
 
-test('MultiFileWindProvider: getFilePathForPoint returns empty string when no file covers the time (BUG-93)', () => {
+void test('MultiFileWindProvider: getFilePathForPoint returns empty string when no file covers the time (BUG-93)', () => {
   // File A covers the point spatially and temporally; file B only covers spatially (time mismatch).
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T01:00:00Z');
@@ -298,7 +308,7 @@ test('MultiFileWindProvider: getFilePathForPoint returns empty string when no fi
 import { existsSync } from 'node:fs';
 import { scanGribDir, loadGrib, getWaveAt } from '../grib';
 
-test('scanGribDir: finds grib2 files and ignores others', async () => {
+void test('scanGribDir: finds grib2 files and ignores others', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'grib-test-'));
   try {
     await fs.writeFile(path.join(dir, 'forecast.grib2'), '');
@@ -320,7 +330,7 @@ test('scanGribDir: finds grib2 files and ignores others', async () => {
   }
 });
 
-test('scanGribDir: returns empty array for empty directory', async () => {
+void test('scanGribDir: returns empty array for empty directory', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'grib-test-'));
   try {
     const files = await scanGribDir(dir);
@@ -330,10 +340,10 @@ test('scanGribDir: returns empty array for empty directory', async () => {
   }
 });
 
-test('scanGribDir: throws for non-existent directory', async () => {
-  await assert.rejects(() => scanGribDir('/nonexistent/path/that/does/not/exist'), /ENOENT/);
+void test('scanGribDir: throws for non-existent directory', async () => {
+  await assert.rejects(async () => scanGribDir('/nonexistent/path/that/does/not/exist'), /ENOENT/);
 
-  test('getWaveAt: returns undefined for lat/lon outside wave grid bounds (BUG-104)', () => {
+  void test('getWaveAt: returns undefined for lat/lon outside wave grid bounds (BUG-104)', () => {
     const t0 = new Date('2024-01-01T00:00:00Z');
     const grib: GribData = {
       latMin: 40,
@@ -365,7 +375,7 @@ test('scanGribDir: throws for non-existent directory', async () => {
 // Denmark file has atmospheric wind at 0.0625° and ocean wave at 0.1°×0.05° on separate grids.
 // XyGrib confirms 0.64 m at N56°55.6 E11°18.7 (Kattegat) for 2026-06-06T01:00Z.
 const DENMARK_GRIB = path.join(process.cwd(), 'test-data', 'Denmark_ICON_EU_EWAM_20260606-00.grb2');
-test(
+void test(
   'getWaveAt: mixed-grid GRIB reads wave height at correct coordinates (BUG-65)',
   { skip: existsSync(DENMARK_GRIB) ? false : 'Denmark test GRIB not present' },
   async () => {
@@ -374,7 +384,7 @@ test(
     assert.ok(waveHeight !== undefined, 'wave height should be defined at Kattegat');
     assert.ok(
       waveHeight >= 0.55 && waveHeight <= 0.75,
-      `wave height at Kattegat should be ~0.64 m (XyGrib reference), got ${waveHeight?.toFixed(3)}`,
+      `wave height at Kattegat should be ~0.64 m (XyGrib reference), got ${waveHeight.toFixed(3)}`,
     );
   },
 );

@@ -3,19 +3,22 @@
 // newest referenceTime (model run), then finest temporal granularity, then finest spatial
 // step, with file mtime only as a last-resort tiebreaker. Coverage + selection is one pass.
 
-import { GribFileEntry, WindProvider, WindVector } from '../types';
+import type { GribFileEntry, WindProvider, WindVector } from '../types';
 import { getWindAt, getWaveAt, nearestTimeIndex } from './grib';
 
 export function nearestIdx(times: Date[], t: Date): number {
   const ms = t.getTime();
   let best = 0,
     bestDiff = Infinity;
-  for (let i = 0; i < times.length; i++) {
-    const diff = Math.abs(times[i].getTime() - ms);
+  // for...of avoids noUncheckedIndexedAccess on times[i]
+  let i = 0;
+  for (const entry of times) {
+    const diff = Math.abs(entry.getTime() - ms);
     if (diff < bestDiff) {
       bestDiff = diff;
       best = i;
     }
+    i++;
   }
   return best;
 }
@@ -26,7 +29,11 @@ export function nearestIdx(times: Date[], t: Date): number {
 function meanStepMs(times: Date[] | undefined | null): number {
   if (!times || times.length < 2) return Number.MAX_SAFE_INTEGER;
   let sum = 0;
-  for (let i = 1; i < times.length; i++) sum += times[i].getTime() - times[i - 1].getTime();
+  let prev: Date | undefined;
+  for (const t of times) {
+    if (prev !== undefined) sum += t.getTime() - prev.getTime();
+    prev = t;
+  }
   return sum / (times.length - 1);
 }
 
@@ -59,7 +66,9 @@ export class MultiFileWindProvider implements WindProvider {
 
     const msSet = new Set<number>();
     for (const f of this.sortedFiles) {
-      for (const t of f.data!.times) msSet.add(t.getTime());
+      if (f.data) {
+        for (const t of f.data.times) msSet.add(t.getTime());
+      }
     }
     this.times = Array.from(msSet)
       .sort((a, b) => a - b)
@@ -68,7 +77,9 @@ export class MultiFileWindProvider implements WindProvider {
 
   // Single pass: returns the highest-priority file covering the point+time, or undefined.
   private selectFile(lat: number, lon: number, timeIdx: number): GribFileEntry | undefined {
-    const tMs = this.times[timeIdx].getTime();
+    const t = this.times[timeIdx];
+    if (!t) return undefined;
+    const tMs = t.getTime();
     return this.sortedFiles.find(
       (e) => coversPoint(e, lat, lon) && e.meta.timeStart.getTime() <= tMs && e.meta.timeEnd.getTime() >= tMs,
     );
@@ -77,8 +88,10 @@ export class MultiFileWindProvider implements WindProvider {
   getWind(lat: number, lon: number, timeIdx: number): WindVector {
     // One scan only (was: coversPointAtTime .some() + selectFile .find() — BUG-129).
     const f = this.selectFile(lat, lon, timeIdx);
-    if (!f) return { u: 0, v: 0 };
-    return getWindAt(f.data!, lat, lon, nearestTimeIndex(f.data!, this.times[timeIdx]));
+    if (!f?.data) return { u: 0, v: 0 };
+    const t = this.times[timeIdx];
+    if (!t) return { u: 0, v: 0 };
+    return getWindAt(f.data, lat, lon, nearestTimeIndex(f.data, t));
   }
 
   getFilePathForPoint(lat: number, lon: number, timeIdx: number): string {
@@ -87,14 +100,14 @@ export class MultiFileWindProvider implements WindProvider {
   }
 
   getWave(lat: number, lon: number, t: Date): number | undefined {
-    const waveFiles = this.sortedFiles.filter((e) => e.data?.swhByTime?.size);
+    const waveFiles = this.sortedFiles.filter((e) => (e.data?.swhByTime?.size ?? 0) > 0);
     if (waveFiles.length === 0) return undefined;
     const tMs = t.getTime();
     const f = waveFiles.find(
       (e) => coversPoint(e, lat, lon) && e.meta.timeStart.getTime() <= tMs && e.meta.timeEnd.getTime() >= tMs,
     );
-    if (!f) return undefined;
-    return getWaveAt(f.data!, lat, lon, tMs);
+    if (!f?.data) return undefined;
+    return getWaveAt(f.data, lat, lon, tMs);
   }
 
   coversPoint(lat: number, lon: number): boolean {
@@ -102,7 +115,9 @@ export class MultiFileWindProvider implements WindProvider {
   }
 
   coversPointAtTime(lat: number, lon: number, timeIdx: number): boolean {
-    const tMs = this.times[timeIdx].getTime();
+    const t = this.times[timeIdx];
+    if (!t) return false;
+    const tMs = t.getTime();
     return this.sortedFiles.some(
       (e) => coversPoint(e, lat, lon) && e.meta.timeStart.getTime() <= tMs && e.meta.timeEnd.getTime() >= tMs,
     );

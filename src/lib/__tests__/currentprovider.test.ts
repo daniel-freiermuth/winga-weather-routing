@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { getCurrentAt, nearestCurrentTimeIndex } from '../grib';
 import { SingleFileCurrentProvider } from '../currentprovider';
-import { CurrentGribData, CurrentFileEntry } from '../../types';
+import type { CurrentGribData, CurrentFileEntry } from '../../types';
 
 function makeCurrentGrib(
   opts: {
@@ -43,6 +43,9 @@ function makeCurrentGrib(
 }
 
 function makeEntry(data: CurrentGribData): CurrentFileEntry {
+  const timeStart = data.times[0];
+  const timeEnd = data.times[data.times.length - 1];
+  if (timeStart === undefined || timeEnd === undefined) throw new Error('times array must be non-empty');
   return {
     meta: {
       path: 'current.grib2',
@@ -54,10 +57,10 @@ function makeEntry(data: CurrentGribData): CurrentFileEntry {
       lonMax: data.lonMin + data.lonStep * (data.nLon - 1),
       latStep: data.latStep,
       lonStep: data.lonStep,
-      timeStart: data.times[0],
-      timeEnd: data.times[data.times.length - 1],
+      timeStart,
+      timeEnd,
       nTimes: data.times.length,
-      referenceTime: data.times[0],
+      referenceTime: timeStart,
     },
     data,
   };
@@ -65,43 +68,43 @@ function makeEntry(data: CurrentGribData): CurrentFileEntry {
 
 // --- getCurrentAt ---
 
-test('getCurrentAt: returns interpolated value at centre of uniform 2×2 grid', () => {
+void test('getCurrentAt: returns interpolated value at centre of uniform 2×2 grid', () => {
   const data = makeCurrentGrib({ u: 2.0, v: 1.0 });
   // Centre of a 2×2 grid starting at (40,10) with step 1: query at (40.5, 10.5)
   const result = getCurrentAt(data, 40.5, 10.5, 0);
-  assert.ok(Math.abs(result.u - 2.0) < 0.001, `u should be ≈2.0, got ${result.u}`);
-  assert.ok(Math.abs(result.v - 1.0) < 0.001, `v should be ≈1.0, got ${result.v}`);
+  assert.ok(Math.abs(result.u - 2.0) < 0.001, `u should be ≈2.0, got ${String(result.u)}`);
+  assert.ok(Math.abs(result.v - 1.0) < 0.001, `v should be ≈1.0, got ${String(result.v)}`);
 });
 
-test('getCurrentAt: returns {u:0,v:0} for point south of grid (out-of-domain, no clamping)', () => {
+void test('getCurrentAt: returns {u:0,v:0} for point south of grid (out-of-domain, no clamping)', () => {
   const data = makeCurrentGrib({ u: 5.0, v: 3.0 });
   const result = getCurrentAt(data, 39.0, 10.5, 0); // lat=39 < latMin=40
   assert.strictEqual(result.u, 0);
   assert.strictEqual(result.v, 0);
 });
 
-test('getCurrentAt: returns {u:0,v:0} for point north of grid', () => {
+void test('getCurrentAt: returns {u:0,v:0} for point north of grid', () => {
   const data = makeCurrentGrib({ u: 5.0, v: 3.0 });
   const result = getCurrentAt(data, 42.0, 10.5, 0); // lat=42 > latMax=41
   assert.strictEqual(result.u, 0);
   assert.strictEqual(result.v, 0);
 });
 
-test('getCurrentAt: returns {u:0,v:0} for point west of grid', () => {
+void test('getCurrentAt: returns {u:0,v:0} for point west of grid', () => {
   const data = makeCurrentGrib({ u: 5.0, v: 3.0 });
   const result = getCurrentAt(data, 40.5, 9.0, 0); // lon=9 < lonMin=10
   assert.strictEqual(result.u, 0);
   assert.strictEqual(result.v, 0);
 });
 
-test('getCurrentAt: returns {u:0,v:0} for point east of grid', () => {
+void test('getCurrentAt: returns {u:0,v:0} for point east of grid', () => {
   const data = makeCurrentGrib({ u: 5.0, v: 3.0 });
   const result = getCurrentAt(data, 40.5, 12.0, 0); // lon=12 > lonMax=11
   assert.strictEqual(result.u, 0);
   assert.strictEqual(result.v, 0);
 });
 
-test('getCurrentAt: returns non-zero for point exactly on grid boundary', () => {
+void test('getCurrentAt: returns non-zero for point exactly on grid boundary', () => {
   const data = makeCurrentGrib({ u: 3.0, v: 1.5 });
   const result = getCurrentAt(data, 40.0, 10.0, 0); // at latMin, lonMin exactly
   assert.ok(result.u !== 0 || result.v !== 0, 'boundary point should have non-zero current');
@@ -109,13 +112,13 @@ test('getCurrentAt: returns non-zero for point exactly on grid boundary', () => 
 
 // --- nearestCurrentTimeIndex ---
 
-test('nearestCurrentTimeIndex: returns 0 for single-element time axis', () => {
+void test('nearestCurrentTimeIndex: returns 0 for single-element time axis', () => {
   const data = makeCurrentGrib({ times: [new Date('2024-01-01T00:00:00Z')] });
   const idx = nearestCurrentTimeIndex(data, new Date('2024-01-01T06:00:00Z'));
   assert.strictEqual(idx, 0);
 });
 
-test('nearestCurrentTimeIndex: returns nearest index for 3-hourly axis', () => {
+void test('nearestCurrentTimeIndex: returns nearest index for 3-hourly axis', () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T03:00:00Z');
   const t2 = new Date('2024-01-01T06:00:00Z');
@@ -128,7 +131,7 @@ test('nearestCurrentTimeIndex: returns nearest index for 3-hourly axis', () => {
 
 // --- SingleFileCurrentProvider ---
 
-test('SingleFileCurrentProvider: getCurrent returns {u:0,v:0} outside bbox', () => {
+void test('SingleFileCurrentProvider: getCurrent returns {u:0,v:0} outside bbox', () => {
   const data = makeCurrentGrib({ u: 2.0, v: 1.0 });
   const provider = new SingleFileCurrentProvider(makeEntry(data));
   const result = provider.getCurrent(30.0, 10.5, new Date('2024-01-01T00:00:00Z'));
@@ -136,32 +139,36 @@ test('SingleFileCurrentProvider: getCurrent returns {u:0,v:0} outside bbox', () 
   assert.strictEqual(result.v, 0);
 });
 
-test('SingleFileCurrentProvider: getCurrent returns non-zero inside bbox', () => {
+void test('SingleFileCurrentProvider: getCurrent returns non-zero inside bbox', () => {
   const data = makeCurrentGrib({ u: 2.0, v: 1.0 });
   const provider = new SingleFileCurrentProvider(makeEntry(data));
   const result = provider.getCurrent(40.5, 10.5, new Date('2024-01-01T00:00:00Z'));
   assert.ok(result.u !== 0 || result.v !== 0, 'inside-domain query should return non-zero current');
 });
 
-test('SingleFileCurrentProvider: coversPoint returns true inside bbox', () => {
+void test('SingleFileCurrentProvider: coversPoint returns true inside bbox', () => {
   const data = makeCurrentGrib();
   const provider = new SingleFileCurrentProvider(makeEntry(data));
   assert.ok(provider.coversPoint(40.5, 10.5));
 });
 
-test('SingleFileCurrentProvider: coversPoint returns false outside bbox', () => {
+void test('SingleFileCurrentProvider: coversPoint returns false outside bbox', () => {
   const data = makeCurrentGrib();
   const provider = new SingleFileCurrentProvider(makeEntry(data));
   assert.ok(!provider.coversPoint(30.0, 10.5));
   assert.ok(!provider.coversPoint(40.5, 5.0));
 });
 
-test('SingleFileCurrentProvider: times matches the underlying data times', () => {
+void test('SingleFileCurrentProvider: times matches the underlying data times', () => {
   const t0 = new Date('2024-01-01T00:00:00Z');
   const t1 = new Date('2024-01-01T03:00:00Z');
   const data = makeCurrentGrib({ times: [t0, t1] });
   const provider = new SingleFileCurrentProvider(makeEntry(data));
   assert.strictEqual(provider.times.length, 2);
-  assert.strictEqual(provider.times[0].getTime(), t0.getTime());
-  assert.strictEqual(provider.times[1].getTime(), t1.getTime());
+  const pt0 = provider.times[0];
+  const pt1 = provider.times[1];
+  assert.ok(pt0 instanceof Date, 'times[0] must be a Date');
+  assert.ok(pt1 instanceof Date, 'times[1] must be a Date');
+  assert.strictEqual(pt0.getTime(), t0.getTime());
+  assert.strictEqual(pt1.getTime(), t1.getTime());
 });

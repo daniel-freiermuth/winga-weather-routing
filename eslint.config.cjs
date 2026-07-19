@@ -3,26 +3,49 @@ const tseslint = require("typescript-eslint");
 
 module.exports = tseslint.config(
   eslint.configs.recommended,
-  ...tseslint.configs.recommended,
+  ...tseslint.configs.strictTypeChecked,
+  ...tseslint.configs.stylisticTypeChecked,
+  {
+    languageOptions: {
+      parserOptions: {
+        project: true,
+        tsconfigRootDir: __dirname,
+      },
+    },
+  },
   {
     rules: {
-      "@typescript-eslint/no-explicit-any": "warn",
+      // --- already-passing rules (mechanical fixes from previous pass) ---
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
-    },
-  },
-  {
-    // index.ts has many `any` at framework boundaries: Express req/res flush,
-    // SignalK app object, catch (e: any), schema migration. These are accepted.
-    files: ["src/index.ts"],
-    rules: {
-      "@typescript-eslint/no-explicit-any": "off",
-    },
-  },
-  {
-    // Test files use `any` for error type narrowing and mock objects.
-    files: ["src/lib/__tests__/**/*.ts"],
-    rules: {
-      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/consistent-type-imports": ["error", { prefer: "type-imports" }],
+
+      // --- rules with hits: require a fix pass ---
+      "@typescript-eslint/no-unsafe-type-assertion": "error",
+      "@typescript-eslint/strict-boolean-expressions": "error",
+      "@typescript-eslint/promise-function-async": "error",
+      "@typescript-eslint/strict-void-return": "error",
+      "@typescript-eslint/no-loop-func": "error",
+
+      // --- zero-hit rules: future protection ---
+      "@typescript-eslint/consistent-type-exports": ["error", { fixMixedExportsWithInlineTypeSpecifier: true }],
+      "@typescript-eslint/default-param-last": "error",
+      "@typescript-eslint/explicit-module-boundary-types": "error",
+      "@typescript-eslint/no-dupe-class-members": "error",
+      "@typescript-eslint/no-import-type-side-effects": "error",
+      "@typescript-eslint/no-invalid-this": "error",
+      "@typescript-eslint/no-loss-of-precision": "error",
+      "@typescript-eslint/no-redeclare": "error",
+      "@typescript-eslint/no-shadow": "error",
+      "@typescript-eslint/no-unnecessary-parameter-property-assignment": "error",
+      "@typescript-eslint/no-unnecessary-qualifier": "error",
+      "@typescript-eslint/no-unused-private-class-members": "error",
+      "@typescript-eslint/no-useless-empty-export": "error",
+      "@typescript-eslint/no-var-requires": "error",
+      "@typescript-eslint/prefer-enum-initializers": "error",
+      "@typescript-eslint/prefer-readonly": "error",
+      "@typescript-eslint/prefer-ts-expect-error": "error",
+      "@typescript-eslint/require-array-sort-compare": ["error", { ignoreStringArrays: true }],
+      "@typescript-eslint/switch-exhaustiveness-check": "error",
     },
   },
   {

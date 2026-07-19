@@ -1,7 +1,7 @@
 // Polar diagram loading (ORC/OpenCPN semicolon-delimited CSV) and bilinear boat-speed interpolation.
 
 import * as fs from 'node:fs';
-import { PolarData } from '../types';
+import type { PolarData } from '../types';
 
 export function parsePolar(filePath: string): PolarData {
   const lines = fs
@@ -11,7 +11,9 @@ export function parsePolar(filePath: string): PolarData {
     .filter((l) => l.length > 0 && !l.startsWith('#'));
 
   // Header: twa/tws;6;8;10;12;14;16;20
-  const header = lines[0].split(';');
+  const headerLine = lines[0];
+  if (headerLine === undefined) return { tws: [], twa: [], speeds: [] };
+  const header = headerLine.split(';');
   const tws = header
     .slice(1)
     .map(Number)
@@ -20,10 +22,11 @@ export function parsePolar(filePath: string): PolarData {
   const twa: number[] = [];
   const speeds: number[][] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const parts = lines[i].split(';').map(Number);
-    if (isNaN(parts[0])) continue;
-    twa.push(parts[0]);
+  for (const line of lines.slice(1)) {
+    const parts = line.split(';').map(Number);
+    const angle = parts[0];
+    if (angle === undefined || isNaN(angle)) continue;
+    twa.push(angle);
     speeds.push(parts.slice(1, 1 + tws.length));
   }
 
@@ -36,7 +39,8 @@ export function interpolateBoatSpeed(polar: PolarData, twaDeg: number, twsKnots:
 
   // Below the polar's minimum close-hauled angle the boat cannot make progress against the wind.
   // Bilinear extrapolation below polar.twa[0] produces non-zero speeds for impossible headings.
-  if (twa < polar.twa[0]) return 0;
+  const firstTwa = polar.twa[0];
+  if (firstTwa === undefined || twa < firstTwa) return 0;
 
   const twsIdx = bracketIndex(polar.tws, twsKnots);
   const twaIdx = bracketIndex(polar.twa, twa);
@@ -45,6 +49,7 @@ export function interpolateBoatSpeed(polar: PolarData, twaDeg: number, twsKnots:
 
   const twa0 = polar.twa[twaIdx];
   const twa1 = polar.twa[Math.min(twaIdx + 1, polar.twa.length - 1)];
+  if (twa0 === undefined || twa1 === undefined) return 0;
   const tTwa = twa1 === twa0 ? 0 : Math.max(0, Math.min(1, (twa - twa0) / (twa1 - twa0)));
   const twaNext = Math.min(twaIdx + 1, polar.twa.length - 1);
 
@@ -53,29 +58,37 @@ export function interpolateBoatSpeed(polar: PolarData, twaDeg: number, twsKnots:
   // not because boats can't sail. At 4-5 kn TWS a typical boat makes 1-3 kn.
   // Linear ramp from (0, 0) to (polar.tws[0], polar_min_speed) preserves
   // frontier points at moderate TWS while correctly showing less wind = less speed.
-  if (twsKnots < polar.tws[0]) {
-    const minTwsSpeed = (1 - tTwa) * polar.speeds[twaIdx][0] + tTwa * polar.speeds[twaNext][0];
-    return minTwsSpeed * (twsKnots / polar.tws[0]);
+  const firstTws = polar.tws[0];
+  if (firstTws === undefined) return 0;
+  if (twsKnots < firstTws) {
+    const minTwsSpeed =
+      (1 - tTwa) * (polar.speeds[twaIdx]?.[0] ?? 0) + tTwa * (polar.speeds[twaNext]?.[0] ?? 0);
+    return minTwsSpeed * (twsKnots / firstTws);
   }
 
   const tws0 = polar.tws[twsIdx];
   const tws1 = polar.tws[Math.min(twsIdx + 1, polar.tws.length - 1)];
+  if (tws0 === undefined || tws1 === undefined) return 0;
   const tTws = tws1 === tws0 ? 0 : Math.max(0, Math.min(1, (twsKnots - tws0) / (tws1 - tws0)));
   const twsNext = Math.min(twsIdx + 1, polar.tws.length - 1);
 
-  const s00 = polar.speeds[twaIdx][twsIdx];
-  const s10 = polar.speeds[twaNext][twsIdx];
-  const s01 = polar.speeds[twaIdx][twsNext];
-  const s11 = polar.speeds[twaNext][twsNext];
+  const s00 = polar.speeds[twaIdx]?.[twsIdx] ?? 0;
+  const s10 = polar.speeds[twaNext]?.[twsIdx] ?? 0;
+  const s01 = polar.speeds[twaIdx]?.[twsNext] ?? 0;
+  const s11 = polar.speeds[twaNext]?.[twsNext] ?? 0;
 
   return (1 - tTwa) * (1 - tTws) * s00 + tTwa * (1 - tTws) * s10 + (1 - tTwa) * tTws * s01 + tTwa * tTws * s11;
 }
 
 function bracketIndex(arr: number[], value: number): number {
-  if (value <= arr[0]) return 0; // clamp to lowest bracket; tTws/tTwa lower-clamp prevents below-minimum extrapolation
-  if (value >= arr[arr.length - 1]) return arr.length - 2;
+  const first = arr[0];
+  if (first === undefined || value <= first) return 0; // clamp to lowest bracket; tTws/tTwa lower-clamp prevents below-minimum extrapolation
+  const last = arr[arr.length - 1];
+  if (last === undefined || value >= last) return arr.length - 2;
   for (let i = 0; i < arr.length - 1; i++) {
-    if (value >= arr[i] && value <= arr[i + 1]) return i;
+    const lo = arr[i];
+    const hi = arr[i + 1];
+    if (lo !== undefined && hi !== undefined && value >= lo && value <= hi) return i;
   }
   return -1;
 }

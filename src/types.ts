@@ -122,11 +122,11 @@ export interface IsochronePoint {
   heading: number;
   twa: number;
   tws: number;
-  boatSpeed?: number; // undefined on the seed (departure) point which has no computed speed
+  boatSpeed?: number | undefined; // undefined on the seed (departure) point which has no computed speed
   windDir: number;
   stepCalcMs: number; // wall-clock ms to compute the isochrone step that created this point
-  gribFilePath?: string;
-  parent?: IsochronePoint;
+  gribFilePath?: string | undefined;
+  parent?: IsochronePoint | undefined;
 }
 
 export interface RoutePoint {
@@ -136,18 +136,18 @@ export interface RoutePoint {
   heading: number;
   twa: number; // degrees, 0–180
   tws: number; // knots
-  boatSpeed?: number; // knots; undefined on the departure waypoint
+  boatSpeed?: number | undefined; // knots; undefined on the departure waypoint
   windDir: number; // meteorological: degrees FROM which wind blows, 0–360
   legCalcMs: number; // wall-clock ms the algorithm spent computing this leg; 0 for start and destination
-  waveHeight?: number; // significant wave height (m), present when swh data available in GRIB
-  gribFilePath?: string; // path of the GRIB file that supplied weather data at this waypoint
+  waveHeight?: number | undefined; // significant wave height (m), present when swh data available in GRIB
+  gribFilePath?: string | undefined; // path of the GRIB file that supplied weather data at this waypoint
 }
 
 export interface CalculationRequest {
   start: LatLon;
   end: LatLon;
   departureTime: string; // ISO 8601
-  waypoints?: Array<LatLon>; // intermediate required waypoints in order
+  waypoints?: LatLon[]; // intermediate required waypoints in order
   useSafetyMargin?: boolean;
   useLandAvoidance?: boolean;
   enabledGribPaths?: string[]; // if absent, all files are used
@@ -161,14 +161,14 @@ export interface CalculationStatus {
   routeId?: string;
   error?: string;
   warning?: string;
-  frontier?: Array<[number, number]>; // [lat, lon] pairs of current isochrone frontier
+  frontier?: [number, number][]; // [lat, lon] pairs of current isochrone frontier
 }
 
 export interface GribInfoResponse {
   gribDir: string;
   files: GribFileMeta[]; // wind GRIB files
   currentFiles: GribFileMeta[]; // ocean current GRIB files
-  failedFiles: Array<{ path: string; error: string }>;
+  failedFiles: { path: string; error: string }[];
 }
 
 export interface PluginSettings {

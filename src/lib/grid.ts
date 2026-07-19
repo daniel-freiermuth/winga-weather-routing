@@ -1,6 +1,6 @@
 // Grid bounds computation shared by /wind-grid and /wave-grid endpoints.
 
-import { GribFileEntry } from '../types';
+import type { GribFileEntry } from '../types';
 
 export interface GridBounds {
   latMin: number;

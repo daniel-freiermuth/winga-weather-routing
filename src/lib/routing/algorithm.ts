@@ -1,6 +1,6 @@
 // RoutingAlgorithm interface — the contract all routing algorithm implementations must satisfy.
 
-import {
+import type {
   CurrentProvider,
   WindProvider,
   LandEdgeIndex,
@@ -20,7 +20,7 @@ export interface RoutingAlgorithm {
     edgeIndex: LandEdgeIndex | null,
     regionIndex: RegionIndex | null,
     request: CalculationRequest,
-    onProgress: (pct: number, frontier: Array<[number, number]>) => void,
+    onProgress: (pct: number, frontier: [number, number][]) => void,
     options?: Record<string, unknown>,
   ): Promise<{ route: RoutePoint[]; warning?: string }>;
 }

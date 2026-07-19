@@ -1,6 +1,6 @@
 // Isochrone routing: time-optimal route search via iterative frontier expansion.
 
-import {
+import type {
   CurrentProvider,
   WindProvider,
   LandEdgeIndex,
@@ -10,7 +10,7 @@ import {
   IsochronePoint,
   RoutePoint,
 } from '../../types';
-import { RoutingAlgorithm } from './algorithm';
+import type { RoutingAlgorithm } from './algorithm';
 import { nearestIdx } from '../windprovider';
 import { interpolateBoatSpeed } from '../polar';
 import { segmentCrossesLandFast, isPointOnLand } from '../landmask';
@@ -47,10 +47,10 @@ interface StepTiming {
 }
 
 function logStepTiming(t: StepTiming): void {
-  if (!process.env.DEBUG) return;
+  if (process.env['DEBUG'] === undefined || process.env['DEBUG'] === '') return;
   console.log(
-    `[isochrone] step=${t.step} frontier=${t.frontierSize} coneDisabled=${t.coneDisabledCount}/${t.frontierSize} candidates=${t.candidatesEvaluated}` +
-      ` landChecks=${t.landChecksPerformed}` +
+    `[isochrone] step=${String(t.step)} frontier=${String(t.frontierSize)} coneDisabled=${String(t.coneDisabledCount)}/${String(t.frontierSize)} candidates=${String(t.candidatesEvaluated)}` +
+      ` landChecks=${String(t.landChecksPerformed)}` +
       ` wind=${t.windLookupMs.toFixed(1)}ms polar=${t.polarMs.toFixed(1)}ms` +
       ` land=${t.landCheckMs.toFixed(1)}ms prune=${t.pruningMs.toFixed(1)}ms` +
       ` total=${t.totalMs.toFixed(1)}ms`,
@@ -58,7 +58,7 @@ function logStepTiming(t: StepTiming): void {
 }
 
 function logTimingSummary(timings: StepTiming[]): void {
-  if (!process.env.DEBUG) return;
+  if (process.env['DEBUG'] === undefined || process.env['DEBUG'] === '') return;
   if (timings.length === 0) return;
   const fields: (keyof StepTiming)[] = [
     'frontierSize',
@@ -72,13 +72,13 @@ function logTimingSummary(timings: StepTiming[]): void {
     'totalMs',
   ];
   const lines = fields.map((f) => {
-    const vals = timings.map((t) => t[f] as number);
+    const vals = timings.map((t) => t[f]);
     const total = vals.reduce((a, b) => a + b, 0);
     const min = Math.min(...vals);
     const max = Math.max(...vals);
     return `  ${f}: min=${min.toFixed(1)} max=${max.toFixed(1)} total=${total.toFixed(1)}`;
   });
-  console.log(`[isochrone] summary over ${timings.length} steps:\n${lines.join('\n')}`);
+  console.log(`[isochrone] summary over ${String(timings.length)} steps:\n${lines.join('\n')}`);
 }
 
 type FailureReason = 'land' | 'wind' | 'grib_exhausted';
@@ -106,25 +106,27 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     edgeIndex: LandEdgeIndex | null,
     regionIndex: RegionIndex | null,
     request: CalculationRequest,
-    onProgress: (pct: number, frontier: Array<[number, number]>) => void,
+    onProgress: (pct: number, frontier: [number, number][]) => void,
     options?: Record<string, unknown>,
   ): Promise<{ route: RoutePoint[]; warning?: string }> {
-    const headingStep = Number(options?.headingStep ?? DEFAULT_HEADING_STEP);
-    const sectorSize = Number(options?.sectorSize ?? DEFAULT_SECTOR_SIZE);
-    const minBoatSpeed = Number(options?.minBoatSpeed ?? DEFAULT_MIN_BOAT_SPEED);
-    const arrivalRadiusNm = Number(options?.arrivalRadiusNm ?? DEFAULT_ARRIVAL_RADIUS_NM);
-    const maxWindKn = Number(options?.maxWindKn ?? 0); // 0 = no limit
-    const maxWaveM = Number(options?.maxWaveM ?? 0); // 0 = no limit
-    const motorSpeedKn = Number(options?.motorSpeedKn ?? 0); // 0 = no motor
-    const motorBelowKn = Number(options?.motorBelowKn ?? 0); // 0 = disabled
-    const waitForWind = Boolean(options?.waitForWind ?? false);
-    const configuredConeHalfAngle = Number(options?.coneHalfAngle ?? FINE_PASS_CONE_HALF_ANGLE);
-    const coneDisableLookaheadNm = Number(options?.coneDisableLookaheadNm ?? CONE_DISABLE_LOOKAHEAD_NM);
-    const maxHeadingChangeDeg = Number(options?.maxHeadingChange ?? MAX_HEADING_CHANGE);
+    const headingStep = Number(options?.['headingStep'] ?? DEFAULT_HEADING_STEP);
+    const sectorSize = Number(options?.['sectorSize'] ?? DEFAULT_SECTOR_SIZE);
+    const minBoatSpeed = Number(options?.['minBoatSpeed'] ?? DEFAULT_MIN_BOAT_SPEED);
+    const arrivalRadiusNm = Number(options?.['arrivalRadiusNm'] ?? DEFAULT_ARRIVAL_RADIUS_NM);
+    const maxWindKn = Number(options?.['maxWindKn'] ?? 0); // 0 = no limit
+    const maxWaveM = Number(options?.['maxWaveM'] ?? 0); // 0 = no limit
+    const motorSpeedKn = Number(options?.['motorSpeedKn'] ?? 0); // 0 = no motor
+    const motorBelowKn = Number(options?.['motorBelowKn'] ?? 0); // 0 = disabled
+    const waitForWind = Boolean(options?.['waitForWind'] ?? false);
+    const configuredConeHalfAngle = Number(options?.['coneHalfAngle'] ?? FINE_PASS_CONE_HALF_ANGLE);
+    const coneDisableLookaheadNm = Number(options?.['coneDisableLookaheadNm'] ?? CONE_DISABLE_LOOKAHEAD_NM);
+    const maxHeadingChangeDeg = Number(options?.['maxHeadingChange'] ?? MAX_HEADING_CHANGE);
 
     const { start, end } = request;
     const departureTime = new Date(request.departureTime);
     const startTimeIdx = nearestIdx(wind.times, departureTime);
+    const seedTime = wind.times[startTimeIdx];
+    if (seedTime === undefined) throw new Error('BUG: startTimeIdx out of times bounds');
     const nSteps = wind.times.length - startTimeIdx - 1;
 
     if (nSteps <= 0) throw new Error('Departure time is at or after the end of the forecast data');
@@ -144,14 +146,12 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       {
         lat: start.lat,
         lon: start.lon,
-        time: wind.times[startTimeIdx],
+        time: seedTime,
         heading: 0,
         twa: 0,
         tws: windSpeedKnots(seedVec.u, seedVec.v),
-        boatSpeed: undefined,
         windDir: windDirection(seedVec.u, seedVec.v),
         stepCalcMs: 0,
-        parent: undefined,
       },
     ];
 
@@ -167,7 +167,9 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     for (let step = startTimeIdx; step < wind.times.length - 1; step++) {
       const stepStart = performance.now();
       const nextTime = wind.times[step + 1];
-      const dtHours = (nextTime.getTime() - wind.times[step].getTime()) / 3_600_000;
+      const currTime = wind.times[step];
+      if (currTime === undefined || nextTime === undefined) throw new Error('BUG: step index out of times bounds');
+      const dtHours = (nextTime.getTime() - currTime.getTime()) / 3_600_000;
       const candidates: IsochronePoint[] = [];
 
       let windLookupMs = 0;
@@ -203,7 +205,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           continue;
         }
         if (maxWaveM > 0) {
-          const wh = wind.getWave(point.lat, point.lon, wind.times[step]);
+          const wh = wind.getWave(point.lat, point.lon, currTime);
           if (wh != null && wh > maxWaveM) continue;
         }
 
@@ -320,22 +322,27 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           };
           candidates.push(newPoint);
 
-          const distToEnd = haversineNM(newLat, newLon, end.lat, end.lon);
-          if (distToEnd <= arrivalRadiusNm) {
-            if (!arrived || distToEnd < haversineNM(arrived.lat, arrived.lon, end.lat, end.lon)) {
-              arrived = newPoint;
-            }
-          }
         }
       }
 
+      // Scan candidates for the closest arrival within the radius. Using a fresh
+      // variable avoids TypeScript's loop fixed-point narrowing that would flag a
+      // direct `arrived !== null` check as an always-false condition.
+      const arrivedCandidate = candidates.reduce<IsochronePoint | null>((best, c) => {
+        const d = haversineNM(c.lat, c.lon, end.lat, end.lon);
+        if (d > arrivalRadiusNm) return best;
+        if (best === null || d < haversineNM(best.lat, best.lon, end.lat, end.lon)) return c;
+        return best;
+      }, null);
+      if (arrivedCandidate !== null) {
+        arrived = arrivedCandidate;
+        break; // exit before frontier bookkeeping — original semantics
+      }
       const frontierLoopMs = performance.now() - t0frontier;
       const polarMs = Math.max(0, frontierLoopMs - windLookupMs - landCheckMs);
 
       const stepCalcMs = performance.now() - stepStart;
       for (const c of candidates) c.stepCalcMs = Math.round(stepCalcMs);
-
-      if (arrived) break;
 
       lastRejectedByLand = rejectedByLand;
       lastRejectedByPolar = rejectedByPolar;
@@ -360,17 +367,17 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
             : r === 'grib_exhausted'
               ? 'frontier reached GRIB boundary'
               : 'wind too adverse or light';
-        const counts = `(land: ${lastRejectedByLand}, wind: ${lastRejectedByPolar}, grib: ${lastRejectedByGrib})`;
+        const counts = `(land: ${String(lastRejectedByLand)}, wind: ${String(lastRejectedByPolar)}, grib: ${String(lastRejectedByGrib)})`;
         if (lastFrontier !== null) {
           const closest = closestTo(lastFrontier, end);
           const dist = Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon));
           return {
             route: backtrack(closest, wind, false),
-            warning: `No reachable positions at step ${stepsCompleted + 1} (${reasonText(reason)}) ${counts} — partial route shown (${dist} nm from destination)`,
+            warning: `No reachable positions at step ${String(stepsCompleted + 1)} (${reasonText(reason)}) ${counts} — partial route shown (${String(dist)} nm from destination)`,
           };
         }
         throw new RoutingError(
-          `No reachable positions at step ${step - startTimeIdx + 1} — ${reasonText(reason)}${reason === 'wind' ? ' to make progress' : ''} ${counts}`,
+          `No reachable positions at step ${String(step - startTimeIdx + 1)} — ${reasonText(reason)}${reason === 'wind' ? ' to make progress' : ''} ${counts}`,
           reason,
         );
       }
@@ -390,10 +397,10 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       stepTimings.push(timing);
       logStepTiming(timing);
 
-      const frontier: Array<[number, number]> = isochrone.map((p) => [p.lat, p.lon]);
+      const frontier: [number, number][] = isochrone.map((p) => [p.lat, p.lon]);
       stepsCompleted++;
       onProgress(Math.round(((step - startTimeIdx + 1) / nSteps) * 100), frontier);
-      await new Promise<void>((resolve) => setImmediate(resolve)); // yield event loop so SSE progress events are flushed to the browser
+      await new Promise<void>((resolve) => { setImmediate(resolve); }); // yield event loop so SSE progress events are flushed to the browser
     }
 
     logTimingSummary(stepTimings);
@@ -405,11 +412,11 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         const dist = Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon));
         return {
           route: backtrack(closest, wind, false),
-          warning: `Route extends past forecast coverage after ${stepsCompleted} steps — partial route shown (${dist} nm from destination)`,
+          warning: `Route extends past forecast coverage after ${String(stepsCompleted)} steps — partial route shown (${String(dist)} nm from destination)`,
         };
       }
       throw new RoutingError(
-        `Destination not reached within forecast period after ${stepsCompleted} steps`,
+        `Destination not reached within forecast period after ${String(stepsCompleted)} steps`,
         'grib_exhausted',
       );
     }
@@ -449,7 +456,7 @@ function pruneToFrontier<T extends { lat: number; lon: number }>(
   startLon: number,
   sectorSize: number,
 ): T[] {
-  type Entry = { point: T; distSq: number };
+  interface Entry { point: T; distSq: number }
   const sectors = new Map<number, Entry[]>();
 
   for (const p of candidates) {
@@ -466,8 +473,13 @@ function pruneToFrontier<T extends { lat: number; lon: number }>(
       sectors.set(sector, existing);
     } else {
       // Replace the closer of the two survivors if the new candidate is farther.
-      const minIdx = existing[0].distSq <= existing[1].distSq ? 0 : 1;
-      if (distSq > existing[minIdx].distSq) existing[minIdx] = { point: p, distSq };
+      const e0 = existing[0];
+      const e1 = existing[1];
+      if (e0 === undefined || e1 === undefined) throw new Error('BUG: existing index out of bounds');
+      const minIdx = e0.distSq <= e1.distSq ? 0 : 1;
+      const eMin = existing[minIdx];
+      if (eMin === undefined) throw new Error('BUG: existing[minIdx] out of bounds');
+      if (distSq > eMin.distSq) existing[minIdx] = { point: p, distSq };
     }
   }
 

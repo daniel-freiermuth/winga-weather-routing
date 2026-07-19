@@ -16,7 +16,10 @@
   "signalk": {
     "displayName": "Weather Routing",
     "appIcon": "./wr-icon-128px.png",
-    "screenshots": ["screenshot2.jpg", "route-to-route-demo.png"]
+    "screenshots": [
+      "screenshot2.jpg",
+      "route-to-route-demo.png"
+    ]
   },
   "license": "Apache-2.0",
   "main": "dist/index.js",
@@ -28,6 +31,7 @@
     "prepare-land-data": "python3 scripts/prepare-land-data.py",
     "test": "tsx --test 'src/lib/__tests__/**/*.test.ts'",
     "lint": "eslint src/",
+    "check": "tsc --noEmit && eslint src/ && tsx --test 'src/lib/__tests__/**/*.test.ts'",
     "format": "prettier --write src/ public/index.html",
     "format:check": "prettier --check src/ public/index.html"
   },
@@ -64,5 +68,9 @@
     "tsx": "^4.19.0",
     "typescript": "^5.0.0",
     "typescript-eslint": "^8.0.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "gdal-async@3.12.3": true
   }
 }

@@ -1,14 +1,16 @@
 // Saves a computed route to SignalK resources/routes as a GeoJSON Feature.
 
-import { RoutePoint } from '../types';
+import type { RoutePoint } from '../types';
 import { haversineNM } from './geo';
-import { SignalKApp } from './signalk-app';
+import type { SignalKApp } from './signalk-app';
 
 export async function saveRoute(app: SignalKApp, route: RoutePoint[], name: string): Promise<string> {
   const uuid = crypto.randomUUID();
 
   const totalDistNM = route.slice(1).reduce((sum, p, i) => {
-    return sum + haversineNM(route[i].lat, route[i].lon, p.lat, p.lon);
+    const prev = route[i];
+    if (!prev) return sum; // noUncheckedIndexedAccess guard; always defined in practice
+    return sum + haversineNM(prev.lat, prev.lon, p.lat, p.lon);
   }, 0);
 
   const resource = {

@@ -14,10 +14,10 @@ export function validateCalculateInput(input: CalculateInput): { valid: true } |
   const { start, end, departureTime } = input;
   if (
     !isValidCoordinate(start?.lat) ||
-    !isValidCoordinate(start?.lon) ||
+    !isValidCoordinate(start.lon) ||
     !isValidCoordinate(end?.lat) ||
-    !isValidCoordinate(end?.lon) ||
-    !departureTime
+    !isValidCoordinate(end.lon) ||
+    departureTime === undefined || departureTime === null || departureTime === ''
   ) {
     return { valid: false, error: 'Required: start {lat,lon}, end {lat,lon}, departureTime (ISO 8601)' };
   }

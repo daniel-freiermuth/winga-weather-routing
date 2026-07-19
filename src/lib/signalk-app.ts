@@ -1,9 +1,14 @@
 // Minimal SignalK plugin app interface — subset of methods used by signalk-weather-routing.
 
+/** Minimal GeoJSON geometry union covering the polygon types used by region avoidance. */
+export type GeoJsonGeometry =
+  | { type: 'Polygon'; coordinates: number[][][] }
+  | { type: 'MultiPolygon'; coordinates: number[][][][] };
+
 export interface SignalKResourceEntry {
   id?: string;
   name?: string;
-  feature?: { geometry?: any }; // eslint-disable-line @typescript-eslint/no-explicit-any -- GeoJSON geometry is arbitrarily shaped
+  feature?: { geometry?: GeoJsonGeometry };
   [key: string]: unknown;
 }
 

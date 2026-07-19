@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { computeGridBounds } from '../grid';
-import { GribFileEntry } from '../../types';
+import type { GribFileEntry } from '../../types';
 
 function makeEntry(
   latMin: number,
@@ -31,7 +31,7 @@ function makeEntry(
   };
 }
 
-test('computeGridBounds: union bbox of two overlapping files', () => {
+void test('computeGridBounds: union bbox of two overlapping files', () => {
   const a = makeEntry(40, 42, 10, 12, 0.5, 0.5);
   const b = makeEntry(41, 44, 11, 14, 0.5, 0.5);
   const bounds = computeGridBounds([a, b]);
@@ -41,7 +41,7 @@ test('computeGridBounds: union bbox of two overlapping files', () => {
   assert.strictEqual(bounds.lonMax, 14);
 });
 
-test('computeGridBounds: picks finest step when files differ', () => {
+void test('computeGridBounds: picks finest step when files differ', () => {
   const a = makeEntry(40, 42, 10, 12, 1.0, 1.0);
   const b = makeEntry(41, 43, 11, 13, 0.25, 0.25);
   const bounds = computeGridBounds([a, b]);
@@ -49,14 +49,14 @@ test('computeGridBounds: picks finest step when files differ', () => {
   assert.strictEqual(bounds.lonStep, 0.25);
 });
 
-test('computeGridBounds: nLat/nLon computed from union bbox and finest step', () => {
+void test('computeGridBounds: nLat/nLon computed from union bbox and finest step', () => {
   const a = makeEntry(40, 42, 10, 12, 0.5, 0.5);
   const bounds = computeGridBounds([a]);
   assert.strictEqual(bounds.nLat, 4); // (42-40)/0.5 = 4
   assert.strictEqual(bounds.nLon, 4); // (12-10)/0.5 = 4
 });
 
-test('computeGridBounds: single file', () => {
+void test('computeGridBounds: single file', () => {
   const a = makeEntry(50, 55, 0, 10, 1, 2);
   const bounds = computeGridBounds([a]);
   assert.strictEqual(bounds.latMin, 50);

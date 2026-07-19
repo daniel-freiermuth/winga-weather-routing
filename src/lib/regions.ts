@@ -1,37 +1,42 @@
 // SignalK region avoidance: loads regions from resources/regions and checks segment/point against them.
 
-import { RegionRing, RegionIndex } from '../types';
+import type { RegionRing, RegionIndex } from '../types';
+import type { SignalKResourceEntry, GeoJsonGeometry } from './signalk-app';
 import { pointInRing, segmentCrossesRing } from './landmask';
 
 // Builds a RegionIndex from SignalK resource data.
 // Accepts two formats:
 //   - array of { id, name?, feature: { geometry } } — from app.resourcesApi.listResources()
 //   - object keyed by UUID { "uuid": { name?, feature: { geometry } } } — from raw HTTP API
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- SignalK resource API returns untyped data
-export function buildRegionIndex(apiRegions: any): RegionIndex {
+export function buildRegionIndex(
+  apiRegions: SignalKResourceEntry[] | Record<string, SignalKResourceEntry>,
+): RegionIndex {
   const regions = new Map<string, RegionRing>();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- GeoJSON geometry is arbitrarily shaped
-  const entries: Array<{ id: string; name?: string; feature?: { geometry?: any } }> = [];
+  const entries: { id: string; name: string | undefined; feature: { geometry: GeoJsonGeometry } }[] = [];
 
   if (Array.isArray(apiRegions)) {
     for (const entry of apiRegions) {
-      if (entry.id && entry.feature?.geometry) entries.push(entry);
+      const geo = entry.feature?.geometry;
+      if (entry.id !== undefined && entry.id !== '' && geo !== undefined) {
+        entries.push({ id: entry.id, name: entry.name, feature: { geometry: geo } });
+      }
     }
-  } else if (apiRegions && typeof apiRegions === 'object') {
+  } else {
     for (const [uuid, entry] of Object.entries(apiRegions)) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SignalK resource entry shape varies
-      const e = entry as any;
-      if (e?.feature?.geometry) entries.push({ id: uuid, name: e.name, feature: e.feature });
+      const geo = entry.feature?.geometry;
+      if (geo) {
+        entries.push({ id: uuid, name: entry.name, feature: { geometry: geo } });
+      }
     }
   }
 
   for (const { id, feature } of entries) {
-    const geo = feature!.geometry;
+    const geo = feature.geometry;
     let rings: number[][][] = [];
     if (geo.type === 'Polygon') {
       rings = geo.coordinates;
-    } else if (geo.type === 'MultiPolygon') {
-      // Merge all polygons into a single ring set — treat multi-part as one region.
+    } else {
+      // MultiPolygon: merge all polygons into a single ring set.
       for (const poly of geo.coordinates) rings.push(...poly);
     }
 
@@ -44,18 +49,22 @@ export function buildRegionIndex(apiRegions: any): RegionIndex {
         latMax = -Infinity;
       let lonMin = Infinity,
         lonMax = -Infinity;
-      for (let i = 0; i < n; i++) {
-        const lon = ringCoords[i][0];
-        const lat = ringCoords[i][1];
+      // for...of avoids noUncheckedIndexedAccess on ringCoords[i]
+      let i = 0;
+      for (const pos of ringCoords) {
+        const lon = pos[0]; // GeoJSON position: [lon, lat, alt?]
+        const lat = pos[1];
+        if (lon === undefined || lat === undefined) { i++; continue; } // GeoJSON always has lon+lat; guard satisfies TS
         exterior[i * 2] = lon;
         exterior[i * 2 + 1] = lat;
         if (lat < latMin) latMin = lat;
         if (lat > latMax) latMax = lat;
         if (lon < lonMin) lonMin = lon;
         if (lon > lonMax) lonMax = lon;
+        i++;
       }
       // Key format: always id__ringIdx for consistency across single and multi-ring regions.
-      const key = `${id}__${ringIdx}`;
+      const key = `${id}__${String(ringIdx)}`;
       regions.set(key, { bboxLatMin: latMin, bboxLatMax: latMax, bboxLonMin: lonMin, bboxLonMax: lonMax, exterior });
       ringIdx++;
     }
@@ -68,7 +77,7 @@ export function buildRegionIndex(apiRegions: any): RegionIndex {
 export function validRegionUuids(index: RegionIndex): Set<string> {
   const uuids = new Set<string>();
   for (const key of index.regions.keys()) {
-    const uuid = key.includes('__') ? key.split('__')[0] : key;
+    const uuid = key.includes('__') ? (key.split('__')[0] ?? key) : key;
     uuids.add(uuid);
   }
   return uuids;
@@ -84,7 +93,7 @@ export function segmentCrossesRegion(
   lon2: number,
 ): boolean {
   for (const [key, ring] of index.regions) {
-    const uuid = key.includes('__') ? key.split('__')[0] : key;
+    const uuid = key.includes('__') ? (key.split('__')[0] ?? key) : key;
     if (!avoidIds.has(uuid)) continue;
     if (Math.max(lat1, lat2) < ring.bboxLatMin) continue;
     if (Math.min(lat1, lat2) > ring.bboxLatMax) continue;
@@ -98,7 +107,7 @@ export function segmentCrossesRegion(
 // Returns true if (lat, lon) falls inside any region whose UUID is in avoidIds.
 export function isPointInRegion(index: RegionIndex, avoidIds: Set<string>, lat: number, lon: number): boolean {
   for (const [key, ring] of index.regions) {
-    const uuid = key.includes('__') ? key.split('__')[0] : key;
+    const uuid = key.includes('__') ? (key.split('__')[0] ?? key) : key;
     if (!avoidIds.has(uuid)) continue;
     if (lat < ring.bboxLatMin || lat > ring.bboxLatMax) continue;
     if (lon < ring.bboxLonMin || lon > ring.bboxLonMax) continue;
