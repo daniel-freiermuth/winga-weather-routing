@@ -1,11 +1,13 @@
 // Polar diagram loading (ORC/OpenCPN semicolon-delimited CSV) and bilinear boat-speed interpolation.
 
-import * as fs from 'node:fs';
 import type { PolarData } from '../types';
 
-export function parsePolar(filePath: string): PolarData {
-  const lines = fs
-    .readFileSync(filePath, 'utf-8')
+/**
+ * Parse a polar CSV string into PolarData.
+ * Browser-compatible — no filesystem access.
+ */
+export function parsePolarCsv(csv: string): PolarData {
+  const lines = csv
     .split('\n')
     .map((l) => l.trim())
     .filter((l) => l.length > 0 && !l.startsWith('#'));
@@ -31,6 +33,28 @@ export function parsePolar(filePath: string): PolarData {
   }
 
   return { tws, twa, speeds };
+}
+
+/**
+ * Read and parse a polar CSV file from the filesystem.
+ * Node.js only — not available in the browser. Callers must pass the file
+ * content as a string if running in a browser context (use parsePolarCsv).
+ */
+export function parsePolarFile(filePath: string): PolarData {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- Node.js-only: dynamic require keeps module importable in browsers that never call this function
+  const fsModule: unknown = require('node:fs');
+  if (
+    fsModule === null ||
+    typeof fsModule !== 'object' ||
+    !('readFileSync' in fsModule) ||
+    typeof fsModule.readFileSync !== 'function'
+  ) {
+    throw new Error('parsePolarFile requires Node.js (node:fs not available)');
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- validated readFileSync above; Function type is the narrowest TS can prove from typeof guard
+  const content: unknown = fsModule.readFileSync(filePath, 'utf-8');
+  if (typeof content !== 'string') throw new Error('readFileSync did not return a string');
+  return parsePolarCsv(content);
 }
 
 export function interpolateBoatSpeed(polar: PolarData, twaDeg: number, twsKnots: number): number {

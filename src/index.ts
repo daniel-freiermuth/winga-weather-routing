@@ -35,7 +35,7 @@ import {
 import { MultiFileWindProvider } from './lib/windprovider';
 import { proposeCombination, combinationFileFromMeta } from './lib/gribCombination';
 import { SingleFileCurrentProvider } from './lib/currentprovider';
-import { parsePolar } from './lib/polar';
+import { parsePolarFile } from './lib/polar';
 import { buildLandIndex, polygonsInBbox, isPointOnLand } from './lib/landmask';
 import { saveRoute } from './lib/resources';
 import { buildRegionIndex, validRegionUuids } from './lib/regions';
@@ -254,7 +254,7 @@ module.exports = (app: SignalKApp) => {
 
       if (cfg.polarPath) {
         try {
-          polar = parsePolar(cfg.polarPath);
+          polar = parsePolarFile(cfg.polarPath);
         } catch (err: unknown) {
           app.setPluginError(`Failed to load polar file: ${err instanceof Error ? err.message : String(err)}`);
         }
