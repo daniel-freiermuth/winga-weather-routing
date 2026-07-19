@@ -216,6 +216,68 @@ export async function fetchCurrentGrid(timeMs, bbox, signal) {
   return raw.filter((p) => p.speed > 0.01);
 }
 
+/**
+ * Query weather at a single point and time.
+ * Returns wind (u/v m/s), gust (m/s), wave height (m), and current (u/v m/s).
+ *
+ * @param {number} lat
+ * @param {number} lon
+ * @param {number} timeMs  target time in ms since epoch
+ * @returns {Promise<{wind:{u:number,v:number}|null, gustMs:number|null, waveHeightM:number|null, current:{u:number,v:number}|null}>}
+ */
+export async function queryPointWeather(lat, lon, timeMs) {
+  const result = { wind: null, gustMs: null, waveHeightM: null, current: null };
+
+  const windStep = closestStep(windSteps, timeMs);
+  const { x, y } = latLonToTile(lat, lon, ZOOM);
+  const { px, py } = latLonToPixel(lat, lon, ZOOM, x, y);
+
+  // Wind from ECMWF tile
+  if (windStep) {
+    try {
+      const url = buildTileUrl(windModel, windModelRun, windStep.compact, ZOOM, x, y, 'wind');
+      const tile = await fetchTile(url);
+      const val = sampleTilePixel(tile.rgba, tile.header, px, py, false);
+      if (val.hasData) result.wind = { u: val.u, v: val.v };
+    } catch { /* tile unavailable */ }
+
+    // Gust from ECMWF tile (scalar overlay — value is in the R channel = val.u)
+    try {
+      const url = buildTileUrl(windModel, windModelRun, windStep.compact, ZOOM, x, y, 'gust');
+      const tile = await fetchTile(url);
+      const val = sampleTilePixel(tile.rgba, tile.header, px, py, false);
+      if (val.hasData) result.gustMs = val.u; // scalar: R channel only
+    } catch { /* tile unavailable */ }
+  }
+
+  // Wave from ECMWF-WAM tile
+  const waveStep = closestStep(waveSteps, timeMs);
+  if (waveStep) {
+    try {
+      const url = buildTileUrl('ecmwf-wam', waveModelRun, waveStep.compact, ZOOM, x, y, 'waves');
+      const tile = await fetchTile(url);
+      const val = sampleTilePixel(tile.rgba, tile.header, px, py, false);
+      if (val.hasData && val.speed > 0.05) result.waveHeightM = val.speed;
+    } catch { /* tile unavailable */ }
+  }
+
+  // Current from CMEMS tile (72h horizon)
+  const cmemsEnd = cmemsSteps.length > 0 ? new Date(cmemsSteps[cmemsSteps.length - 1].iso).getTime() : 0;
+  if (timeMs <= cmemsEnd) {
+    const curStep = closestStep(cmemsSteps, timeMs);
+    if (curStep) {
+      try {
+        const url = buildTileUrl('cmems', cmemsModelRun, curStep.compact, ZOOM, x, y, 'seacurrents');
+        const tile = await fetchTile(url);
+        const val = sampleTilePixel(tile.rgba, tile.header, px, py, true);
+        if (val.hasData && val.speed > 0.005) result.current = { u: val.u, v: val.v };
+      } catch { /* tile unavailable */ }
+    }
+  }
+
+  return result;
+}
+
 // ── Land overlay ──────────────────────────────────────────────────────────────
 
 import { fetchLandIndex, parseIndexFromArrayBuffer } from '../src/lib/land-index-loader';

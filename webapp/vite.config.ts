@@ -35,17 +35,5 @@ export default defineConfig(({ command }) => ({
 
   server: {
     port: 5174,
-    // Proxy SignalK API calls to a local SK server during development
-    proxy: {
-      '/signalk': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-        ws: true,
-      },
-      '/plugins/signalk-weather-routing': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-      },
-    },
   },
 }));

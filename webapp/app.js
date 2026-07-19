@@ -1,6 +1,56 @@
 import * as dataLayer from './data-layer.js';
+import { analyseRouteWeather } from './route-weather.js';
+import { drawMeteogram, setupMeteogramTooltip } from './meteogram.js';
 
-const API = '/plugins/signalk-weather-routing';
+const API = '/plugins/signalk-weather-routing'; // legacy — only used by dead GRIB code paths
+
+// ── SignalK Server URL ────────────────────────────────────────────────────────
+// Auto-detect: when deployed as a SK webapp, the server is same-origin.
+// In standalone/dev mode, the user configures it (stored in localStorage).
+// The Vite dev server proxies /signalk/* to the configured target, so in dev
+// mode an empty SK_BASE works if the proxy is set up.
+
+function detectSkBase() {
+  // 1. Explicit localStorage override
+  let stored = localStorage.getItem('wr-signalk-url');
+  if (stored) {
+    stored = stored.trim().replace(/\/+$/, '');
+    // Auto-prepend http:// if the user typed a bare host:port
+    if (stored && !stored.startsWith('http://') && !stored.startsWith('https://')) {
+      stored = 'http://' + stored;
+      localStorage.setItem('wr-signalk-url', stored);
+    }
+    return stored;
+  }
+
+  // 2. If served from a SignalK server, use same origin
+  if (location.pathname.includes('signalk-weather-routing') || location.port === '3000') {
+    return '';
+  }
+
+  // 3. Dev mode — no proxy, no server
+  return '';
+}
+
+const SK_BASE = detectSkBase();
+
+/** Fetch from the SignalK server. Prepends SK_BASE to relative URLs. */
+function skFetch(path, options) {
+  const url = path.startsWith('http') ? path : SK_BASE + path;
+  // Cross-origin: omit credentials — SK servers return Access-Control-Allow-Origin: *
+  // which is incompatible with credentials: 'include'.
+  return fetch(url, { ...options, credentials: SK_BASE ? 'omit' : 'same-origin' });
+}
+
+/** Build a WebSocket URL for the SignalK server. */
+function skWebSocketUrl(path) {
+  if (SK_BASE) {
+    const base = SK_BASE.replace(/^http/, 'ws');
+    return base + path;
+  }
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${location.host}${path}`;
+}
 
 // Escapes HTML special characters for safe insertion into innerHTML (BUG-117).
 // Also escapes quotes for safe use inside HTML attributes.
@@ -22,7 +72,8 @@ disclaimerOk.addEventListener('click', () => {
   disclaimerOverlay.classList.remove('visible');
 });
 
-const map = L.map('map').setView([0, 0], 2);
+const map = L.map('map').setView([57, 18], 6); // Baltic default
+window._map = map; // expose for debugging / browser-test automation
 map.createPane('windBarbPane').style.zIndex = '350';
 map.createPane('waypointMarkerPane').style.zIndex = '345';
 map.createPane('windOverlayPane').style.zIndex = '300';
@@ -404,14 +455,277 @@ if (polarFileInput) {
   }
 }
 
-loadGribInfo(); // server mode: loads GRIB metadata and then calls initWindScrubber
-initWindScrubber(); // Windy mode: loads forecast directly from Windy minifest (harmless if loadGribInfo succeeds first)
-loadCharts();
-loadDepartureResources();
-loadWaypointRoutes();
+// Quick polar generator — approximate a full polar from 3 speed inputs
+document.getElementById('polar-generate-btn')?.addEventListener('click', () => {
+  const upwind = parseFloat(document.getElementById('polar-upwind').value);
+  const beam = parseFloat(document.getElementById('polar-beam').value);
+  const downwind = parseFloat(document.getElementById('polar-downwind').value);
+  if (isNaN(upwind) || isNaN(beam) || isNaN(downwind)) {
+    polarFileStatus.textContent = 'Enter all three speeds';
+    polarFileStatus.style.color = '#f38ba8';
+    return;
+  }
+
+  // Reference speeds are at ~12 kn TWS. Scale linearly for other wind speeds.
+  const refTws = 12;
+  const twsValues = [6, 8, 10, 12, 14, 16, 20, 25];
+  const twaValues = [30, 45, 60, 75, 90, 110, 130, 150, 170, 180];
+
+  // Smooth interpolation: upwind=45°, beam=90°, downwind=150°
+  // Use cosine blending between the three anchor points
+  function speedAtTwa(twa) {
+    if (twa <= 45) {
+      // Below close-hauled angle: ramp from 0 at 30° to upwind at 45°
+      const t = Math.max(0, (twa - 30) / 15);
+      return upwind * t;
+    } else if (twa <= 90) {
+      // Upwind to beam: cosine blend
+      const t = (twa - 45) / 45;
+      return upwind + (beam - upwind) * (1 - Math.cos(t * Math.PI)) / 2;
+    } else if (twa <= 150) {
+      // Beam to downwind: cosine blend
+      const t = (twa - 90) / 60;
+      return beam + (downwind - beam) * (1 - Math.cos(t * Math.PI)) / 2;
+    } else {
+      // Downwind to dead run: slight decrease
+      const t = (twa - 150) / 30;
+      return downwind * (1 - 0.15 * t);
+    }
+  }
+
+  // Build CSV
+  let csv = 'twa/tws;' + twsValues.join(';') + '\n';
+  for (const twa of twaValues) {
+    const baseSpeed = speedAtTwa(twa);
+    const row = twsValues.map(tws => {
+      const scale = Math.min(1.3, Math.sqrt(tws / refTws)); // diminishing returns above refTws
+      return (baseSpeed * scale).toFixed(1);
+    });
+    csv += twa + ';' + row.join(';') + '\n';
+  }
+
+  localStorage.setItem('wr-polar-csv', csv);
+  polarFileStatus.textContent = `Generated: ${upwind}/${beam}/${downwind} kn (upwind/beam/downwind)`;
+  polarFileStatus.style.color = '#a6e3a1';
+  updateAnalyseButton();
+});
+
+// ── Route Weather Analysis ────────────────────────────────────────────────────
+
+const analyseBtn = document.getElementById('analyse-weather-btn');
+const routeWeatherPanel = document.getElementById('route-weather-panel');
+const routeWeatherTable = document.getElementById('route-weather-table');
+
+function updateAnalyseButton() {
+  const hasRoute = routeWaypoints.length > 0 || (startLatLon && endLatLon);
+  const hasPolar = !!localStorage.getItem('wr-polar-csv');
+  const hasDeparture = !!document.getElementById('departure-time').value;
+  const ready = hasRoute && hasPolar && hasDeparture && windTimesLoaded;
+  analyseBtn.disabled = !ready;
+
+  // Show what's missing as a hint below the button
+  const missing = [];
+  if (!hasRoute) missing.push('select a route');
+  if (!hasPolar) missing.push('upload a polar');
+  if (!hasDeparture) missing.push('set departure time');
+  if (!windTimesLoaded) missing.push('loading forecast…');
+  const hint = analyseBtn.nextElementSibling;
+  if (hint && hint.id === 'analyse-hint') {
+    hint.textContent = missing.length > 0 ? 'Need: ' + missing.join(', ') : '';
+  }
+}
+
+// Insert hint element after the button
+const analyseHint = document.createElement('span');
+analyseHint.id = 'analyse-hint';
+analyseHint.style.cssText = 'font-size:10px;color:#6c7086;display:block;margin-top:2px';
+analyseBtn.after(analyseHint);
+
+// Update the button state when relevant inputs change
+document.getElementById('departure-time').addEventListener('change', updateAnalyseButton);
+if (polarFileInput) polarFileInput.addEventListener('change', () => setTimeout(updateAnalyseButton, 100));
+document.getElementById('waypoints-route')?.addEventListener('change', () => setTimeout(updateAnalyseButton, 100));
+
+analyseBtn.addEventListener('click', async () => {
+  const polarCsv = localStorage.getItem('wr-polar-csv');
+  if (!polarCsv) return;
+
+  const depTime = document.getElementById('departure-time').value;
+  if (!depTime) return;
+  const departureMs = new Date(depTime).getTime();
+
+  // Build waypoint list from route selection or start/end markers
+  let waypoints = [];
+  if (routeWaypoints.length > 0 && startLatLon && endLatLon) {
+    waypoints = [startLatLon, ...routeWaypoints, endLatLon];
+  } else if (startLatLon && endLatLon) {
+    waypoints = [startLatLon, endLatLon];
+  }
+  if (waypoints.length < 2) return;
+
+  analyseBtn.disabled = true;
+  analyseBtn.textContent = 'Analysing…';
+  routeWeatherPanel.style.display = 'none';
+
+  try {
+    const results = await analyseRouteWeather(waypoints, departureMs, polarCsv, (pct) => {
+      analyseBtn.textContent = `Analysing… ${pct}%`;
+    });
+
+    // Render results table
+    const formatTime = (iso) => {
+      const d = new Date(iso);
+      return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    };
+    const windArrow = (dir) => {
+      if (dir == null) return '';
+      const chars = ['↓','↙','←','↖','↑','↗','→','↘'];
+      return chars[Math.round(dir / 45) % 8];
+    };
+
+    let html = `<tr style="border-bottom:1px solid #45475a;color:#a6adc8">
+      <th style="text-align:left;padding:2px 4px">WP</th>
+      <th style="text-align:left;padding:2px 4px">ETA</th>
+      <th style="text-align:right;padding:2px 4px">Dist</th>
+      <th style="text-align:right;padding:2px 4px">Wind</th>
+      <th style="text-align:right;padding:2px 4px">Gust</th>
+      <th style="text-align:right;padding:2px 4px">TWA</th>
+      <th style="text-align:right;padding:2px 4px">SOG</th>
+      <th style="text-align:right;padding:2px 4px">Wave</th>
+    </tr>`;
+
+    for (const r of results) {
+      const windCell = r.twsKn != null ? `${windArrow(r.twdDeg)} ${r.twsKn}` : '—';
+      const gustCell = r.gustKn != null ? `${r.gustKn}` : '—';
+      const twaCell = r.twaAbs != null ? `${r.twaAbs}°` : '—';
+      const sogCell = r.boatSpeedKn != null ? `${r.boatSpeedKn}` : '—';
+      const waveCell = r.waveHeightM != null ? `${r.waveHeightM}` : '—';
+      const gustWarning = r.gustKn != null && r.gustKn > 30;
+      const bgColor = gustWarning ? '#3a1f28' : (r.idx === 0 ? '#313244' : 'transparent');
+      html += `<tr style="border-bottom:1px solid #313244;background:${bgColor}">
+        <td style="padding:3px 4px;color:#89b4fa">${r.idx + 1}</td>
+        <td style="padding:3px 4px;white-space:nowrap">${formatTime(r.eta)}</td>
+        <td style="padding:3px 4px;text-align:right">${r.cumDistNm}</td>
+        <td style="padding:3px 4px;text-align:right;white-space:nowrap">${windCell}</td>
+        <td style="padding:3px 4px;text-align:right;color:${gustWarning ? '#f38ba8' : '#cdd6f4'}">${gustCell}</td>
+        <td style="padding:3px 4px;text-align:right">${twaCell}</td>
+        <td style="padding:3px 4px;text-align:right">${sogCell}</td>
+        <td style="padding:3px 4px;text-align:right">${waveCell}</td>
+      </tr>`;
+    }
+
+    // Summary row
+    const last = results[results.length - 1];
+    if (last) {
+      html += `<tr style="border-top:2px solid #45475a;font-weight:600">
+        <td colspan="2" style="padding:4px">Total</td>
+        <td style="padding:4px;text-align:right">${last.cumDistNm} nm</td>
+        <td colspan="2" style="padding:4px;text-align:right">${last.cumDurationH} h</td>
+        <td colspan="2"></td>
+      </tr>`;
+    }
+
+    routeWeatherTable.innerHTML = html;
+    routeWeatherPanel.style.display = 'block';
+
+    // Also add waypoint markers on the map showing weather
+    if (window._routeWeatherMarkers) {
+      window._routeWeatherMarkers.forEach(m => m.remove());
+    }
+    window._routeWeatherMarkers = results.map(r => {
+      const label = r.twsKn != null
+        ? `${windArrow(r.twdDeg)} ${r.twsKn} kn\n${formatTime(r.eta)}`
+        : formatTime(r.eta);
+      return L.circleMarker([r.lat, r.lon], {
+        radius: 5, color: '#a6e3a1', fillColor: '#a6e3a1', fillOpacity: 0.9,
+      }).bindTooltip(label, { direction: 'top', offset: [0, -8] }).addTo(map);
+    });
+
+    // Draw meteogram at the bottom of the map
+    const meteogramPanel = document.getElementById('meteogram-panel');
+    const meteogramCanvas = document.getElementById('meteogram-canvas');
+    const meteogramTooltip = document.getElementById('meteogram-tooltip');
+    if (meteogramPanel && meteogramCanvas) {
+      meteogramPanel.style.display = 'flex';
+      meteogramPanel.style.flexDirection = 'column';
+      // Render after layout settles
+      requestAnimationFrame(() => {
+        drawMeteogram(meteogramCanvas, results);
+        setupMeteogramTooltip(meteogramCanvas, meteogramTooltip, results);
+      });
+    }
+
+    // Wire meteogram collapse/expand toggle
+    document.getElementById('meteogram-handle')?.addEventListener('click', () => {
+      const body = document.getElementById('meteogram-body');
+      if (body.style.display === 'none') {
+        body.style.display = '';
+        document.getElementById('meteogram-toggle').textContent = '▼';
+      } else {
+        body.style.display = 'none';
+        document.getElementById('meteogram-toggle').textContent = '▶';
+      }
+    });
+
+  } catch (e) {
+    routeWeatherTable.innerHTML = `<tr><td style="color:#f38ba8;padding:8px">${e.message || e}</td></tr>`;
+    routeWeatherPanel.style.display = 'block';
+  } finally {
+    analyseBtn.textContent = 'Analyse Route Weather';
+    analyseBtn.disabled = false;
+  }
+});
+
+// Update analyse button when wind times finish loading
+const origInitWindScrubber = initWindScrubber;
+// Can't override — initWindScrubber is a function declaration. Call updateAnalyseButton after init instead.
+setTimeout(() => {
+  // Poll until wind times are loaded, then enable the button
+  const poll = setInterval(() => {
+    updateAnalyseButton();
+    if (windTimesLoaded) clearInterval(poll);
+  }, 1000);
+}, 500);
+
+// SK server URL settings
+const skUrlInput = document.getElementById('sk-server-url');
+if (skUrlInput) {
+  // Show the effective URL (after auto-detection / normalization)
+  skUrlInput.value = SK_BASE || '';
+  skUrlInput.placeholder = SK_BASE ? SK_BASE : 'auto (same origin)';
+  skUrlInput.addEventListener('change', () => {
+    let val = skUrlInput.value.trim().replace(/\/+$/, '');
+    // Auto-prepend http:// for bare hostnames
+    if (val && !val.startsWith('http://') && !val.startsWith('https://')) {
+      val = 'http://' + val;
+    }
+    if (val) localStorage.setItem('wr-signalk-url', val);
+    else localStorage.removeItem('wr-signalk-url');
+    location.reload();
+  });
+}
+
+// Always init the wind scrubber (Windy tiles — no SK server needed)
+loadGribInfo();
+initWindScrubber();
 loadConfig();
-loadRegions();
-connectVesselPositionStream();
+
+// SK-dependent features: only attempt if a server is configured or same-origin
+(async () => {
+  try {
+    const probe = await skFetch('/signalk', { signal: AbortSignal.timeout(3000) });
+    if (!probe.ok) throw new Error('not ok');
+    console.log('[startup] SignalK server reachable');
+    loadCharts();
+    loadDepartureResources();
+    loadWaypointRoutes();
+    loadRegions();
+    connectVesselPositionStream();
+  } catch {
+    console.log('[startup] SignalK server not reachable — SK features disabled');
+    document.getElementById('status-box').textContent = 'Ready (no SignalK server)';
+  }
+})();
 
 async function apiFetch(url, options = {}) {
   const res = await fetch(url, { ...options, credentials: 'include' });
@@ -431,7 +745,7 @@ async function loadCharts() {
   ];
 
   try {
-    const r = await apiFetch('/signalk/v2/api/resources/charts');
+    const r = await skFetch('/signalk/v2/api/resources/charts');
     if (r.ok) {
       const data = await r.json();
       for (const [id, chart] of Object.entries(data)) {
@@ -464,8 +778,8 @@ async function loadDepartureResources() {
   const entries = [];
 
   const [routesRes, wpsRes] = await Promise.allSettled([
-    apiFetch('/signalk/v2/api/resources/routes'),
-    apiFetch('/signalk/v2/api/resources/waypoints'),
+    skFetch('/signalk/v2/api/resources/routes'),
+    skFetch('/signalk/v2/api/resources/waypoints'),
   ]);
 
   if (routesRes.status === 'fulfilled' && routesRes.value.ok) {
@@ -512,7 +826,7 @@ function clearRouteWaypoints() {
 async function loadWaypointRoutes() {
   let data;
   try {
-    const r = await apiFetch('/signalk/v2/api/resources/routes');
+    const r = await skFetch('/signalk/v2/api/resources/routes');
     if (!r.ok) return;
     data = await r.json();
   } catch {
@@ -575,6 +889,7 @@ document.getElementById('waypoints-route').addEventListener('change', (e) => {
   // Reset departure resource — it now refers to a different position
   document.getElementById('departure-resource').value = '';
   updateCalcButton();
+  updateAnalyseButton();
 });
 
 async function loadConfig() {
@@ -592,7 +907,7 @@ async function loadConfig() {
   if (cfg.forecastSkillHorizonHours != null) forecastSkillHorizonHours = cfg.forecastSkillHorizonHours;
 
   try {
-    const up = await fetch('/signalk/v1/unitpreferences/active');
+    const up = await skFetch('/signalk/v1/unitpreferences/active');
     if (up.ok) unitPrefs = (await up.json()).categories;
   } catch {
     /* offline or not supported — fall back to kn/m/nmi */
@@ -636,7 +951,7 @@ document.getElementById('departure-resource').addEventListener('change', (e) => 
 
 function connectVesselPositionStream() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(`${proto}//${location.host}/signalk/v1/stream?subscribe=none`);
+  const ws = new WebSocket(skWebSocketUrl('/signalk/v1/stream?subscribe=none'));
   vesselPositionWs = ws;
   ws.onopen = () => {
     ws.send(
@@ -711,7 +1026,7 @@ async function loadRegions() {
   try {
     // Fetch regions from the standard SignalK Resources API.
     // Returns an object keyed by UUID.
-    const r = await fetch('/signalk/v2/api/resources/regions');
+    const r = await skFetch('/signalk/v2/api/resources/regions');
     if (!r.ok) {
       regionList = [];
       return;
@@ -2105,10 +2420,23 @@ function activatePlacing(which) {
 }
 
 function updateCalcButton() {
-  // In Windy mode (no GRIB files), the button is enabled when start+end are set and wind times are loaded.
-  // In server mode, also requires gribLoaded && gribWarningAcked.
-  const hasData = gribLoaded || windTimesLoaded; // either GRIB or Windy tiles
-  calcBtn.disabled = !(startLatLon && endLatLon && hasData && (gribWarningAcked || !gribLoaded));
+  const hasData = gribLoaded || windTimesLoaded;
+  const ready = startLatLon && endLatLon && hasData && (gribWarningAcked || !gribLoaded);
+  calcBtn.disabled = !ready;
+
+  // Show hint below the button
+  let calcHint = document.getElementById('calc-hint');
+  if (!calcHint) {
+    calcHint = document.createElement('span');
+    calcHint.id = 'calc-hint';
+    calcHint.style.cssText = 'font-size:10px;color:#6c7086;display:block;margin-top:2px';
+    calcBtn.after(calcHint);
+  }
+  const missing = [];
+  if (!startLatLon) missing.push('set start point');
+  if (!endLatLon) missing.push('set destination');
+  if (!hasData) missing.push('loading forecast…');
+  calcHint.textContent = missing.length > 0 ? 'Need: ' + missing.join(', ') : '';
 }
 
 function setTestRoute(s, e, departureValue) {
@@ -2239,10 +2567,17 @@ map.on('moveend', () => {
 });
 
 map.on('zoomend moveend', () => {
-  if (allWindPoints.length > 0 && document.getElementById('wind-overlay-toggle').checked) renderWindOverlay();
-  if (allWavePoints.length > 0 && document.getElementById('wave-overlay-toggle').checked) renderWaveOverlay();
-  if (allCurrentPoints.length > 0 && document.getElementById('current-overlay-toggle').checked)
+  if (document.getElementById('wind-overlay-toggle').checked && windTimesLoaded) {
+    const idx = parseInt(document.getElementById('time-scrubber').value) || 0;
+    fetchWindPoints(idx);
+  }
+  if (document.getElementById('wave-overlay-toggle').checked && windTimesLoaded) {
+    const idx = parseInt(document.getElementById('time-scrubber').value) || 0;
+    fetchWavePoints(idx);
+  }
+  if (document.getElementById('current-overlay-toggle').checked && allCurrentPoints.length > 0) {
     renderCurrentOverlay();
+  }
 });
 
 map.on('click', (e) => {
@@ -2373,7 +2708,7 @@ modalSaveBtn.addEventListener('click', async () => {
       name,
       feature: pendingRouteData.feature,
     };
-    const r = await fetch('/signalk/v2/api/resources/routes', {
+    const r = await skFetch('/signalk/v2/api/resources/routes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(routeBody),
