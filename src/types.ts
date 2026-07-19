@@ -10,6 +10,13 @@ export interface WindVector {
   v: number; // northward m/s
 }
 
+export interface BoundingBox {
+  readonly latMin: number;
+  readonly latMax: number;
+  readonly lonMin: number;
+  readonly lonMax: number;
+}
+
 // Metadata read from a GRIB file at startup — no grid data loaded yet.
 export interface GribFileMeta {
   path: string;
