@@ -177,15 +177,16 @@ export class WindyForecastSource implements ForecastSource {
     fromMs: number,
     toMs: number,
   ): Promise<ForecastPoint[]> {
-    // Fetch wind forecast + both minifests in parallel.
-    const [windResponse, windMinifest, cmemsMinifest] = await Promise.all([
+    // Fetch wind forecast + all needed minifests in parallel.
+    // Waves live on ecmwf-wam (separate from the main wind model).
+    const [windResponse, , waveMinifest, cmemsMinifest] = await Promise.all([
       this.client.getForecastFor({ lat, lon }, this.model),
       this.client.getMinifest(this.model),
+      this.client.getMinifest('ecmwf'),
       this.client.getMinifest('cmems'),
     ]);
 
-    const windModelInfo = WINDY_MODELS[this.model];
-    const windModelRun = refToCompact(windMinifest.ref);
+    const waveModelRun = refToCompact(waveMinifest.ref);
     const cmemsModelRun = refToCompact(cmemsMinifest.ref);
     const cmemsHorizonMs = new Date(cmemsMinifest.end).getTime();
 
@@ -207,11 +208,11 @@ export class WindyForecastSource implements ForecastSource {
 
         // 2. Wave height from tile — one tile covers all nearby waypoints.
         let waveHeightM: number | undefined;
-        const waveStep = closestStep(windMinifest, timeMs);
+        const waveStep = closestStep(waveMinifest, timeMs);
         if (waveStep !== undefined) {
           const wavePx = await this.sampleOverlay(
             lat, lon,
-            windModelInfo.minifestId, windModelRun,
+            'ecmwf-wam', waveModelRun,
             waveStep.compact, 'waves', false,
           ).catch(() => undefined);
           if (wavePx?.hasData === true) waveHeightM = wavePx.speed;
