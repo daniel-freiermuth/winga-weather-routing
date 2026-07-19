@@ -1,3 +1,5 @@
+import type { WaypointWeather } from './route-weather';
+
 // Meteogram — canvas-based timeline chart for route weather analysis results.
 //
 // Draws wind speed, wind direction arrows, wave height, and boat speed
@@ -9,7 +11,7 @@
  * @param {HTMLCanvasElement} canvas
  * @param {Array<import('./route-weather.js').WaypointWeather>} data
  */
-export function drawMeteogram(canvas, data) {
+export function drawMeteogram(canvas: HTMLCanvasElement, data: WaypointWeather[]) {
   if (data.length < 2) return;
 
   const dpr = window.devicePixelRatio || 1;
@@ -35,8 +37,8 @@ export function drawMeteogram(canvas, data) {
 
   // Data ranges
   const times = data.map(d => d.etaMs);
-  const tMin = times[0];
-  const tMax = times[times.length - 1];
+  const tMin = times[0]!;
+  const tMax = times[times.length - 1]!;
   const tRange = tMax - tMin || 1;
 
   const winds = data.map(d => d.twsKn ?? 0);
@@ -48,10 +50,10 @@ export function drawMeteogram(canvas, data) {
   const maxWave = Math.max(1, ...waves) * 1.3;
   const maxSpeed = Math.max(maxWind, Math.max(5, ...speeds) * 1.15);
 
-  function tx(ms) { return ml + ((ms - tMin) / tRange) * plotW; }
-  function tyWind(kn) { return mt + plotH - (kn / maxWind) * plotH; }
-  function tyWave(m) { return mt + plotH - (m / maxWave) * (plotH * 0.3); } // waves use bottom 30%
-  function tySpeed(kn) { return mt + plotH - (kn / maxSpeed) * plotH; }
+  function tx(ms: number) { return ml + ((ms - tMin) / tRange) * plotW; }
+  function tyWind(kn: number) { return mt + plotH - (kn / maxWind) * plotH; }
+  function tyWave(m: number) { return mt + plotH - (m / maxWave) * (plotH * 0.3); } // waves use bottom 30%
+  function tySpeed(kn: number) { return mt + plotH - (kn / maxSpeed) * plotH; }
 
   // Background
   ctx.fillStyle = '#1e2230';
@@ -69,11 +71,11 @@ export function drawMeteogram(canvas, data) {
   if (waves.some(v => v > 0)) {
     ctx.fillStyle = 'rgba(116, 199, 236, 0.25)';
     ctx.beginPath();
-    ctx.moveTo(tx(times[0]), mt + plotH);
+    ctx.moveTo(tx(times[0]!), mt + plotH);
     for (let i = 0; i < data.length; i++) {
-      ctx.lineTo(tx(times[i]), tyWave(waves[i]));
+      ctx.lineTo(tx(times[i]!), tyWave(waves[i]!));
     }
-    ctx.lineTo(tx(times[times.length - 1]), mt + plotH);
+    ctx.lineTo(tx(times[times.length - 1]!), mt + plotH);
     ctx.closePath();
     ctx.fill();
 
@@ -82,7 +84,7 @@ export function drawMeteogram(canvas, data) {
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     for (let i = 0; i < data.length; i++) {
-      const x = tx(times[i]), y = tyWave(waves[i]);
+      const x = tx(times[i]!), y = tyWave(waves[i]!);
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.stroke();
@@ -91,11 +93,11 @@ export function drawMeteogram(canvas, data) {
   // Wind speed area
   ctx.fillStyle = 'rgba(137, 180, 250, 0.2)';
   ctx.beginPath();
-  ctx.moveTo(tx(times[0]), mt + plotH);
+  ctx.moveTo(tx(times[0]!), mt + plotH);
   for (let i = 0; i < data.length; i++) {
-    ctx.lineTo(tx(times[i]), tyWind(winds[i]));
+    ctx.lineTo(tx(times[i]!), tyWind(winds[i]!));
   }
-  ctx.lineTo(tx(times[times.length - 1]), mt + plotH);
+  ctx.lineTo(tx(times[times.length - 1]!), mt + plotH);
   ctx.closePath();
   ctx.fill();
 
@@ -104,7 +106,7 @@ export function drawMeteogram(canvas, data) {
   ctx.lineWidth = 2;
   ctx.beginPath();
   for (let i = 0; i < data.length; i++) {
-    const x = tx(times[i]), y = tyWind(winds[i]);
+    const x = tx(times[i]!), y = tyWind(winds[i]!);
     i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   }
 
@@ -114,12 +116,12 @@ export function drawMeteogram(canvas, data) {
     ctx.beginPath();
     // Upper edge: gust line (top)
     for (let i = 0; i < data.length; i++) {
-      const x = tx(times[i]), y = tyWind(gusts[i]);
+      const x = tx(times[i]!), y = tyWind(gusts[i]!);
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     // Lower edge: wind line (bottom), reversed
     for (let i = data.length - 1; i >= 0; i--) {
-      ctx.lineTo(tx(times[i]), tyWind(winds[i]));
+      ctx.lineTo(tx(times[i]!), tyWind(winds[i]!));
     }
     ctx.closePath();
     ctx.fill();
@@ -130,7 +132,7 @@ export function drawMeteogram(canvas, data) {
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
     for (let i = 0; i < data.length; i++) {
-      const x = tx(times[i]), y = tyWind(gusts[i]);
+      const x = tx(times[i]!), y = tyWind(gusts[i]!);
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.stroke();
@@ -145,7 +147,7 @@ export function drawMeteogram(canvas, data) {
     ctx.setLineDash([4, 3]);
     ctx.beginPath();
     for (let i = 0; i < data.length; i++) {
-      const x = tx(times[i]), y = tyWind(speeds[i]);
+      const x = tx(times[i]!), y = tyWind(speeds[i]!);
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.stroke();
@@ -155,9 +157,9 @@ export function drawMeteogram(canvas, data) {
   // Wind direction arrows along the top
   ctx.fillStyle = '#cdd6f4';
   for (let i = 0; i < data.length; i++) {
-    const d = data[i];
+    const d = data[i]!;
     if (d.twdDeg == null) continue;
-    const x = tx(times[i]);
+    const x = tx(times[i]!);
     const y = mt - 4;
     const rad = (d.twdDeg + 180) * Math.PI / 180; // arrow points in the direction wind blows TO
     const len = 7;
@@ -241,12 +243,12 @@ export function drawMeteogram(canvas, data) {
  * @param {HTMLElement} tooltip
  * @param {Array<import('./route-weather.js').WaypointWeather>} data
  */
-export function setupMeteogramTooltip(canvas, tooltip, data) {
+export function setupMeteogramTooltip(canvas: HTMLCanvasElement, tooltip: HTMLElement, data: WaypointWeather[]) {
   if (data.length < 2) return;
 
   const times = data.map(d => d.etaMs);
-  const tMin = times[0];
-  const tMax = times[times.length - 1];
+  const tMin = times[0]!;
+  const tMax = times[times.length - 1]!;
   const tRange = tMax - tMin || 1;
 
   canvas.addEventListener('mousemove', (e) => {
@@ -257,7 +259,7 @@ export function setupMeteogramTooltip(canvas, tooltip, data) {
     const t = ((mx - ml) / plotW) * tRange + tMin;
 
     // Find closest waypoint
-    let closest = data[0];
+    let closest = data[0]!;
     let minDiff = Infinity;
     for (const d of data) {
       const diff = Math.abs(d.etaMs - t);

@@ -17,13 +17,14 @@ import {
   latLonToTile,
   latLonToPixel,
 } from '@signalk-weather-routing/windy-lib';
+import type { WindyMinifest, WindyTileHeader } from '@signalk-weather-routing/windy-lib';
+import type { BoundingBox, LandIndex } from '../src/types';
 
 // ── Tile cache ────────────────────────────────────────────────────────────────
 
-/** @type {Map<string, Promise<{rgba: Uint8Array, header: object}>>} */
-const tileCache = new Map();
+const tileCache = new Map<string, Promise<{ rgba: Uint8Array; header: WindyTileHeader }>>();
 
-async function fetchTile(url) {
+async function fetchTile(url: string) {
   let pending = tileCache.get(url);
   if (pending) return pending;
   pending = (async () => {
@@ -40,10 +41,10 @@ async function fetchTile(url) {
 
 // ── Minifest cache ────────────────────────────────────────────────────────────
 
-const manifests = new Map();
+const manifests = new Map<string, { data: WindyMinifest; fetchedAt: number }>();
 const MANIFEST_TTL = 10 * 60 * 1000;
 
-async function getManifest(modelId) {
+async function getManifest(modelId: string) {
   const cached = manifests.get(modelId);
   if (cached && Date.now() - cached.fetchedAt < MANIFEST_TTL) return cached.data;
   const data = await fetchMinifest(modelId);
@@ -53,17 +54,19 @@ async function getManifest(modelId) {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
+type ForecastStep = { iso: string; compact: string };
+
 let windModel = 'ecmwf-hres';
-let windSteps = [];
-let waveSteps = [];
-let cmemsSteps = [];
+let windSteps: ForecastStep[] = [];
+let waveSteps: ForecastStep[] = [];
+let cmemsSteps: ForecastStep[] = [];
 let windModelRun = '';
 let waveModelRun = '';
 let cmemsModelRun = '';
 
-export function setWindModel(model) {
-  const models = { ecmwf: 'ecmwf-hres', gfs: 'gfs', icon: 'icon' };
-  windModel = models[model] || 'ecmwf-hres';
+export function setWindModel(model: string) {
+  const models: Record<string, string> = { ecmwf: 'ecmwf-hres', gfs: 'gfs', icon: 'icon' };
+  windModel = models[model] ?? 'ecmwf-hres';
 }
 
 /**
@@ -94,7 +97,7 @@ export async function loadTimesFromWindy() {
 
 const ZOOM = 3;
 
-function closestStep(steps, targetMs) {
+function closestStep(steps: ForecastStep[], targetMs: number) {
   let best = steps[0];
   let bestDiff = Infinity;
   for (const s of steps) {
@@ -118,7 +121,7 @@ function closestStep(steps, targetMs) {
  * @param {AbortSignal} [signal]
  * @returns {Promise<Array<{lat:number, lon:number, u:number, v:number, speed:number}>>}
  */
-async function sampleOverlayGrid(model, modelRun, validTime, overlay, isOcean, bbox, step, signal) {
+async function sampleOverlayGrid(model: string, modelRun: string, validTime: string, overlay: string, isOcean: boolean, bbox: BoundingBox, step: number, signal?: AbortSignal) {
   // Determine which tiles cover the bbox
   const tl = latLonToTile(bbox.latMax, bbox.lonMin, ZOOM);
   const br = latLonToTile(bbox.latMin, bbox.lonMax, ZOOM);
@@ -175,7 +178,7 @@ async function sampleOverlayGrid(model, modelRun, validTime, overlay, isOcean, b
  * @param {AbortSignal} [signal]
  * @returns {Promise<{lat:number,lon:number,u:number,v:number}[]>}
  */
-export async function fetchWindGrid(timeIdx, bbox, signal) {
+export async function fetchWindGrid(timeIdx: number, bbox: BoundingBox, signal?: AbortSignal) {
   const step = windSteps[timeIdx];
   if (!step) return [];
   return sampleOverlayGrid(windModel, windModelRun, step.compact, 'wind', false, bbox, 0.5, signal);
@@ -188,7 +191,7 @@ export async function fetchWindGrid(timeIdx, bbox, signal) {
  * @param {AbortSignal} [signal]
  * @returns {Promise<{points: {lat:number,lon:number,waveHeight:number}[], timeMs: number}>}
  */
-export async function fetchWaveGrid(timeIdx, bbox, signal) {
+export async function fetchWaveGrid(timeIdx: number, bbox: BoundingBox, signal?: AbortSignal) {
   const windStep = windSteps[timeIdx];
   if (!windStep) return { points: [], timeMs: 0 };
   const windTimeMs = new Date(windStep.iso).getTime();
@@ -209,7 +212,7 @@ export async function fetchWaveGrid(timeIdx, bbox, signal) {
  * @param {AbortSignal} [signal]
  * @returns {Promise<{lat:number,lon:number,u:number,v:number}[]>}
  */
-export async function fetchCurrentGrid(timeMs, bbox, signal) {
+export async function fetchCurrentGrid(timeMs: number, bbox: BoundingBox, signal?: AbortSignal) {
   const step = closestStep(cmemsSteps, timeMs);
   if (!step) return [];
   const raw = await sampleOverlayGrid('cmems', cmemsModelRun, step.compact, 'seacurrents', true, bbox, 0.5, signal);
@@ -225,8 +228,15 @@ export async function fetchCurrentGrid(timeMs, bbox, signal) {
  * @param {number} timeMs  target time in ms since epoch
  * @returns {Promise<{wind:{u:number,v:number}|null, gustMs:number|null, waveHeightM:number|null, current:{u:number,v:number}|null}>}
  */
-export async function queryPointWeather(lat, lon, timeMs) {
-  const result = { wind: null, gustMs: null, waveHeightM: null, current: null };
+interface PointWeather {
+  wind: { u: number; v: number } | null;
+  gustMs: number | null;
+  waveHeightM: number | null;
+  current: { u: number; v: number } | null;
+}
+
+export async function queryPointWeather(lat: number, lon: number, timeMs: number): Promise<PointWeather> {
+  const result: PointWeather = { wind: null, gustMs: null, waveHeightM: null, current: null };
 
   const windStep = closestStep(windSteps, timeMs);
   const { x, y } = latLonToTile(lat, lon, ZOOM);
@@ -262,7 +272,7 @@ export async function queryPointWeather(lat, lon, timeMs) {
   }
 
   // Current from CMEMS tile (72h horizon)
-  const cmemsEnd = cmemsSteps.length > 0 ? new Date(cmemsSteps[cmemsSteps.length - 1].iso).getTime() : 0;
+  const cmemsEnd = cmemsSteps.length > 0 ? new Date(cmemsSteps[cmemsSteps.length - 1]!.iso).getTime() : 0;
   if (timeMs <= cmemsEnd) {
     const curStep = closestStep(cmemsSteps, timeMs);
     if (curStep) {
@@ -283,8 +293,8 @@ export async function queryPointWeather(lat, lon, timeMs) {
 import { fetchLandIndex, parseIndexFromArrayBuffer } from '../src/lib/land-index-loader';
 import { polygonsInBbox, buildLandIndex } from '../src/lib/landmask';
 
-let landIndex = null;       // LandIndex for the standard (h-tier) coastline
-let dilatedLandIndex = null; // LandIndex for the dilated (safety margin) coastline
+let landIndex: LandIndex | null = null;       // LandIndex for the standard (h-tier) coastline
+let dilatedLandIndex: LandIndex | null = null; // LandIndex for the dilated (safety margin) coastline
 
 /**
  * Load the land edge-index binary from a URL. Call once; subsequent calls
@@ -293,7 +303,7 @@ let dilatedLandIndex = null; // LandIndex for the dilated (safety margin) coastl
  * @param {string} url           URL to edge-index.bin.gz
  * @param {string} [dilatedUrl]  URL to dilated-edge-index.bin.gz (optional)
  */
-export async function loadLandData(url, dilatedUrl) {
+export async function loadLandData(url: string, dilatedUrl?: string) {
   if (!landIndex) {
     const edgeIndex = await fetchLandIndex(url);
     landIndex = buildLandIndex(edgeIndex.polygons);
@@ -322,7 +332,7 @@ export function dilatedLandDataReady() { return dilatedLandIndex !== null; }
  * @param {boolean} [dilated=false]
  * @returns {{type:string, features:object[]}}
  */
-export function getLandPolygonsGeoJSON(bbox, dilated = false) {
+export function getLandPolygonsGeoJSON(bbox: BoundingBox, dilated = false) {
   const idx = dilated ? dilatedLandIndex : landIndex;
   if (!idx) return { type: 'FeatureCollection', features: [] };
 

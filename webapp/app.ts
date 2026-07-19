@@ -1,6 +1,54 @@
-import * as dataLayer from './data-layer.js';
-import { analyseRouteWeather } from './route-weather.js';
-import { drawMeteogram, setupMeteogramTooltip } from './meteogram.js';
+declare const L: typeof import('leaflet');
+
+declare global {
+  interface Window {
+    _map: L.Map;
+    _routeWeatherMarkers?: L.CircleMarker[];
+  }
+}
+
+type UnitCategory = 'speed' | 'depth' | 'distance';
+type LatLon = { lat: number; lon: number };
+
+interface WindPoint { lat: number; lon: number; u: number; v: number }
+interface WavePoint { lat: number; lon: number; waveHeight: number }
+interface CurrentPoint { lat: number; lon: number; u: number; v: number }
+
+interface GribFileMeta {
+  path: string; type?: string;
+  latMin: number; latMax: number; lonMin: number; lonMax: number;
+  timeStart: string; timeEnd: string; nTimes: number;
+  referenceTime?: string;
+}
+
+interface WaypointMeta {
+  name: string; time: string;
+  windDir: number; heading: number; twa: number; tws: number;
+  boatSpeed?: number; waveHeight?: number; gribFile?: string;
+}
+
+interface GraphLayout {
+  VW: number; ml: number; pw: number; mt: number; ph: number;
+  hasWave: boolean; hasGrib: boolean;
+  maxLeft: number; maxBoatSpeed: number; maxWave: number;
+}
+
+interface RouteData {
+  feature: {
+    type: string;
+    geometry: { type: string; coordinates: number[][] };
+    properties: { coordinatesMeta: WaypointMeta[] };
+  };
+}
+
+interface UnitPref {
+  formula?: string; inverseFormula?: string;
+  displayFormat?: string; symbol?: string;
+}
+
+import * as dataLayer from './data-layer';
+import { analyseRouteWeather } from './route-weather';
+import { drawMeteogram, setupMeteogramTooltip } from './meteogram';
 
 const API = '/plugins/signalk-weather-routing'; // legacy — only used by dead GRIB code paths
 
@@ -35,7 +83,7 @@ function detectSkBase() {
 const SK_BASE = detectSkBase();
 
 /** Fetch from the SignalK server. Prepends SK_BASE to relative URLs. */
-function skFetch(path, options) {
+function skFetch(path: string, options?: RequestInit) {
   const url = path.startsWith('http') ? path : SK_BASE + path;
   // Cross-origin: omit credentials — SK servers return Access-Control-Allow-Origin: *
   // which is incompatible with credentials: 'include'.
@@ -43,7 +91,7 @@ function skFetch(path, options) {
 }
 
 /** Build a WebSocket URL for the SignalK server. */
-function skWebSocketUrl(path) {
+function skWebSocketUrl(path: string): string {
   if (SK_BASE) {
     const base = SK_BASE.replace(/^http/, 'ws');
     return base + path;
@@ -54,7 +102,7 @@ function skWebSocketUrl(path) {
 
 // Escapes HTML special characters for safe insertion into innerHTML (BUG-117).
 // Also escapes quotes for safe use inside HTML attributes.
-function escapeHtml(str) {
+function escapeHtml(str: string): string {
   return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -64,8 +112,8 @@ function escapeHtml(str) {
 }
 
 const DISCLAIMER_KEY = 'wr-disclaimer-v1';
-const disclaimerOverlay = document.getElementById('disclaimer-overlay');
-const disclaimerOk = document.getElementById('disclaimer-ok');
+const disclaimerOverlay = document.getElementById('disclaimer-overlay')!;
+const disclaimerOk = document.getElementById('disclaimer-ok')!;
 if (!localStorage.getItem(DISCLAIMER_KEY)) disclaimerOverlay.classList.add('visible');
 disclaimerOk.addEventListener('click', () => {
   localStorage.setItem(DISCLAIMER_KEY, '1');
@@ -82,71 +130,71 @@ map.createPane('landPane').style.zIndex = '250';
 map.createPane('landDilatedPane').style.zIndex = '248';
 map.createPane('regionPane').style.zIndex = '240';
 
-let startLatLon = null;
-let endLatLon = null;
-let placing = null;
-let vesselPosition = null;
-let vesselPositionWs = null;
-let routeWaypoints = []; // intermediate {lat,lon} points from a selected SignalK route
-let routeWaypointMarkers = []; // Leaflet markers for those intermediate points
-let waypointRoutes = []; // [{ label, coords: [[lon,lat],...] }] from SignalK resources
-let windOverlayLayer = null;
-let allWindPoints = [];
-let waveOverlayLayer = null;
-let allWavePoints = [];
-let waveGridMeta = null;
+let startLatLon: LatLon | null = null;
+let endLatLon: LatLon | null = null;
+let placing: string | null = null;
+let vesselPosition: LatLon | null = null;
+let vesselPositionWs: WebSocket | null = null;
+let routeWaypoints: LatLon[] = []; // intermediate {lat,lon} points from a selected SignalK route
+let routeWaypointMarkers: L.Marker[] = []; // Leaflet markers for those intermediate points
+let waypointRoutes: { label: string; coords: number[][] }[] = []; // [{ label, coords: [[lon,lat],...] }] from SignalK resources
+let windOverlayLayer: L.LayerGroup | null = null;
+let allWindPoints: WindPoint[] = [];
+let waveOverlayLayer: L.ImageOverlay | null = null;
+let allWavePoints: WavePoint[] = [];
+let waveGridMeta: { latMin: number; latMax: number; lonMin: number; lonMax: number; latStep: number; lonStep: number } | null = null;
 let waveOverlayMaxM = 3.0;
-let currentOverlayLayer = null;
-let allCurrentPoints = [];
-let currentBoundsLayer = null;
+let currentOverlayLayer: L.LayerGroup | null = null;
+let allCurrentPoints: CurrentPoint[] = [];
+let currentBoundsLayer: L.Rectangle | null = null;
 let currentEnabled = true;
-let unitPrefs = null;
+let unitPrefs: Record<string, UnitPref> | null = null;
 let windSpeedMs = false;
 let conditionsGraphHeight = 200;
-let windTimes = []; // unified time axis (wind + current), sorted
+let windTimes: string[] = []; // unified time axis (wind + current), sorted
 let windTimesCount = 0; // number of entries that are wind-native (for clamping overlay calls)
-let routeScrubberRange = null; // { i0, iN } when a route is active, null otherwise
+let routeScrubberRange: { i0: number; iN: number } | null = null; // { i0, iN } when a route is active, null otherwise
 let scrubberLockedToRoute = false; // true when scrubber is locked to route duration
-let windNativeTimes = []; // wind-only timestamps, for checking coverage at timeIdx
+let windNativeTimes: string[] = []; // wind-only timestamps, for checking coverage at timeIdx
 let windTimesLoaded = false;
-let actualWindTimes = null;
-let currentFileTimes = []; // cached times from the loaded current GRIB
-let routeLayer = null;
-let windBarbLayer = null;
-let legLabelLayer = null;
-let windBarbMarkers = []; // parallel to windBarbLayer: Leaflet marker refs for highlight
-let routeLegCoords = []; // [[latA,lngA],[latB,lngB]] per leg for highlight polyline
-let highlightLegLayer = null;
+let actualWindTimes: string[] | null = null;
+let currentFileTimes: string[] = []; // cached times from the loaded current GRIB
+let routeLayer: L.Polyline | null = null;
+let windBarbLayer: L.LayerGroup | null = null;
+let legLabelLayer: L.LayerGroup | null = null;
+let windBarbMarkers: (L.Marker | null)[] = []; // parallel to windBarbLayer: Leaflet marker refs for highlight
+let routeLegCoords: L.LatLngTuple[][] = []; // [[latA,lngA],[latB,lngB]] per leg for highlight polyline
+let highlightLegLayer: L.Polyline | null = null;
 let prevHighlightWpIdx = -1;
 const ISOCHRONE_COLOURS = ['#000000', '#4477ff', '#8833cc', '#cc3333'];
 let isochroneLayerGroup = L.layerGroup().addTo(map);
-let regionLayer = null;
-let regionList = []; // { id, name, geometry } from resources API
-let regionAvoidIds = []; // list of UUIDs currently marked as avoid
+let regionLayer: L.GeoJSON | null = null;
+let regionList: { id: string; name: string; geometry?: any; _id?: string }[] = []; // { id, name, geometry } from resources API
+let regionAvoidIds: string[] = []; // list of UUIDs currently marked as avoid
 let avoidRegionListDirty = false;
 
 // Unit conversion helpers: plugin-internal units (kn, m, nmi) ↔ SignalK preset display units.
-const _toSI = { speed: (v) => v * 0.514444, depth: (v) => v, distance: (v) => v * 1852.001 };
-const _fromSI = { speed: (v) => v * 1.94384, depth: (v) => v, distance: (v) => v / 1852.001 };
+const _toSI = { speed: (v: number) => v * 0.514444, depth: (v: number) => v, distance: (v: number) => v * 1852.001 };
+const _fromSI = { speed: (v: number) => v * 1.94384, depth: (v: number) => v, distance: (v: number) => v / 1852.001 };
 // 'nmi' follows SignalK's own symbol for nautical miles (IEEE / US GPO standard).
 // ICAO uses 'NM'; IHO uses 'M'. We match SignalK to stay consistent across the system.
 const _fallbackSym = { speed: 'kn', depth: 'm', distance: 'nmi' };
 
-function _evalFormula(formula, value) {
+function _evalFormula(formula: string, value: number): number {
   const m = formula.match(/^value\s*([*/+\-])\s*([\d.]+)$/);
   if (!m) return value;
-  const n = parseFloat(m[2]);
-  return m[1] === '*' ? value * n : m[1] === '/' ? value / n : m[1] === '+' ? value + n : value - n;
+  const n = parseFloat(m[2]!);
+  return m[1]! === '*' ? value * n : m[1]! === '/' ? value / n : m[1]! === '+' ? value + n : value - n;
 }
 
-function _toDisplay(value, category, forceMs = false) {
+function _toDisplay(value: number, category: UnitCategory, forceMs = false): number {
   if (forceMs) return _toSI[category](value);
   const p = unitPrefs?.[category];
   if (!p?.formula) return value;
   return _evalFormula(p.formula, _toSI[category](value));
 }
 
-function _fmt(value, category, forceMs = false) {
+function _fmt(value: number, category: UnitCategory, forceMs = false): { num: string; sym: string } {
   if (forceMs) return { num: _toSI[category](value).toFixed(2), sym: 'm/s' };
   const p = unitPrefs?.[category];
   if (!p?.formula) return { num: value.toFixed(1), sym: _fallbackSym[category] };
@@ -154,10 +202,10 @@ function _fmt(value, category, forceMs = false) {
   const fmtStr = p.displayFormat ?? '';
   const dot = fmtStr.indexOf('.');
   const decimals = dot >= 0 ? fmtStr.length - dot - 1 : 0;
-  return { num: raw.toFixed(decimals), sym: p.symbol };
+  return { num: raw.toFixed(decimals), sym: p.symbol ?? '' };
 }
 
-function _parse(displayVal, category, forceMs = false) {
+function _parse(displayVal: number, category: UnitCategory, forceMs = false): number {
   if (forceMs) return displayVal * 1.94384; // m/s → kn
   const p = unitPrefs?.[category];
   if (!p?.inverseFormula) return displayVal;
@@ -168,36 +216,36 @@ function _parse(displayVal, category, forceMs = false) {
 // Leaflet draws polyline segments between non-adjacent points, producing a tangled web
 // of crossing lines. splitByAngularGap then breaks the sorted ring at large gaps so
 // a frontier that wraps past north doesn't close a spurious segment across the map.
-function sortByBearing(pts, origin) {
+function sortByBearing(pts: number[][], origin: LatLon): number[][] {
   return pts
     .slice()
     .sort(
-      (a, b) =>
-        Math.atan2(a[1] - origin.lon, a[0] - origin.lat) - Math.atan2(b[1] - origin.lon, b[0] - origin.lat),
+      (a: number[], b: number[]) =>
+        Math.atan2(a[1]! - origin.lon, a[0]! - origin.lat) - Math.atan2(b[1]! - origin.lon, b[0]! - origin.lat),
     );
 }
 
 const ISOCHRONE_GAP_THRESHOLD_DEG = 10;
 
-function splitByAngularGap(pts, origin, thresholdDeg) {
+function splitByAngularGap(pts: number[][], origin: LatLon, thresholdDeg: number): number[][][] {
   if (pts.length < 2) return [pts];
-  const bearing = (p) => (Math.atan2(p[1] - origin.lon, p[0] - origin.lat) * 180) / Math.PI;
+  const bearing = (p: number[]) => (Math.atan2(p[1]! - origin.lon, p[0]! - origin.lat) * 180) / Math.PI;
   const bearings = pts.map(bearing);
-  const angularGap = (a, b) => ((b - a + 540) % 360) - 180; // signed gap a→b, range (-180, 180]
-  const segments = [];
-  let current = [pts[0]];
+  const angularGap = (a: number, b: number) => ((b - a + 540) % 360) - 180; // signed gap a→b, range (-180, 180]
+  const segments: number[][][] = [];
+  let current: number[][] = [pts[0]!];
   for (let i = 1; i < pts.length; i++) {
-    if (angularGap(bearings[i - 1], bearings[i]) > thresholdDeg) {
+    if (angularGap(bearings[i - 1]!, bearings[i]!) > thresholdDeg) {
       segments.push(current);
-      current = [pts[i]];
+      current = [pts[i]!];
     } else {
-      current.push(pts[i]);
+      current.push(pts[i]!);
     }
   }
   segments.push(current);
   // Merge last segment into first if the wrap-around gap is within threshold
-  if (segments.length > 1 && angularGap(bearings[bearings.length - 1], bearings[0] + 360) <= thresholdDeg) {
-    segments[0] = [...segments[segments.length - 1], ...segments[0]];
+  if (segments.length > 1 && angularGap(bearings[bearings.length - 1]!, bearings[0]! + 360) <= thresholdDeg) {
+    segments[0] = [...segments[segments.length - 1]!, ...segments[0]!];
     segments.pop();
   }
   return segments;
@@ -213,46 +261,46 @@ const C64_PALETTE = [
   '#bfce72', // Yellow
 ];
 
-let tileLayer = null;
-let gribBoundsLayers = []; // index-keyed array, entry may be null if file is unchecked
-let gribInfoFiles = []; // GribFileMeta[], ordered to match C64_PALETTE assignment
-let departureResources = []; // [{ label, lat, lon }] from routes + waypoints
-let landLayerOrig = null;
-let landLayerDilated = null;
+let tileLayer: L.TileLayer | null = null;
+let gribBoundsLayers: (L.Rectangle | null)[] = []; // index-keyed array, entry may be null if file is unchecked
+let gribInfoFiles: GribFileMeta[] = []; // GribFileMeta[], ordered to match C64_PALETTE assignment
+let departureResources: { label: string; lat: number; lon: number }[] = []; // [{ label, lat, lon }] from routes + waypoints
+let landLayerOrig: L.GeoJSON | null = null;
+let landLayerDilated: L.GeoJSON | null = null;
 let renderLandOverlayToken = 0;
 let dilatedIndexReady = false;
 let polarMinTws = 0; // set from /status; 0 keeps all barbs directional until polar loads (tws < 0 is never true)
-let dilatedPollTimer = null;
-let graphMeta = null;
-let graphLayout = null;
+let dilatedPollTimer: ReturnType<typeof setInterval> | null = null;
+let graphMeta: WaypointMeta[] | null = null;
+let graphLayout: GraphLayout | null = null;
 let gribLoaded = false; // kept for updateCalcButton backward compat
-let calcStream = null; // kept for server-mode compat (unused in webapp mode)
-let pendingRouteData = null; // route result from worker (replaces /pending-route)
+let calcStream: { close(): void } | null = null; // kept for server-mode compat (unused in webapp mode)
+let pendingRouteData: RouteData | null = null; // route result from worker (replaces /pending-route)
 
 // Routing Web Worker — runs isochrone off the main thread
 const routingWorker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 let enabledGribPaths = new Set(); // kept for enabledWindMeta() compat
-let currentInfoFiles = [];
+let currentInfoFiles: GribFileMeta[] = [];
 let gribTimesMap = new Map();
 let forecastSkillHorizonHours = 96;
 
 // --- enabled-set helpers (REQ-131): replace the old querySelector('[data-file-index]') checks ---
-function windFileEnabled(f) {
+function windFileEnabled(f: GribFileMeta): boolean {
   return f.type !== 'current' && enabledGribPaths.has(f.path);
 }
 function enabledWindMeta() {
   return gribInfoFiles.filter(windFileEnabled);
 }
 // Toggle one wind file: update state, bbox layer, scrubber axis, and overlays.
-function setGribEnabled(path, enabled) {
+function setGribEnabled(path: string, enabled: boolean) {
   const i = gribInfoFiles.findIndex((f) => f.path === path);
   if (i < 0) return;
   if (enabled) enabledGribPaths.add(path);
   else enabledGribPaths.delete(path);
   if (enabled) {
     if (!gribBoundsLayers[i]) {
-      const f = gribInfoFiles[i];
-      const color = C64_PALETTE[i % C64_PALETTE.length];
+      const f = gribInfoFiles[i]!;
+      const color = C64_PALETTE[i % C64_PALETTE.length]!;
       gribBoundsLayers[i] = L.rectangle(
         [
           [f.latMin, f.lonMin],
@@ -263,21 +311,21 @@ function setGribEnabled(path, enabled) {
     }
   } else {
     if (gribBoundsLayers[i]) {
-      map.removeLayer(gribBoundsLayers[i]);
+      map.removeLayer(gribBoundsLayers[i]!);
       gribBoundsLayers[i] = null;
     }
   }
   rebuildScrubberTimes();
-  const idx = parseInt(document.getElementById('time-scrubber').value);
+  const idx = parseInt((document.getElementById('time-scrubber') as HTMLInputElement).value);
   if (windTimesLoaded) fetchWindPoints(idx);
-  if (document.getElementById('wave-overlay-toggle').checked) fetchWavePoints(idx);
-  const summary = document.getElementById('grib-enabled-count');
+  if ((document.getElementById('wave-overlay-toggle') as HTMLInputElement).checked) fetchWavePoints(idx);
+  const summary = document.getElementById('grib-enabled-count')!;
   if (summary) summary.textContent = String(enabledGribPaths.size);
 }
 
 // Toggle ocean-current use: update state, bbox layer, scrubber axis, and current overlay.
 // (Extracted from the old sidebar current-toggle so the Grib Manager checkbox can drive it.)
-function setCurrentEnabled(enabled) {
+function setCurrentEnabled(enabled: boolean) {
   currentEnabled = enabled;
   rebuildScrubberTimes();
   if (currentEnabled) {
@@ -291,7 +339,7 @@ function setCurrentEnabled(enabled) {
         { color: '#89dceb', weight: 2, fill: false, dashArray: '6 4' },
       ).addTo(map);
     }
-    const scrubberVal = parseInt(document.getElementById('time-scrubber').value);
+    const scrubberVal = parseInt((document.getElementById('time-scrubber') as HTMLInputElement).value);
     const refMs = windTimes[scrubberVal] ? new Date(windTimes[scrubberVal]).getTime() : Date.now();
     fetchCurrentPoints(refMs);
   } else {
@@ -312,21 +360,21 @@ const endMarker = L.marker([0, 0], { icon: redIcon() }).addTo(map);
 startMarker.remove();
 endMarker.remove();
 
-const btnStart = document.getElementById('btn-start');
-const btnEnd = document.getElementById('btn-end');
-const startCoords = document.getElementById('start-coords');
-const endCoords = document.getElementById('end-coords');
-const calcBtn = document.getElementById('calculate');
-const landToggle = document.getElementById('land-toggle');
-const statusBox = document.getElementById('status-box');
-const progressWrap = document.getElementById('progress-bar-wrap');
-const progressBar = document.getElementById('progress-bar');
-const gribInfo = document.getElementById('grib-info');
+const btnStart = document.getElementById('btn-start')!;
+const btnEnd = document.getElementById('btn-end')!;
+const startCoords = document.getElementById('start-coords')!;
+const endCoords = document.getElementById('end-coords')!;
+const calcBtn = document.getElementById('calculate') as HTMLButtonElement;
+const landToggle = document.getElementById('land-toggle') as HTMLInputElement;
+const statusBox = document.getElementById('status-box')!;
+const progressWrap = document.getElementById('progress-bar-wrap')!;
+const progressBar = document.getElementById('progress-bar')!;
+const gribInfo = document.getElementById('grib-info')!;
 
 btnStart.addEventListener('click', () => activatePlacing('start'));
 btnEnd.addEventListener('click', () => activatePlacing('end'));
 
-map.on('click', (e) => {
+map.on('click', (e: L.LeafletMouseEvent) => {
   if (!placing) return;
   const { lat, lng } = e.latlng;
   if (placing === 'start') {
@@ -347,13 +395,13 @@ map.on('click', (e) => {
 });
 
 calcBtn.addEventListener('click', startCalculation);
-document.getElementById('run-test').addEventListener('click', runTest);
-document.getElementById('run-helsinki-test').addEventListener('click', runHelsinkiTest);
-document.getElementById('run-gothenburg-test').addEventListener('click', runGothenburgTest);
+document.getElementById('run-test')!.addEventListener('click', runTest);
+document.getElementById('run-helsinki-test')!.addEventListener('click', runHelsinkiTest);
+document.getElementById('run-gothenburg-test')!.addEventListener('click', runGothenburgTest);
 
-function updateScrubberLabel(idx) {
+function updateScrubberLabel(idx: number) {
   if (!windTimes[idx]) return;
-  document.getElementById('time-scrubber-label').textContent = new Date(windTimes[idx]).toLocaleString([], {
+  document.getElementById('time-scrubber-label')!.textContent = new Date(windTimes[idx]).toLocaleString([], {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -361,13 +409,13 @@ function updateScrubberLabel(idx) {
   });
 }
 
-let scrubberTimer = null;
-let windAbortCtrl = null;
-let waveAbortCtrl = null;
-let currentAbortCtrl = null;
+let scrubberTimer: ReturnType<typeof setTimeout> | null = null;
+let windAbortCtrl: AbortController | null = null;
+let waveAbortCtrl: AbortController | null = null;
+let currentAbortCtrl: AbortController | null = null;
 
-document.getElementById('time-scrubber').addEventListener('input', (e) => {
-  const idx = parseInt(e.target.value);
+document.getElementById('time-scrubber')!.addEventListener('input', (e) => {
+  const idx = parseInt((e.target as HTMLInputElement).value);
   updateScrubberLabel(idx);
   updateScrubberHighlight(idx);
   if (scrubberTimer) clearTimeout(scrubberTimer);
@@ -379,7 +427,7 @@ document.getElementById('time-scrubber').addEventListener('input', (e) => {
     if (waveAbortCtrl) waveAbortCtrl.abort();
     waveAbortCtrl = new AbortController();
     fetchWavePoints(idx, waveAbortCtrl.signal);
-    if (allCurrentPoints.length > 0 || document.getElementById('current-overlay-toggle').checked) {
+    if (allCurrentPoints.length > 0 || (document.getElementById('current-overlay-toggle') as HTMLInputElement).checked) {
       const timeMs = windTimes[idx] ? new Date(windTimes[idx]).getTime() : Date.now();
       if (currentAbortCtrl) currentAbortCtrl.abort();
       currentAbortCtrl = new AbortController();
@@ -389,40 +437,40 @@ document.getElementById('time-scrubber').addEventListener('input', (e) => {
 });
 
 // REQ-118: jump scrubber to the nearest available timestep to wall-clock now
-document.getElementById('jump-to-now').addEventListener('click', () => {
+document.getElementById('jump-to-now')!.addEventListener('click', () => {
   if (!windTimesLoaded) return;
   const nowMs = Date.now();
   let idx = windTimes.findIndex((t) => new Date(t).getTime() >= nowMs);
   if (idx < 0) idx = windTimes.length - 1;
-  const scrubber = document.getElementById('time-scrubber');
-  scrubber.value = idx;
+  const scrubber = document.getElementById('time-scrubber') as HTMLInputElement;
+  scrubber.value = String(idx);
   updateScrubberLabel(idx);
   fetchWindPoints(idx);
   fetchWavePoints(idx);
   if (currentEnabled || allCurrentPoints.length > 0) {
-    fetchCurrentPoints(windTimes[idx] ? new Date(windTimes[idx]).getTime() : Date.now());
+    fetchCurrentPoints(windTimes[idx] ? new Date(windTimes[idx]!).getTime() : Date.now());
   }
   updateScrubberHighlight(idx);
 });
 
-document.getElementById('scrubber-range-toggle').addEventListener('click', toggleScrubberRange);
+document.getElementById('scrubber-range-toggle')!.addEventListener('click', toggleScrubberRange);
 
 // REQ-111: copy current scrubber time into the departure time field
-document.getElementById('use-as-departure').addEventListener('click', () => {
-  const t = windTimes[parseInt(document.getElementById('time-scrubber').value)];
+document.getElementById('use-as-departure')!.addEventListener('click', () => {
+  const t = windTimes[parseInt((document.getElementById('time-scrubber') as HTMLInputElement).value)];
   if (!t) return;
-  document.getElementById('departure-time').value = toLocalDateTimeInput(new Date(t));
+  (document.getElementById('departure-time') as HTMLInputElement).value = toLocalDateTimeInput(new Date(t));
 });
 
 // REQ-116: clicking a ⏮ button on a GRIB file row jumps scrubber to that file's start time
 document.addEventListener('click', (e) => {
-  const btn = e.target.closest('.grib-jump-btn');
-  if (!btn || !windTimesLoaded || !btn.dataset.timeStart) return;
-  const ts = new Date(btn.dataset.timeStart).getTime();
+  const btn = (e.target as HTMLElement).closest('.grib-jump-btn');
+  if (!btn || !windTimesLoaded || !(btn as HTMLElement).dataset['timeStart']) return;
+  const ts = new Date((btn as HTMLElement).dataset['timeStart']!).getTime();
   const idx = windTimes.findIndex((t) => new Date(t).getTime() >= ts);
   if (idx < 0) return;
-  const scrubber = document.getElementById('time-scrubber');
-  scrubber.value = idx;
+  const scrubber = document.getElementById('time-scrubber') as HTMLInputElement;
+  scrubber.value = String(idx);
   updateScrubberLabel(idx);
   fetchWindPoints(idx);
   fetchWavePoints(idx);
@@ -434,11 +482,11 @@ document.addEventListener('click', (e) => {
 });
 
 const now = new Date(Math.ceil(Date.now() / 1800000) * 1800000);
-document.getElementById('departure-time').value = toLocalDateTimeInput(now);
+(document.getElementById('departure-time') as HTMLInputElement).value = toLocalDateTimeInput(now);
 
 // Polar file upload handler — stores CSV in localStorage for worker
-const polarFileInput = document.getElementById('polar-file-input');
-const polarFileStatus = document.getElementById('polar-file-status');
+const polarFileInput = document.getElementById('polar-file-input') as HTMLInputElement | null;
+const polarFileStatus = document.getElementById('polar-file-status')!;
 if (polarFileInput) {
   polarFileInput.addEventListener('change', async () => {
     const file = polarFileInput.files?.[0];
@@ -457,9 +505,9 @@ if (polarFileInput) {
 
 // Quick polar generator — approximate a full polar from 3 speed inputs
 document.getElementById('polar-generate-btn')?.addEventListener('click', () => {
-  const upwind = parseFloat(document.getElementById('polar-upwind').value);
-  const beam = parseFloat(document.getElementById('polar-beam').value);
-  const downwind = parseFloat(document.getElementById('polar-downwind').value);
+  const upwind = parseFloat((document.getElementById('polar-upwind') as HTMLInputElement).value);
+  const beam = parseFloat((document.getElementById('polar-beam') as HTMLInputElement).value);
+  const downwind = parseFloat((document.getElementById('polar-downwind') as HTMLInputElement).value);
   if (isNaN(upwind) || isNaN(beam) || isNaN(downwind)) {
     polarFileStatus.textContent = 'Enter all three speeds';
     polarFileStatus.style.color = '#f38ba8';
@@ -473,7 +521,7 @@ document.getElementById('polar-generate-btn')?.addEventListener('click', () => {
 
   // Smooth interpolation: upwind=45°, beam=90°, downwind=150°
   // Use cosine blending between the three anchor points
-  function speedAtTwa(twa) {
+  function speedAtTwa(twa: number): number {
     if (twa <= 45) {
       // Below close-hauled angle: ramp from 0 at 30° to upwind at 45°
       const t = Math.max(0, (twa - 30) / 15);
@@ -512,14 +560,14 @@ document.getElementById('polar-generate-btn')?.addEventListener('click', () => {
 
 // ── Route Weather Analysis ────────────────────────────────────────────────────
 
-const analyseBtn = document.getElementById('analyse-weather-btn');
-const routeWeatherPanel = document.getElementById('route-weather-panel');
-const routeWeatherTable = document.getElementById('route-weather-table');
+const analyseBtn = document.getElementById('analyse-weather-btn') as HTMLButtonElement;
+const routeWeatherPanel = document.getElementById('route-weather-panel')!;
+const routeWeatherTable = document.getElementById('route-weather-table')!;
 
 function updateAnalyseButton() {
   const hasRoute = routeWaypoints.length > 0 || (startLatLon && endLatLon);
   const hasPolar = !!localStorage.getItem('wr-polar-csv');
-  const hasDeparture = !!document.getElementById('departure-time').value;
+  const hasDeparture = !!(document.getElementById('departure-time') as HTMLInputElement).value;
   const ready = hasRoute && hasPolar && hasDeparture && windTimesLoaded;
   analyseBtn.disabled = !ready;
 
@@ -542,7 +590,7 @@ analyseHint.style.cssText = 'font-size:10px;color:#6c7086;display:block;margin-t
 analyseBtn.after(analyseHint);
 
 // Update the button state when relevant inputs change
-document.getElementById('departure-time').addEventListener('change', updateAnalyseButton);
+document.getElementById('departure-time')!.addEventListener('change', updateAnalyseButton);
 if (polarFileInput) polarFileInput.addEventListener('change', () => setTimeout(updateAnalyseButton, 100));
 document.getElementById('waypoints-route')?.addEventListener('change', () => setTimeout(updateAnalyseButton, 100));
 
@@ -550,12 +598,12 @@ analyseBtn.addEventListener('click', async () => {
   const polarCsv = localStorage.getItem('wr-polar-csv');
   if (!polarCsv) return;
 
-  const depTime = document.getElementById('departure-time').value;
+  const depTime = (document.getElementById('departure-time') as HTMLInputElement).value;
   if (!depTime) return;
   const departureMs = new Date(depTime).getTime();
 
   // Build waypoint list from route selection or start/end markers
-  let waypoints = [];
+  let waypoints: LatLon[] = [];
   if (routeWaypoints.length > 0 && startLatLon && endLatLon) {
     waypoints = [startLatLon, ...routeWaypoints, endLatLon];
   } else if (startLatLon && endLatLon) {
@@ -568,16 +616,16 @@ analyseBtn.addEventListener('click', async () => {
   routeWeatherPanel.style.display = 'none';
 
   try {
-    const results = await analyseRouteWeather(waypoints, departureMs, polarCsv, (pct) => {
+    const results = await analyseRouteWeather(waypoints, departureMs, polarCsv, (pct: number) => {
       analyseBtn.textContent = `Analysing… ${pct}%`;
     });
 
     // Render results table
-    const formatTime = (iso) => {
+    const formatTime = (iso: string) => {
       const d = new Date(iso);
       return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     };
-    const windArrow = (dir) => {
+    const windArrow = (dir: number | null | undefined) => {
       if (dir == null) return '';
       const chars = ['↓','↙','←','↖','↑','↗','→','↘'];
       return chars[Math.round(dir / 45) % 8];
@@ -642,9 +690,9 @@ analyseBtn.addEventListener('click', async () => {
     });
 
     // Draw meteogram at the bottom of the map
-    const meteogramPanel = document.getElementById('meteogram-panel');
-    const meteogramCanvas = document.getElementById('meteogram-canvas');
-    const meteogramTooltip = document.getElementById('meteogram-tooltip');
+    const meteogramPanel = document.getElementById('meteogram-panel')!;
+    const meteogramCanvas = document.getElementById('meteogram-canvas') as HTMLCanvasElement | null;
+    const meteogramTooltip = document.getElementById('meteogram-tooltip')!;
     if (meteogramPanel && meteogramCanvas) {
       meteogramPanel.style.display = 'flex';
       meteogramPanel.style.flexDirection = 'column';
@@ -657,18 +705,18 @@ analyseBtn.addEventListener('click', async () => {
 
     // Wire meteogram collapse/expand toggle
     document.getElementById('meteogram-handle')?.addEventListener('click', () => {
-      const body = document.getElementById('meteogram-body');
+      const body = document.getElementById('meteogram-body')!;
       if (body.style.display === 'none') {
         body.style.display = '';
-        document.getElementById('meteogram-toggle').textContent = '▼';
+        document.getElementById('meteogram-toggle')!.textContent = '▼';
       } else {
         body.style.display = 'none';
-        document.getElementById('meteogram-toggle').textContent = '▶';
+        document.getElementById('meteogram-toggle')!.textContent = '▶';
       }
     });
 
   } catch (e) {
-    routeWeatherTable.innerHTML = `<tr><td style="color:#f38ba8;padding:8px">${e.message || e}</td></tr>`;
+    routeWeatherTable.innerHTML = `<tr><td style="color:#f38ba8;padding:8px">${e instanceof Error ? e.message : String(e)}</td></tr>`;
     routeWeatherPanel.style.display = 'block';
   } finally {
     analyseBtn.textContent = 'Analyse Route Weather';
@@ -688,7 +736,7 @@ setTimeout(() => {
 }, 500);
 
 // SK server URL settings
-const skUrlInput = document.getElementById('sk-server-url');
+const skUrlInput = document.getElementById('sk-server-url') as HTMLInputElement | null;
 if (skUrlInput) {
   // Show the effective URL (after auto-detection / normalization)
   skUrlInput.value = SK_BASE || '';
@@ -723,11 +771,11 @@ loadConfig();
     connectVesselPositionStream();
   } catch {
     console.log('[startup] SignalK server not reachable — SK features disabled');
-    document.getElementById('status-box').textContent = 'Ready (no SignalK server)';
+    document.getElementById('status-box')!.textContent = 'Ready (no SignalK server)';
   }
 })();
 
-async function apiFetch(url, options = {}) {
+async function apiFetch(url: string, options: RequestInit = {}) {
   const res = await fetch(url, { ...options, credentials: 'include' });
   if (res.status === 401 || res.status === 403) {
     location.href = `/admin/#/login?redirect=${encodeURIComponent(location.href)}`;
@@ -748,7 +796,7 @@ async function loadCharts() {
     const r = await skFetch('/signalk/v2/api/resources/charts');
     if (r.ok) {
       const data = await r.json();
-      for (const [id, chart] of Object.entries(data)) {
+      for (const [id, chart] of Object.entries(data as Record<string, any>)) {
         if (chart.serverType !== 'tilelayer') continue;
         if (chart.url?.includes('.mvt')) continue;
         charts.push({
@@ -762,19 +810,19 @@ async function loadCharts() {
     /* fall back to OSM only */
   }
 
-  const select = document.getElementById('chart-select');
+  const select = document.getElementById('chart-select')!;
   select.innerHTML = charts.map((c, i) => `<option value="${i}">${escapeHtml(c.name)}</option>`).join('');
-  setChart(charts[0]);
-  select.addEventListener('change', () => setChart(charts[parseInt(select.value)]));
+  setChart(charts[0]!);
+  select.addEventListener('change', () => setChart(charts[parseInt((select as HTMLSelectElement).value)]!));
 }
 
-function setChart(chart) {
+function setChart(chart: { url: string; attribution: string }) {
   if (tileLayer) map.removeLayer(tileLayer);
   tileLayer = L.tileLayer(chart.url, { attribution: chart.attribution, maxZoom: 19 }).addTo(map);
 }
 
 async function loadDepartureResources() {
-  const sel = document.getElementById('departure-resource');
+  const sel = document.getElementById('departure-resource')!;
   const entries = [];
 
   const [routesRes, wpsRes] = await Promise.allSettled([
@@ -784,7 +832,7 @@ async function loadDepartureResources() {
 
   if (routesRes.status === 'fulfilled' && routesRes.value.ok) {
     const data = await routesRes.value.json();
-    for (const [, r] of Object.entries(data)) {
+    for (const [, r] of Object.entries(data as Record<string, any>)) {
       const coords = r.feature?.geometry?.coordinates;
       if (!Array.isArray(coords) || coords.length === 0) continue;
       const [lon, lat] = coords[coords.length - 1]; // last waypoint — continue from where route ended
@@ -795,7 +843,7 @@ async function loadDepartureResources() {
 
   if (wpsRes.status === 'fulfilled' && wpsRes.value.ok) {
     const data = await wpsRes.value.json();
-    for (const [, wp] of Object.entries(data)) {
+    for (const [, wp] of Object.entries(data as Record<string, any>)) {
       const coords = wp.feature?.geometry?.coordinates;
       if (!Array.isArray(coords) || coords.length < 2) continue;
       const [lon, lat] = coords;
@@ -820,7 +868,7 @@ function clearRouteWaypoints() {
   routeWaypoints = [];
   for (const m of routeWaypointMarkers) map.removeLayer(m);
   routeWaypointMarkers = [];
-  document.getElementById('waypoints-route').value = '';
+  (document.getElementById('waypoints-route') as HTMLInputElement).value = '';
 }
 
 async function loadWaypointRoutes() {
@@ -834,7 +882,7 @@ async function loadWaypointRoutes() {
   }
 
   const entries = [];
-  for (const [, route] of Object.entries(data)) {
+  for (const [, route] of Object.entries(data as Record<string, any>)) {
     const coords = route.feature?.geometry?.coordinates;
     if (!Array.isArray(coords) || coords.length < 2) continue;
     entries.push({ label: route.name ?? 'Unnamed route', coords });
@@ -842,15 +890,15 @@ async function loadWaypointRoutes() {
   waypointRoutes = entries;
   if (entries.length === 0) return;
 
-  const sel = document.getElementById('waypoints-route');
+  const sel = document.getElementById('waypoints-route')!;
   sel.innerHTML =
     '<option value="">— route waypoints —</option>' +
     entries.map((e, i) => `<option value="${i}">${escapeHtml(e.label)}</option>`).join('');
-  document.getElementById('waypoints-route-section').style.display = '';
+  document.getElementById('waypoints-route-section')!.style.display = '';
 }
 
-document.getElementById('waypoints-route').addEventListener('change', (e) => {
-  const idx = parseInt(e.target.value);
+document.getElementById('waypoints-route')!.addEventListener('change', (e) => {
+  const idx = parseInt((e.target as HTMLInputElement).value);
   if (isNaN(idx)) {
     // Placeholder selected — only clear intermediate markers, keep start/end
     for (const m of routeWaypointMarkers) map.removeLayer(m);
@@ -858,18 +906,18 @@ document.getElementById('waypoints-route').addEventListener('change', (e) => {
     routeWaypoints = [];
     return;
   }
-  const { coords } = waypointRoutes[idx];
-  const first = coords[0];
-  const last = coords[coords.length - 1];
+  const { coords } = waypointRoutes[idx]!;
+  const first = coords[0]!;
+  const last = coords[coords.length - 1]!;
 
-  startLatLon = { lat: first[1], lon: first[0] };
-  endLatLon = { lat: last[1], lon: last[0] };
+  startLatLon = { lat: first[1]!, lon: first[0]! };
+  endLatLon = { lat: last[1]!, lon: last[0]! };
   startCoords.textContent = `${startLatLon.lat.toFixed(4)}, ${startLatLon.lon.toFixed(4)}`;
   endCoords.textContent = `${endLatLon.lat.toFixed(4)}, ${endLatLon.lon.toFixed(4)}`;
   startMarker.setLatLng([startLatLon.lat, startLatLon.lon]).addTo(map);
   endMarker.setLatLng([endLatLon.lat, endLatLon.lon]).addTo(map);
 
-  routeWaypoints = coords.slice(1, -1).map((c) => ({ lat: c[1], lon: c[0] }));
+  routeWaypoints = coords.slice(1, -1).map((c) => ({ lat: c[1]!, lon: c[0]! }));
 
   for (const m of routeWaypointMarkers) map.removeLayer(m);
   routeWaypointMarkers = [];
@@ -887,7 +935,7 @@ document.getElementById('waypoints-route').addEventListener('change', (e) => {
   });
 
   // Reset departure resource — it now refers to a different position
-  document.getElementById('departure-resource').value = '';
+  (document.getElementById('departure-resource') as HTMLInputElement).value = '';
   updateCalcButton();
   updateAnalyseButton();
 });
@@ -899,7 +947,7 @@ async function loadConfig() {
 
   // Test buttons: hide by default in webapp mode (no test GRIB data available)
   for (const id of ['run-test', 'run-helsinki-test', 'run-gothenburg-test'])
-    document.getElementById(id).style.display = 'none';
+    document.getElementById(id)!.style.display = 'none';
 
   if (cfg.waveOverlayMaxM != null) waveOverlayMaxM = cfg.waveOverlayMaxM;
   windSpeedMs = !!cfg.windSpeedMs;
@@ -917,34 +965,34 @@ async function loadConfig() {
   const windSym = _fmt(0, 'speed', windSpeedMs).sym;
   const depthSym = _fmt(0, 'depth').sym;
 
-  document.getElementById('motor-below-unit').textContent = `${speedSym}, speed`;
-  document.getElementById('motor-speed-unit').textContent = speedSym;
-  document.getElementById('motor-below-kn').placeholder = speedSym;
-  document.getElementById('motor-speed-kn').placeholder = speedSym;
-  document.getElementById('max-wind-label').textContent = `Max wind (${windSym}, empty = no limit)`;
-  document.getElementById('max-wave-label').textContent = `Max wave (${depthSym}, empty = no limit)`;
-  document.getElementById('wave-legend-max').textContent = `${_fmt(waveOverlayMaxM, 'depth').num} ${depthSym}`;
+  document.getElementById('motor-below-unit')!.textContent = `${speedSym}, speed`;
+  document.getElementById('motor-speed-unit')!.textContent = speedSym;
+  (document.getElementById('motor-below-kn') as HTMLInputElement).placeholder = speedSym;
+  (document.getElementById('motor-speed-kn') as HTMLInputElement).placeholder = speedSym;
+  document.getElementById('max-wind-label')!.textContent = `Max wind (${windSym}, empty = no limit)`;
+  document.getElementById('max-wave-label')!.textContent = `Max wave (${depthSym}, empty = no limit)`;
+  document.getElementById('wave-legend-max')!.textContent = `${_fmt(waveOverlayMaxM, 'depth').num} ${depthSym}`;
   const smFmt = _fmt(0.5, 'distance');
-  document.getElementById('safety-margin-dist').textContent = `${smFmt.num} ${smFmt.sym}`;
+  document.getElementById('safety-margin-dist')!.textContent = `${smFmt.num} ${smFmt.sym}`;
   try {
     const bi = await fetch('./buildinfo.json');
     if (bi.ok) {
       const { version } = await bi.json();
-      document.getElementById('build-version').textContent = version;
+      document.getElementById('build-version')!.textContent = version;
     }
   } catch {
     /* not available in dev without a build step */
   }
 }
 
-document.getElementById('departure-resource').addEventListener('change', (e) => {
-  const idx = parseInt(e.target.value);
+document.getElementById('departure-resource')!.addEventListener('change', (e) => {
+  const idx = parseInt((e.target as HTMLInputElement).value);
   if (isNaN(idx)) return;
-  const { lat, lon } = departureResources[idx];
+  const { lat, lon } = departureResources[idx]!;
   startLatLon = { lat, lon };
   startCoords.textContent = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
   startMarker.setLatLng([lat, lon]).addTo(map);
-  e.target.value = ''; // reset so the same item can be re-selected
+  (e.target as HTMLInputElement).value = ''; // reset so the same item can be re-selected
   clearRouteWaypoints();
   updateCalcButton();
 });
@@ -968,8 +1016,8 @@ function connectVesselPositionStream() {
         for (const v of update.values ?? []) {
           if (v.path === 'navigation.position' && v.value) {
             vesselPosition = { lat: v.value.latitude, lon: v.value.longitude };
-            document.getElementById('btn-vessel-position').disabled = false;
-            document.getElementById('btn-vessel-position').title = 'Set start to vessel position';
+            (document.getElementById('btn-vessel-position') as HTMLButtonElement).disabled = false;
+            document.getElementById('btn-vessel-position')!.title = 'Set start to vessel position';
           }
         }
       }
@@ -979,14 +1027,14 @@ function connectVesselPositionStream() {
   };
   ws.onclose = () => {
     vesselPosition = null;
-    document.getElementById('btn-vessel-position').disabled = true;
-    document.getElementById('btn-vessel-position').title = 'Vessel position not available';
+    (document.getElementById('btn-vessel-position') as HTMLButtonElement).disabled = true;
+    document.getElementById('btn-vessel-position')!.title = 'Vessel position not available';
     vesselPositionWs = null;
     setTimeout(connectVesselPositionStream, 5000);
   };
 }
 
-document.getElementById('btn-vessel-position').addEventListener('click', () => {
+document.getElementById('btn-vessel-position')!.addEventListener('click', () => {
   if (!vesselPosition) return;
   const { lat, lon } = vesselPosition;
   startLatLon = { lat, lon };
@@ -1012,11 +1060,11 @@ async function loadGribInfo() {
   // Show a simple status message in the GRIB panel.
   gribInfo.innerHTML = '<span style="color:#89b4fa">Using Windy ECMWF forecast</span>';
   gribLoaded = false; // no GRIB files — Windy tiles used instead
-  document.getElementById('current-info').style.display = 'none';
+  document.getElementById('current-info')!.style.display = 'none';
   // Hide GRIB-management buttons
-  const gribManager = document.getElementById('grib-manager-overlay');
+  const gribManager = document.getElementById('grib-manager-overlay')!;
   if (gribManager) gribManager.style.display = 'none';
-  const openGribMgr = document.getElementById('open-grib-manager');
+  const openGribMgr = document.getElementById('open-grib-manager')!;
   if (openGribMgr) openGribMgr.style.display = 'none';
   updateCalcButton();
 }
@@ -1037,7 +1085,7 @@ async function loadRegions() {
       return;
     }
 
-    regionList = Object.entries(data)
+    regionList = Object.entries(data as Record<string, any>)
       .map(([id, entry]) => ({
         id,
         name: entry?.name ?? id.slice(0, 8),
@@ -1053,14 +1101,14 @@ async function loadRegions() {
     // Update the region list sidebar and overlay.
     renderRegionList();
     await renderRegionOverlay();
-    document.getElementById('region-toggle').disabled = false;
+    (document.getElementById('region-toggle') as HTMLButtonElement).disabled = false;
   } catch {
     regionList = [];
   }
 }
 
 function renderRegionList() {
-  const container = document.getElementById('region-list');
+  const container = document.getElementById('region-list')!;
   if (regionList.length === 0) {
     container.style.display = 'none';
     return;
@@ -1083,14 +1131,15 @@ function renderRegionList() {
     .join('');
 
   container.querySelectorAll('.region-item').forEach((el) => {
-    const cb = el.querySelector('input[type="checkbox"]');
+    const cb = el.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+    if (!cb) return;
     cb.addEventListener('change', async () => {
-      await toggleRegionAvoid(el.dataset.uuid, cb.checked);
+      await toggleRegionAvoid((el as HTMLElement).dataset['uuid'] ?? '', cb.checked);
     });
   });
 }
 
-async function toggleRegionAvoid(uuid, avoid) {
+async function toggleRegionAvoid(uuid: string, avoid: boolean) {
   await loadRegions();
   if (avoid) {
     if (!regionAvoidIds.includes(uuid)) regionAvoidIds.push(uuid);
@@ -1108,7 +1157,7 @@ async function renderRegionOverlay() {
     map.removeLayer(regionLayer);
     regionLayer = null;
   }
-  if (!document.getElementById('region-toggle').checked || regionList.length === 0) return;
+  if (!(document.getElementById('region-toggle') as HTMLInputElement).checked || regionList.length === 0) return;
 
   const features = [];
   for (const reg of regionList) {
@@ -1125,11 +1174,11 @@ async function renderRegionOverlay() {
   if (features.length === 0) return;
 
   regionLayer = L.geoJSON(
-    { type: 'FeatureCollection', features },
+    { type: 'FeatureCollection', features } as any,
     {
       pane: 'regionPane',
       renderer: L.svg({ pane: 'regionPane' }),
-      style: (feature) => {
+      style: (feature: any) => {
         if (feature?.properties?.avoided) {
           return {
             color: '#f38ba8',
@@ -1146,12 +1195,12 @@ async function renderRegionOverlay() {
           fillOpacity: 1,
         };
       },
-    },
+    } as any,
   ).addTo(map);
 }
 
-document.getElementById('region-toggle').addEventListener('change', async (e) => {
-  if (e.target.checked) {
+document.getElementById('region-toggle')!.addEventListener('change', async (e) => {
+  if ((e.target as HTMLInputElement).checked) {
     await loadRegions();
   } else {
     if (regionLayer) {
@@ -1166,11 +1215,11 @@ async function startCalculation() {
   // Reset scrubber range toggle (BUG-132)
   routeScrubberRange = null;
   scrubberLockedToRoute = false;
-  document.getElementById('scrubber-range-toggle').style.display = 'none';
+  document.getElementById('scrubber-range-toggle')!.style.display = 'none';
   // Refresh region geometry from SignalK before routing so any edits
   // made in freeboard-sk are reflected in the overlay (REQ-98).
   await loadRegions();
-  const depTime = document.getElementById('departure-time').value;
+  const depTime = (document.getElementById('departure-time') as HTMLInputElement).value;
   if (!depTime) return setStatus('error', 'Please set a departure time');
 
   clearIsochrones();
@@ -1194,16 +1243,16 @@ async function startCalculation() {
   routeLegCoords = [];
   prevHighlightWpIdx = -1;
   if (windTimesLoaded) {
-    const scrubber = document.getElementById('time-scrubber');
-    scrubber.min = 0;
-    scrubber.max = windTimes.length - 1;
+    const scrubber = document.getElementById('time-scrubber') as HTMLInputElement;
+    scrubber.min = '0';
+    scrubber.max = String(windTimes.length - 1);
   }
   if (calcStream) {
     calcStream.close();
     calcStream = null;
   }
-  document.getElementById('save-route-btn').style.display = 'none';
-  document.getElementById('conditions-panel').style.display = 'none';
+  document.getElementById('save-route-btn')!.style.display = 'none';
+  document.getElementById('conditions-panel')!.style.display = 'none';
   hideFailurePopup();
   calcBtn.disabled = true;
   landToggle.disabled = true;
@@ -1226,8 +1275,8 @@ async function startCalculation() {
   const margin = 3;
 
   // Read polar CSV from the file upload (if available)
-  const polarFileInput = document.getElementById('polar-file-input');
-  let polarCsv = null;
+  const polarFileInput = document.getElementById('polar-file-input') as HTMLInputElement | null;
+  let polarCsv: string | null = null;
   if (polarFileInput && polarFileInput.files && polarFileInput.files[0]) {
     polarCsv = await polarFileInput.files[0].text();
   }
@@ -1252,13 +1301,13 @@ async function startCalculation() {
         end: endLatLon,
         departureTime: new Date(depTime).toISOString(),
         ...(routeWaypoints.length > 0 ? { waypoints: routeWaypoints } : {}),
-        useLandAvoidance: document.getElementById('land-avoidance-toggle').checked,
+        useLandAvoidance: (document.getElementById('land-avoidance-toggle') as HTMLInputElement).checked,
         options: {
-          motorBelowKn: parseFloat(document.getElementById('motor-below-kn').value) || undefined,
-          motorSpeedKn: parseFloat(document.getElementById('motor-speed-kn').value) || undefined,
-          waitForWind: document.getElementById('wait-for-wind-toggle').checked || undefined,
-          maxWindKn: parseFloat(document.getElementById('max-wind-kn').value) || undefined,
-          maxWaveM: parseFloat(document.getElementById('max-wave-m').value) || undefined,
+          motorBelowKn: parseFloat((document.getElementById('motor-below-kn') as HTMLInputElement).value) || undefined,
+          motorSpeedKn: parseFloat((document.getElementById('motor-speed-kn') as HTMLInputElement).value) || undefined,
+          waitForWind: (document.getElementById('wait-for-wind-toggle') as HTMLInputElement).checked || undefined,
+          maxWindKn: parseFloat((document.getElementById('max-wind-kn') as HTMLInputElement).value) || undefined,
+          maxWaveM: parseFloat((document.getElementById('max-wave-m') as HTMLInputElement).value) || undefined,
         },
       },
       polarCsv,
@@ -1270,7 +1319,7 @@ async function startCalculation() {
       },
       landIndexUrl: './data/edge-index.bin.gz',
       windModel: 'ecmwf',
-      useSafetyMargin: document.getElementById('safety-margin-toggle')?.checked ?? false,
+      useSafetyMargin: (document.getElementById('safety-margin-toggle') as HTMLInputElement | null)?.checked ?? false,
     },
   });
 
@@ -1285,15 +1334,15 @@ routingWorker.addEventListener('message', (e) => {
     const pct = Math.round(j.pct ?? j.progress ?? 0);
     progressBar.style.width = `${pct}%`;
     setStatus('', `Calculating… ${pct}%`);
-    if (j.frontier?.length && document.getElementById('isochrone-toggle').checked) {
+    if (j.frontier?.length && (document.getElementById('isochrone-toggle') as HTMLInputElement).checked) {
       const pts = sortByBearing(
-        j.frontier.map(([lat, lon]) => [lat, lon]),
-        startLatLon,
+        j.frontier.map(([lat, lon]: [number, number]) => [lat, lon]),
+        startLatLon!,
       );
-      const colour = ISOCHRONE_COLOURS[isochroneLayerGroup.getLayers().length % ISOCHRONE_COLOURS.length];
-      const segments = splitByAngularGap(pts, startLatLon, ISOCHRONE_GAP_THRESHOLD_DEG);
+      const colour = ISOCHRONE_COLOURS[isochroneLayerGroup.getLayers().length % ISOCHRONE_COLOURS.length]!;
+      const segments = splitByAngularGap(pts, startLatLon!, ISOCHRONE_GAP_THRESHOLD_DEG);
       for (const seg of segments) {
-        L.polyline(seg, { color: colour, weight: 1.0, opacity: 0.6, interactive: false }).addTo(
+        L.polyline(seg as L.LatLngExpression[], { color: colour, weight: 1.0, opacity: 0.6, interactive: false }).addTo(
           isochroneLayerGroup,
         );
       }
@@ -1303,16 +1352,16 @@ routingWorker.addEventListener('message', (e) => {
     calcBtn.disabled = false;
     landToggle.disabled = false;
     landToggle.style.opacity = '';
-    document.getElementById('save-route-btn').style.display = 'block';
+    document.getElementById('save-route-btn')!.style.display = 'block';
 
     // Store route and draw it — same format as /pending-route
     const route = j.route ?? [];
     pendingRouteData = {
       feature: {
         type: 'Feature',
-        geometry: { type: 'LineString', coordinates: route.map((p) => [p.lon, p.lat]) },
+        geometry: { type: 'LineString', coordinates: route.map((p: any) => [p.lon, p.lat]) },
         properties: {
-          coordinatesMeta: route.map((p) => ({
+          coordinatesMeta: route.map((p: any) => ({
             name: new Date(p.time).toISOString(),
             time: new Date(p.time).toISOString(),
             windDir: Math.round(p.windDir),
@@ -1347,7 +1396,7 @@ function clearIsochrones() {
   isochroneLayerGroup.clearLayers();
 }
 
-function windBarbSvg(tws, windDir, color = '#333') {
+function windBarbSvg(tws: number, windDir: number, color: string = '#333') {
   if (tws < polarMinTws) {
     // Below polar minimum TWS: calm symbol — ring + centre dot, no staff, no rotation.
     return (
@@ -1392,7 +1441,7 @@ function windBarbSvg(tws, windDir, color = '#333') {
   );
 }
 
-async function fetchWindPoints(timeIdx, signal) {
+async function fetchWindPoints(timeIdx: number, signal?: AbortSignal) {
   if (!windTimesLoaded) return;
   const timeStr = windTimes[timeIdx];
   if (!timeStr || !windNativeTimes.includes(timeStr)) {
@@ -1411,16 +1460,16 @@ async function fetchWindPoints(timeIdx, signal) {
   };
   try {
     allWindPoints = await dataLayer.fetchWindGrid(nativeIdx, bbox, signal);
-  } catch (e) {
+  } catch (e: any) {
     if (e.name === 'AbortError') return;
     throw e;
   }
   updateScrubberLabel(timeIdx);
-  if (document.getElementById('wind-overlay-toggle').checked) renderWindOverlay();
-  if (document.getElementById('wave-overlay-toggle').checked) renderWaveOverlay();
+  if ((document.getElementById('wind-overlay-toggle') as HTMLInputElement).checked) renderWindOverlay();
+  if ((document.getElementById('wave-overlay-toggle') as HTMLInputElement).checked) renderWaveOverlay();
 }
 
-function waveColor(h) {
+function waveColor(h: number | null) {
   const maxH = waveOverlayMaxM || 3.0;
   if (h == null || h < 0.2) return 'rgba(0,0,0,0)';
   const t = Math.max(0, Math.min(1, h / maxH));
@@ -1428,7 +1477,7 @@ function waveColor(h) {
   return `hsla(${hue}, 100%, 50%, 0.7)`;
 }
 
-async function fetchWavePoints(timeIdx, signal) {
+async function fetchWavePoints(timeIdx: number, signal?: AbortSignal) {
   if (!windTimesLoaded) return;
   const timeStr = windTimes[timeIdx];
   if (!timeStr || !windNativeTimes.includes(timeStr)) {
@@ -1457,11 +1506,11 @@ async function fetchWavePoints(timeIdx, signal) {
         latStep: 0.5, lonStep: 0.5,
       };
     }
-  } catch (e) {
+  } catch (e: any) {
     if (e.name === 'AbortError') return;
     throw e;
   }
-  if (document.getElementById('wave-overlay-toggle').checked) renderWaveOverlay();
+  if ((document.getElementById('wave-overlay-toggle') as HTMLInputElement).checked) renderWaveOverlay();
 }
 
 function renderWaveOverlay() {
@@ -1496,15 +1545,15 @@ function renderWaveOverlay() {
   const canvas = document.createElement('canvas');
   canvas.width = nLon + 1;
   canvas.height = nLat + 1;
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d')!;
   const imageData = ctx.createImageData(nLon + 1, nLat + 1);
   const maxH = waveOverlayMaxM || 3.0;
 
   // Canvas rows must be spaced in Web Mercator Y, not geographic latitude.
   // L.imageOverlay stretches the image linearly in Mercator space; a lat-linear
   // canvas would displace data by up to 85 km northward when the canvas spans many degrees.
-  const mercY = (lat) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
-  const mercToLat = (y) => ((2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180) / Math.PI;
+  const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+  const mercToLat = (y: number) => ((2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180) / Math.PI;
   const yTop = mercY(latMax + latStep / 2);
   const yBot = mercY(latMin - latStep / 2);
 
@@ -1513,7 +1562,7 @@ function renderWaveOverlay() {
     const i = Math.round((lat - latMin) / latStep);
     if (i < 0 || i > nLat) continue;
     for (let j = 0; j <= nLon; j++) {
-      const h = grid[i * (nLon + 1) + j];
+      const h = grid[i * (nLon + 1) + j]!;
       const idx = (canvasRow * (nLon + 1) + j) * 4;
       if (isNaN(h) || h < 0.2) {
         imageData.data[idx + 3] = 0;
@@ -1607,7 +1656,7 @@ function renderWindOverlay() {
   windOverlayLayer.addTo(map);
 }
 
-async function fetchCurrentPoints(timeMs, signal) {
+async function fetchCurrentPoints(timeMs: number, signal?: AbortSignal) {
   const bounds = map.getBounds();
   const bbox = {
     latMin: bounds.getSouth(),
@@ -1617,11 +1666,11 @@ async function fetchCurrentPoints(timeMs, signal) {
   };
   try {
     allCurrentPoints = await dataLayer.fetchCurrentGrid(timeMs, bbox, signal);
-  } catch (e) {
+  } catch (e: any) {
     if (e.name === 'AbortError') return;
     throw e;
   }
-  if (document.getElementById('current-overlay-toggle').checked) renderCurrentOverlay();
+  if ((document.getElementById('current-overlay-toggle') as HTMLInputElement).checked) renderCurrentOverlay();
 }
 
 function renderCurrentOverlay() {
@@ -1682,12 +1731,12 @@ function renderCurrentOverlay() {
 // Renders the GRIB coverage bar scaled to [rangeStart, rangeEnd] (BUG-132).
 // When the scrubber is locked to a calculated route, the bar is coloured by which GRIB
 // file supplied each waypoint (REQ-129) instead of plain temporal overlap.
-function renderCoverageBar(rangeStart, rangeEnd) {
-  const bar = document.getElementById('scrubber-coverage-bar');
+function renderCoverageBar(rangeStart: number, rangeEnd: number) {
+  const bar = document.getElementById('scrubber-coverage-bar')!;
   if (!bar) return;
   bar.innerHTML = '';
   const span = Math.max(1, rangeEnd - rangeStart);
-  const addRow = (color, si, ei) => {
+  const addRow = (color: string, si: number, ei: number) => {
     // Clamp to visible range — partial overlap shows the covered portion
     si = Math.max(si, rangeStart);
     ei = Math.min(ei, rangeEnd);
@@ -1703,21 +1752,21 @@ function renderCoverageBar(rangeStart, rangeEnd) {
   if (scrubberLockedToRoute && graphMeta && graphMeta.some((m) => m.gribFile != null)) {
     const stops = [];
     for (let i = 0; i < graphMeta.length; i++) {
-      const tMs = new Date(graphMeta[i].time).getTime();
+      const tMs = new Date(graphMeta[i]!.time).getTime();
       let si = windTimes.findIndex((t) => new Date(t).getTime() >= tMs);
       if (si < 0) si = rangeEnd;
       const nextMs =
         i < graphMeta.length - 1
-          ? new Date(graphMeta[i + 1].time).getTime()
+          ? new Date(graphMeta[i + 1]!.time).getTime()
           : windTimes[rangeEnd]
-            ? new Date(windTimes[rangeEnd]).getTime()
+            ? new Date(windTimes[rangeEnd]!).getTime()
             : tMs;
       let ei = windTimes.findIndex((t) => new Date(t).getTime() >= nextMs);
       if (ei < 0) ei = rangeEnd;
       ei = Math.max(si, ei - 1);
-      const fp = graphMeta[i].gribFile;
+      const fp = graphMeta[i]!.gribFile;
       const colorIdx = fp != null ? gribInfoFiles.findIndex((f) => f.path === fp) : -1;
-      const color = colorIdx >= 0 ? C64_PALETTE[colorIdx % C64_PALETTE.length] : '#45475a';
+      const color = colorIdx >= 0 ? C64_PALETTE[colorIdx % C64_PALETTE.length]! : '#45475a';
       const a = (((Math.max(rangeStart, Math.min(rangeEnd, si)) - rangeStart) / span) * 100).toFixed(2);
       const b = (((Math.max(rangeStart, Math.min(rangeEnd, ei)) - rangeStart) / span) * 100).toFixed(2);
       stops.push(`${color} ${a}% ${b}%`);
@@ -1734,7 +1783,7 @@ function renderCoverageBar(rangeStart, rangeEnd) {
       const endMs = new Date(f.timeEnd).getTime();
       const si = windTimes.findIndex((t) => new Date(t).getTime() >= startMs);
       const ei = windTimes.findLastIndex((t) => new Date(t).getTime() <= endMs);
-      addRow(C64_PALETTE[i % C64_PALETTE.length], si, ei);
+      addRow(C64_PALETTE[i % C64_PALETTE.length]!, si, ei);
     });
   }
   if (currentEnabled && currentFileTimes.length > 0) {
@@ -1746,10 +1795,10 @@ function renderCoverageBar(rangeStart, rangeEnd) {
 }
 
 // Positions the yellow now-triangle relative to [rangeStart, rangeEnd] (BUG-132).
-function updateNowMarker(rangeStart, rangeEnd) {
+function updateNowMarker(rangeStart: number, rangeEnd: number) {
   const nowMs = Date.now();
   const nowIdx = windTimes.findIndex((t) => new Date(t).getTime() >= nowMs);
-  const nowMarker = document.getElementById('scrubber-now-marker');
+  const nowMarker = document.getElementById('scrubber-now-marker')!;
   if (!nowMarker) return;
   if (nowIdx >= rangeStart && nowIdx <= rangeEnd && rangeEnd > rangeStart) {
     const pct = (((nowIdx - rangeStart) / (rangeEnd - rangeStart)) * 100).toFixed(2);
@@ -1763,20 +1812,20 @@ function updateNowMarker(rangeStart, rangeEnd) {
 // Toggles scrubber between route-restricted and full GRIB range (BUG-132).
 function toggleScrubberRange() {
   if (!routeScrubberRange) return;
-  const scrubber = document.getElementById('time-scrubber');
-  const toggleBtn = document.getElementById('scrubber-range-toggle');
+  const scrubber = document.getElementById('time-scrubber') as HTMLInputElement;
+  const toggleBtn = document.getElementById('scrubber-range-toggle')!;
   if (scrubberLockedToRoute) {
     // Switch to full range
-    scrubber.min = 0;
-    scrubber.max = windTimes.length - 1;
+    scrubber.min = '0';
+    scrubber.max = String(windTimes.length - 1);
     renderCoverageBar(0, windTimes.length - 1);
     updateNowMarker(0, windTimes.length - 1);
     toggleBtn.textContent = 'Route range';
     scrubberLockedToRoute = false;
   } else {
     // Switch to route range
-    scrubber.min = routeScrubberRange.i0;
-    scrubber.max = routeScrubberRange.iN;
+    scrubber.min = String(routeScrubberRange.i0);
+    scrubber.max = String(routeScrubberRange.iN);
     renderCoverageBar(routeScrubberRange.i0, routeScrubberRange.iN);
     updateNowMarker(routeScrubberRange.i0, routeScrubberRange.iN);
     toggleBtn.textContent = 'Full range';
@@ -1819,11 +1868,11 @@ function rebuildScrubberTimes() {
     // Windy mode: no GRIB files — use actualWindTimes directly from minifest
     for (const t of actualWindTimes) windSet.add(t);
   }
-  const windArr = Array.from(windSet).sort();
+  const windArr = Array.from(windSet).sort() as string[];
   windTimesCount = windArr.length;
   windNativeTimes = windArr;
 
-  let unified = [...windArr];
+  let unified: string[] = [...windArr];
   if (currentEnabled && currentFileTimes.length > 0) {
     const s = new Set(windArr);
     for (const t of currentFileTimes) {
@@ -1836,23 +1885,23 @@ function rebuildScrubberTimes() {
   renderCoverageBar(0, unified.length - 1);
   updateNowMarker(0, unified.length - 1);
 
-  const scrubber = document.getElementById('time-scrubber');
+  const scrubber = document.getElementById('time-scrubber') as HTMLInputElement;
   const prevVal = Math.min(parseInt(scrubber.value) || 0, Math.max(0, unified.length - 1));
   if (unified.length === 0) {
-    document.getElementById('time-scrubber-panel').style.display = 'none';
+    document.getElementById('time-scrubber-panel')!.style.display = 'none';
     windTimesLoaded = false;
     return;
   }
-  scrubber.min = 0;
-  scrubber.max = unified.length - 1;
-  scrubber.value = prevVal;
-  document.getElementById('time-scrubber-panel').style.display = 'flex';
+  scrubber.min = '0';
+  scrubber.max = String(unified.length - 1);
+  scrubber.value = String(prevVal);
+  document.getElementById('time-scrubber-panel')!.style.display = 'flex';
   windTimesLoaded = true;
   updateScrubberLabel(prevVal);
 }
 
 async function initWindScrubber() {
-  const statusEl = document.getElementById('status-box');
+  const statusEl = document.getElementById('status-box')!;
   statusEl.className = 'loading';
   statusEl.innerHTML = 'Loading forecast data<span class="wr-spinner"></span>';
 
@@ -1864,7 +1913,7 @@ async function initWindScrubber() {
     gribTimesMap = new Map([['windy', wt]]);
   } catch (e) {
     statusEl.className = 'error';
-    statusEl.textContent = 'Failed to load forecast: ' + (e.message || e);
+    statusEl.textContent = 'Failed to load forecast: ' + (e instanceof Error ? e.message : String(e));
     return;
   }
 
@@ -1885,7 +1934,7 @@ function fetchAndDrawRoute() {
   }
 }
 
-function drawRouteFromData(route) {
+function drawRouteFromData(route: RouteData) {
   try {
     const coords = route.feature?.geometry?.coordinates;
     if (!coords) {
@@ -1905,7 +1954,7 @@ function drawRouteFromData(route) {
     prevHighlightWpIdx = -1;
 
     routeLayer = L.polyline(
-      coords.map(([lng, lat]) => [lat, lng]),
+      coords.map(([lng, lat]: number[]) => [lat!, lng!] as L.LatLngTuple),
       {
         color: '#89b4fa',
         weight: 3,
@@ -1915,12 +1964,12 @@ function drawRouteFromData(route) {
     map.fitBounds(routeLayer.getBounds(), { padding: [20, 20] });
 
     const meta = route.feature?.properties?.coordinatesMeta ?? [];
-    const showLabels = document.getElementById('waypoint-labels-toggle').checked;
-    const intervalH = parseFloat(document.getElementById('waypoint-label-interval').value) || 0;
+    const showLabels = (document.getElementById('waypoint-labels-toggle') as HTMLInputElement).checked;
+    const intervalH = parseFloat((document.getElementById('waypoint-label-interval') as HTMLInputElement).value) || 0;
     const intervalMs = intervalH * 3600000;
     let lastLabeledMs = -Infinity;
     windBarbLayer = L.layerGroup();
-    coords.forEach(([lng, lat], i) => {
+    coords.forEach(([lng, lat]: number[], i: number) => {
       const m = meta[i];
       if (!m) {
         windBarbMarkers.push(null);
@@ -1944,7 +1993,7 @@ function drawRouteFromData(route) {
           ? `<div style="color:#cdd6f4;background:#313244cc;font-size:10px;padding:1px 4px;border-radius:3px;white-space:nowrap">${eta}</div>`
           : '') +
         `</div>`;
-      const marker = L.marker([lat, lng], {
+      const marker = L.marker([lat!, lng!], {
         icon: L.divIcon({ html, iconSize: [30, 54], iconAnchor: [15, 33], className: '' }),
         pane: 'windBarbPane',
       })
@@ -1952,11 +2001,11 @@ function drawRouteFromData(route) {
           (() => {
             const tw = _fmt(m.tws ?? 0, 'speed', windSpeedMs);
             const bs = _fmt(m.boatSpeed ?? 0, 'speed');
-            return `${tw.num} ${tw.sym}, ${m.windDir ?? 0}° — boat ${bs.num} ${bs.sym}<br><span style="font-size:10px;color:#a6adc8">${lat.toFixed(4)}°N ${lng.toFixed(4)}°E</span>`;
+            return `${tw.num} ${tw.sym}, ${m.windDir ?? 0}° — boat ${bs.num} ${bs.sym}<br><span style="font-size:10px;color:#a6adc8">${lat!.toFixed(4)}°N ${lng!.toFixed(4)}°E</span>`;
           })(),
           { direction: 'top', offset: [0, -10] },
         )
-        .addTo(windBarbLayer);
+        .addTo(windBarbLayer!);
       windBarbMarkers.push(marker);
     });
     windBarbLayer.addTo(map);
@@ -1966,11 +2015,11 @@ function drawRouteFromData(route) {
       const m1 = meta[i],
         m2 = meta[i + 1];
       if (!m1 || !m2) continue;
-      const midLat = (coords[i][1] + coords[i + 1][1]) / 2;
-      const midLng = (coords[i][0] + coords[i + 1][0]) / 2;
+      const midLat = (coords[i]![1]! + coords[i + 1]![1]!) / 2;
+      const midLng = (coords[i]![0]! + coords[i + 1]![0]!) / 2;
       routeLegCoords.push([
-        [coords[i][1], coords[i][0]],
-        [coords[i + 1][1], coords[i + 1][0]],
+        [coords[i]![1]!, coords[i]![0]!],
+        [coords[i + 1]![1]!, coords[i + 1]![0]!],
       ]);
       const avgTws = ((m1.tws ?? 0) + (m2.tws ?? 0)) / 2;
       const avgBoatSpeed = ((m1.boatSpeed ?? 0) + (m2.boatSpeed ?? 0)) / 2;
@@ -2003,8 +2052,8 @@ function drawRouteFromData(route) {
       .map((wp) => {
         let best = -1,
           bestDist = Infinity;
-        coords.forEach(([lng, lat], i) => {
-          const d = Math.hypot(lat - wp.lat, lng - wp.lon);
+        coords.forEach(([lng, lat]: number[], i: number) => {
+          const d = Math.hypot(lat! - wp.lat, lng! - wp.lon);
           if (d < bestDist) {
             bestDist = d;
             best = i;
@@ -2016,21 +2065,21 @@ function drawRouteFromData(route) {
     drawConditionsGraph(meta, intermediateIdxs);
 
     if (windTimesLoaded && meta.length > 0) {
-      const t0ms = new Date(meta[0].time).getTime();
-      const tNms = new Date(meta[meta.length - 1].time).getTime();
+      const t0ms = new Date(meta[0]!.time).getTime();
+      const tNms = new Date(meta[meta.length - 1]!.time).getTime();
       let i0 = windTimes.findIndex((t) => new Date(t).getTime() >= t0ms);
       let iN = windTimes.findIndex((t) => new Date(t).getTime() >= tNms);
       if (i0 < 0) i0 = 0;
       if (iN < 0) iN = windTimes.length - 1;
-      const scrubber = document.getElementById('time-scrubber');
-      scrubber.min = i0;
-      scrubber.max = iN;
-      scrubber.value = i0;
+      const scrubber = document.getElementById('time-scrubber') as HTMLInputElement;
+      scrubber.min = String(i0);
+      scrubber.max = String(iN);
+      scrubber.value = String(i0);
       renderCoverageBar(i0, iN);
       updateNowMarker(i0, iN);
       routeScrubberRange = { i0, iN };
       scrubberLockedToRoute = true;
-      const toggleBtn = document.getElementById('scrubber-range-toggle');
+      const toggleBtn = document.getElementById('scrubber-range-toggle')!;
       toggleBtn.textContent = 'Full range';
       toggleBtn.style.display = '';
       fetchWindPoints(i0);
@@ -2049,40 +2098,40 @@ let conditionsFullscreen = false;
 
 function enterConditionsFullscreen() {
   conditionsFullscreen = true;
-  const panel = document.getElementById('conditions-panel');
+  const panel = document.getElementById('conditions-panel')!;
   panel.classList.add('conditions-fullscreen');
   panel.style.height = '';
 }
 
 function exitConditionsFullscreen() {
   conditionsFullscreen = false;
-  const panel = document.getElementById('conditions-panel');
+  const panel = document.getElementById('conditions-panel')!;
   panel.classList.remove('conditions-fullscreen');
   panel.style.height = conditionsExpanded ? `${conditionsGraphHeight}px` : '24px';
 }
 
-document.getElementById('conditions-handle').addEventListener('click', () => {
+document.getElementById('conditions-handle')!.addEventListener('click', () => {
   if (conditionsFullscreen) {
     exitConditionsFullscreen();
     return;
   }
   conditionsExpanded = !conditionsExpanded;
-  document.getElementById('conditions-svg').style.display = conditionsExpanded ? '' : 'none';
-  document.getElementById('conditions-toggle').textContent = conditionsExpanded ? '▼' : '▶';
-  document.getElementById('conditions-panel').style.height = conditionsExpanded
+  document.getElementById('conditions-svg')!.style.display = conditionsExpanded ? '' : 'none';
+  document.getElementById('conditions-toggle')!.textContent = conditionsExpanded ? '▼' : '▶';
+  document.getElementById('conditions-panel')!.style.height = conditionsExpanded
     ? `${conditionsGraphHeight}px`
     : '24px';
 });
 
-document.getElementById('scrubber-handle').addEventListener('click', () => {
+document.getElementById('scrubber-handle')!.addEventListener('click', () => {
   scrubberExpanded = !scrubberExpanded;
-  document.getElementById('scrubber-body').style.display = scrubberExpanded ? '' : 'none';
-  document.getElementById('scrubber-toggle').textContent = scrubberExpanded ? '▼' : '▶';
-  document.getElementById('scrubber-handle').title = scrubberExpanded ? 'Collapse panel' : 'Expand panel';
-  document.getElementById('time-scrubber-panel').style.height = scrubberExpanded ? '' : '28px';
+  document.getElementById('scrubber-body')!.style.display = scrubberExpanded ? '' : 'none';
+  document.getElementById('scrubber-toggle')!.textContent = scrubberExpanded ? '▼' : '▶';
+  document.getElementById('scrubber-handle')!.title = scrubberExpanded ? 'Collapse panel' : 'Expand panel';
+  document.getElementById('time-scrubber-panel')!.style.height = scrubberExpanded ? '' : '28px';
 });
 
-document.getElementById('conditions-svg').addEventListener('click', () => {
+document.getElementById('conditions-svg')!.addEventListener('click', () => {
   if (conditionsFullscreen) exitConditionsFullscreen();
   else enterConditionsFullscreen();
 });
@@ -2091,8 +2140,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && conditionsFullscreen) exitConditionsFullscreen();
 });
 
-function drawConditionsGraph(meta, intermediateIdxs = []) {
-  const panel = document.getElementById('conditions-panel');
+function drawConditionsGraph(meta: WaypointMeta[], intermediateIdxs: number[] = []) {
+  const panel = document.getElementById('conditions-panel')!;
   if (!meta || meta.length < 2) {
     panel.style.display = 'none';
     return;
@@ -2117,7 +2166,7 @@ function drawConditionsGraph(meta, intermediateIdxs = []) {
   const boatDisplayVals = meta.map((m) => (m.boatSpeed != null ? _toDisplay(m.boatSpeed, 'speed') : null));
   const twsStep5 = windSpeedMs ? 2 : 5; // m/s steps of 2; kn steps of 5
   const maxTwsDisp = Math.ceil(Math.max(...twsDisplayVals) / twsStep5) * twsStep5 || twsStep5;
-  const maxBoatDisp = Math.ceil(Math.max(...boatDisplayVals) / 5) * 5 || 5;
+  const maxBoatDisp = Math.ceil(Math.max(0, ...boatDisplayVals.filter((v): v is number => v != null)) / 5) * 5 || 5;
   // Single-axis mode: shared left scale; dual-axis mode: separate scales
   const maxLeft = windSpeedMs ? maxBoatDisp : Math.max(maxTwsDisp, maxBoatDisp);
   const rawMaxWave = hasWave ? Math.max(...meta.map((m) => m.waveHeight ?? 0)) : 0;
@@ -2126,10 +2175,10 @@ function drawConditionsGraph(meta, intermediateIdxs = []) {
   const hasGrib = meta.some((m) => m.gribFile != null);
   graphLayout = { VW, ml, pw, mt, ph, hasWave, hasGrib, maxLeft, maxBoatSpeed: maxBoatDisp, maxWave };
 
-  const xOf = (i) => (ml + (i / (meta.length - 1)) * pw).toFixed(1);
-  const yLeft = (v) => (mt + ph * (1 - v / maxLeft)).toFixed(1);
-  const yWind = windSpeedMs ? (v) => (mt + ph * (1 - v / maxTwsDisp)).toFixed(1) : yLeft;
-  const yWave = (v) => (mt + ph * (1 - v / maxWave)).toFixed(1);
+  const xOf = (i: number) => (ml + (i / (meta.length - 1)) * pw).toFixed(1);
+  const yLeft = (v: number) => (mt + ph * (1 - v / maxLeft)).toFixed(1);
+  const yWind = windSpeedMs ? (v: number) => (mt + ph * (1 - v / maxTwsDisp)).toFixed(1) : yLeft;
+  const yWave = (v: number) => (mt + ph * (1 - v / maxWave)).toFixed(1);
 
   const el = [];
 
@@ -2149,7 +2198,7 @@ function drawConditionsGraph(meta, intermediateIdxs = []) {
     const refMs = Math.max(
       ...meta.map((m) => {
         const f = m.gribFile ? gribInfoFiles.find((g) => g.path === m.gribFile) : null;
-        return f ? new Date(f.referenceTime).getTime() : -Infinity;
+        return f?.referenceTime ? new Date(f.referenceTime).getTime() : -Infinity;
       }),
     );
     if (isFinite(refMs)) {
@@ -2169,7 +2218,7 @@ function drawConditionsGraph(meta, intermediateIdxs = []) {
 
   // Left y-axis — single axis (normal) or dual axes (windSpeedMs)
   const twsAxisStep = windSpeedMs ? twsStep5 : maxLeft <= 15 ? 5 : 10;
-  document.getElementById('conditions-y-left').innerHTML = '';
+  document.getElementById('conditions-y-left')!.innerHTML = '';
   if (windSpeedMs) {
     // Outer left axis: TWS in m/s (blue, at x=2)
     el.push(`<text x="2" y="${mt - 8}" fill="#89b4fa" font-size="9">m/s</text>`);
@@ -2204,10 +2253,10 @@ function drawConditionsGraph(meta, intermediateIdxs = []) {
   }
 
   // Right y-axis (wave height) — labels as SVG text in viewBox coordinates
-  const rightSpacer = document.getElementById('time-scrubber-right-spacer');
-  document.getElementById('conditions-y-right').innerHTML = '';
+  const rightSpacer = document.getElementById('time-scrubber-right-spacer')!;
+  document.getElementById('conditions-y-right')!.innerHTML = '';
   if (hasWave) {
-    document.getElementById('conditions-y-right').style.display = 'block';
+    document.getElementById('conditions-y-right')!.style.display = 'block';
     rightSpacer.style.display = 'block';
     const waveSym = _fmt(0, 'depth').sym;
     el.push(
@@ -2223,7 +2272,7 @@ function drawConditionsGraph(meta, intermediateIdxs = []) {
     }
     el.push(`<line x1="${pr}" y1="${mt}" x2="${pr}" y2="${mt + ph}" stroke="#45475a" stroke-width="1"/>`);
   } else {
-    document.getElementById('conditions-y-right').style.display = 'none';
+    document.getElementById('conditions-y-right')!.style.display = 'none';
     rightSpacer.style.display = 'none';
   }
 
@@ -2233,7 +2282,7 @@ function drawConditionsGraph(meta, intermediateIdxs = []) {
 
   // Wind speed line — plotted against yWind (m/s axis when windSpeedMs, else shared)
   el.push(
-    `<path d="${meta.map((m, i) => (i === 0 ? 'M' : 'L') + xOf(i) + ',' + yWind(twsDisplayVals[i])).join(' ')}" fill="none" stroke="#89b4fa" stroke-width="1" stroke-linejoin="round"/>`,
+    `<path d="${meta.map((m, i) => (i === 0 ? 'M' : 'L') + xOf(i) + ',' + yWind(twsDisplayVals[i]!)).join(' ')}" fill="none" stroke="#89b4fa" stroke-width="1" stroke-linejoin="round"/>`,
   );
 
   // Boat speed line — separate path per contiguous block of valid data (skips null at seed point)
@@ -2247,7 +2296,7 @@ function drawConditionsGraph(meta, intermediateIdxs = []) {
         if (i - segStart >= 2) {
           const pts = [];
           for (let j = segStart; j < i; j++) {
-            pts.push((j === segStart ? 'M' : 'L') + xOf(j) + ',' + yLeft(boatDisplayVals[j]));
+            pts.push((j === segStart ? 'M' : 'L') + xOf(j) + ',' + yLeft(boatDisplayVals[j]!));
           }
           el.push(
             `<path d="${pts.join(' ')}" fill="none" stroke="#fab387" stroke-width="1" stroke-linejoin="round"/>`,
@@ -2262,14 +2311,14 @@ function drawConditionsGraph(meta, intermediateIdxs = []) {
   if (hasWave) {
     let segStart = -1;
     for (let i = 0; i <= meta.length; i++) {
-      const hasData = i < meta.length && meta[i].waveHeight != null;
+      const hasData = i < meta.length && meta[i]!.waveHeight != null;
       if (hasData && segStart === -1) {
         segStart = i;
       } else if (!hasData && segStart !== -1) {
         if (i - segStart >= 2) {
           const pts = [];
           for (let j = segStart; j < i; j++) {
-            pts.push((j === segStart ? 'M' : 'L') + xOf(j) + ',' + yWave(meta[j].waveHeight));
+            pts.push((j === segStart ? 'M' : 'L') + xOf(j) + ',' + yWave(meta[j]!.waveHeight!));
           }
           el.push(
             `<path d="${pts.join(' ')}" fill="none" stroke="#a6e3a1" stroke-width="1" stroke-linejoin="round"/>`,
@@ -2285,15 +2334,15 @@ function drawConditionsGraph(meta, intermediateIdxs = []) {
   const arrowY = mt + ph + 32;
 
   for (let i = 0; i < meta.length; i++) {
-    const m = meta[i];
+    const m = meta[i]!;
     const x = parseFloat(xOf(i));
     const d = new Date(m.time);
 
-    el.push(`<circle cx="${x}" cy="${yWind(twsDisplayVals[i])}" r="1.5" fill="#89b4fa"/>`);
+    el.push(`<circle cx="${x}" cy="${yWind(twsDisplayVals[i]!)}" r="1.5" fill="#89b4fa"/>`);
     if (boatDisplayVals[i] != null)
-      el.push(`<circle cx="${x}" cy="${yLeft(boatDisplayVals[i])}" r="1.5" fill="#fab387"/>`);
+      el.push(`<circle cx="${x}" cy="${yLeft(boatDisplayVals[i]!)}" r="1.5" fill="#fab387"/>`);
     if (hasWave && m.waveHeight != null) {
-      el.push(`<circle cx="${x}" cy="${yWave(m.waveHeight)}" r="1.5" fill="#a6e3a1"/>`);
+      el.push(`<circle cx="${x}" cy="${yWave(m.waveHeight!)}" r="1.5" fill="#a6e3a1"/>`);
     }
 
     // X-axis time label
@@ -2337,9 +2386,9 @@ function drawConditionsGraph(meta, intermediateIdxs = []) {
     for (let i = 0; i < meta.length; i++) {
       const x1 = parseFloat(xOf(i));
       const x2 = i < meta.length - 1 ? parseFloat(xOf(i + 1)) : VW;
-      const filePath = meta[i].gribFile;
+      const filePath = meta[i]!.gribFile;
       const colorIdx = filePath != null ? gribInfoFiles.findIndex((f) => f.path === filePath) : -1;
-      const color = colorIdx >= 0 ? C64_PALETTE[colorIdx % C64_PALETTE.length] : '#45475a';
+      const color = colorIdx >= 0 ? C64_PALETTE[colorIdx % C64_PALETTE.length]! : '#45475a';
       el.push(
         `<rect x="${x1.toFixed(1)}" y="${stripeTop}" width="${(x2 - x1).toFixed(1)}" height="${stripeH}" fill="${color}" opacity="0.7"/>`,
       );
@@ -2349,14 +2398,14 @@ function drawConditionsGraph(meta, intermediateIdxs = []) {
 
   // Intermediate waypoint markers (REQ-97): vertical dashed lines at each REQ-92 junction
   for (let k = 0; k < intermediateIdxs.length; k++) {
-    const x = parseFloat(xOf(intermediateIdxs[k]));
+    const x = parseFloat(xOf(intermediateIdxs[k]!));
     el.push(
       `<line x1="${x}" y1="${mt}" x2="${x}" y2="${mt + ph}" stroke="#f5c2e7" stroke-width="1" stroke-dasharray="4,3" opacity="0.75"/>`,
     );
     el.push(`<text x="${x}" y="${mt - 3}" text-anchor="middle" font-size="8" fill="#f5c2e7">WP${k + 1}</text>`);
   }
 
-  const svgEl = document.getElementById('conditions-svg');
+  const svgEl = document.getElementById('conditions-svg')!;
   svgEl.setAttribute('viewBox', `0 0 ${VW} ${VH}`);
   svgEl.innerHTML = el.join('\n');
 
@@ -2364,7 +2413,7 @@ function drawConditionsGraph(meta, intermediateIdxs = []) {
   panel.style.display = 'flex';
 }
 
-function findScrubberPosition(tMs) {
+function findScrubberPosition(tMs: number) {
   if (!graphMeta || graphMeta.length < 2) return { wpIdx: -1, legIdx: -1 };
   let wpIdx = 0,
     minDiff = Infinity;
@@ -2377,7 +2426,7 @@ function findScrubberPosition(tMs) {
   });
   let legIdx = 0;
   for (let i = 0; i < graphMeta.length - 1; i++) {
-    if (tMs <= new Date(graphMeta[i + 1].time).getTime()) {
+    if (tMs <= new Date(graphMeta[i + 1]!.time).getTime()) {
       legIdx = i;
       break;
     }
@@ -2386,9 +2435,9 @@ function findScrubberPosition(tMs) {
   return { wpIdx, legIdx };
 }
 
-function updateScrubberHighlight(windTimeIdx) {
-  if (prevHighlightWpIdx >= 0 && windBarbMarkers[prevHighlightWpIdx]?._icon)
-    windBarbMarkers[prevHighlightWpIdx]._icon.classList.remove('wp-highlight');
+function updateScrubberHighlight(windTimeIdx: number) {
+  if (prevHighlightWpIdx >= 0 && (windBarbMarkers[prevHighlightWpIdx] as any)?._icon)
+    (windBarbMarkers[prevHighlightWpIdx] as any)._icon.classList.remove('wp-highlight');
   if (highlightLegLayer) {
     map.removeLayer(highlightLegLayer);
     highlightLegLayer = null;
@@ -2396,15 +2445,15 @@ function updateScrubberHighlight(windTimeIdx) {
 
   if (!graphMeta || windBarbMarkers.length === 0) return;
 
-  const tMs = new Date(windTimes[windTimeIdx]).getTime();
+  const tMs = new Date(windTimes[windTimeIdx]!).getTime();
   const { wpIdx, legIdx } = findScrubberPosition(tMs);
 
-  if (wpIdx >= 0 && windBarbMarkers[wpIdx]?._icon) {
-    windBarbMarkers[wpIdx]._icon.classList.add('wp-highlight');
+  if (wpIdx >= 0 && (windBarbMarkers[wpIdx] as any)?._icon) {
+    (windBarbMarkers[wpIdx] as any)._icon.classList.add('wp-highlight');
     prevHighlightWpIdx = wpIdx;
   }
   if (legIdx >= 0 && routeLegCoords[legIdx]) {
-    highlightLegLayer = L.polyline(routeLegCoords[legIdx], {
+    highlightLegLayer = L.polyline(routeLegCoords[legIdx]!, {
       color: '#f5c2e7',
       weight: 5,
       opacity: 0.85,
@@ -2412,7 +2461,7 @@ function updateScrubberHighlight(windTimeIdx) {
   }
 }
 
-function activatePlacing(which) {
+function activatePlacing(which: string) {
   placing = which;
   btnStart.classList.toggle('active', which === 'start');
   btnEnd.classList.toggle('active', which === 'end');
@@ -2421,10 +2470,14 @@ function activatePlacing(which) {
 
 function updateCalcButton() {
   const hasData = gribLoaded || windTimesLoaded;
-  const ready = startLatLon && endLatLon && hasData && (gribWarningAcked || !gribLoaded);
+  const hasStart = !!startLatLon;
+  const hasEnd = !!endLatLon;
+  const hasRouteWp = routeWaypoints.length > 0;
+  const hasRoute = (hasStart && hasEnd) || hasRouteWp;
+  const ready = hasRoute && hasData;
   calcBtn.disabled = !ready;
 
-  // Show hint below the button
+
   let calcHint = document.getElementById('calc-hint');
   if (!calcHint) {
     calcHint = document.createElement('span');
@@ -2433,20 +2486,20 @@ function updateCalcButton() {
     calcBtn.after(calcHint);
   }
   const missing = [];
-  if (!startLatLon) missing.push('set start point');
-  if (!endLatLon) missing.push('set destination');
+  if (!hasStart && !hasRouteWp) missing.push('set start point');
+  if (!hasEnd && !hasRouteWp) missing.push('set destination');
   if (!hasData) missing.push('loading forecast…');
   calcHint.textContent = missing.length > 0 ? 'Need: ' + missing.join(', ') : '';
 }
 
-function setTestRoute(s, e, departureValue) {
+function setTestRoute(s: LatLon, e: LatLon, departureValue: string) {
   startLatLon = s;
   endLatLon = e;
   startCoords.textContent = `${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}`;
   endCoords.textContent = `${e.lat.toFixed(4)}, ${e.lon.toFixed(4)}`;
   startMarker.setLatLng([s.lat, s.lon]).addTo(map);
   endMarker.setLatLng([e.lat, e.lon]).addTo(map);
-  document.getElementById('departure-time').value = departureValue;
+  (document.getElementById('departure-time') as HTMLInputElement).value = departureValue;
   clearRouteWaypoints();
   updateCalcButton();
   startCalculation();
@@ -2466,26 +2519,26 @@ function runGothenburgTest() {
   setTestRoute(OREGRUND, { lat: 57.6138, lon: 11.598 }, '2026-06-06T02:00');
 }
 
-function setStatus(type, msg) {
+function setStatus(type: string, msg: string) {
   statusBox.className = type === 'error' || type === 'done' ? type : '';
   statusBox.textContent = msg;
 }
 
-function showFailurePopup(msg, isWarning) {
-  const popup = document.getElementById('failure-popup');
+function showFailurePopup(msg: string, isWarning: boolean) {
+  const popup = document.getElementById('failure-popup')!;
   popup.className = isWarning ? 'warning' : 'error';
-  document.getElementById('failure-popup-msg').textContent = msg;
+  document.getElementById('failure-popup-msg')!.textContent = msg;
   popup.style.display = 'flex';
 }
 
 function hideFailurePopup() {
-  document.getElementById('failure-popup').style.display = 'none';
+  document.getElementById('failure-popup')!.style.display = 'none';
 }
 
-document.getElementById('failure-popup-close').addEventListener('click', hideFailurePopup);
+document.getElementById('failure-popup-close')!.addEventListener('click', hideFailurePopup);
 
-function toLocalDateTimeInput(d) {
-  const pad = (n) => String(n).padStart(2, '0');
+function toLocalDateTimeInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
@@ -2510,7 +2563,7 @@ async function renderLandOverlay() {
   if (landLayerOrig) { map.removeLayer(landLayerOrig); landLayerOrig = null; }
   if (landLayerDilated) { map.removeLayer(landLayerDilated); landLayerDilated = null; }
 
-  if (!document.getElementById('land-toggle').checked) return;
+  if (!(document.getElementById('land-toggle') as HTMLInputElement).checked) return;
 
   // Load land data on first use
   if (!dataLayer.landDataReady()) {
@@ -2527,27 +2580,27 @@ async function renderLandOverlay() {
   const bbox = { latMin: b.getSouth(), latMax: b.getNorth(), lonMin: b.getWest(), lonMax: b.getEast() };
 
   const data = dataLayer.getLandPolygonsGeoJSON(bbox, false);
-  if (token !== renderLandOverlayToken || !document.getElementById('land-toggle').checked) return;
+  if (token !== renderLandOverlayToken || !(document.getElementById('land-toggle') as HTMLInputElement).checked) return;
 
-  landLayerOrig = L.geoJSON(data, {
+  landLayerOrig = L.geoJSON(data as any, {
     style: { color: '#6c7086', weight: 0.5, fillColor: '#45475a', fillOpacity: 0.6, pane: 'landPane' },
     renderer: L.canvas({ pane: 'landPane' }),
-  }).addTo(map);
+  } as any).addTo(map);
 
-  const safetyOn = dataLayer.dilatedLandDataReady() && document.getElementById('safety-margin-toggle')?.checked;
+  const safetyOn = dataLayer.dilatedLandDataReady() && (document.getElementById('safety-margin-toggle') as HTMLInputElement | null)?.checked;
   if (safetyOn) {
     const data2 = dataLayer.getLandPolygonsGeoJSON(bbox, true);
-    if (token !== renderLandOverlayToken || !document.getElementById('land-toggle').checked) return;
+    if (token !== renderLandOverlayToken || !(document.getElementById('land-toggle') as HTMLInputElement).checked) return;
 
-    landLayerDilated = L.geoJSON(data2, {
+    landLayerDilated = L.geoJSON(data2 as any, {
       style: { color: '#9399b2', weight: 0.5, fillColor: '#585b70', fillOpacity: 0.4, pane: 'landDilatedPane' },
       renderer: L.canvas({ pane: 'landDilatedPane' }),
-    }).addTo(map);
+    } as any).addTo(map);
   }
 }
 
-document.getElementById('land-toggle').addEventListener('change', async (e) => {
-  if (e.target.checked) {
+document.getElementById('land-toggle')!.addEventListener('change', async (e) => {
+  if ((e.target as HTMLInputElement).checked) {
     await renderLandOverlay();
   } else {
     renderLandOverlayToken++;
@@ -2563,29 +2616,29 @@ document.getElementById('land-toggle').addEventListener('change', async (e) => {
 });
 
 map.on('moveend', () => {
-  if (document.getElementById('land-toggle').checked) renderLandOverlay();
+  if ((document.getElementById('land-toggle') as HTMLInputElement).checked) renderLandOverlay();
 });
 
 map.on('zoomend moveend', () => {
-  if (document.getElementById('wind-overlay-toggle').checked && windTimesLoaded) {
-    const idx = parseInt(document.getElementById('time-scrubber').value) || 0;
+  if ((document.getElementById('wind-overlay-toggle') as HTMLInputElement).checked && windTimesLoaded) {
+    const idx = parseInt((document.getElementById('time-scrubber') as HTMLInputElement).value) || 0;
     fetchWindPoints(idx);
   }
-  if (document.getElementById('wave-overlay-toggle').checked && windTimesLoaded) {
-    const idx = parseInt(document.getElementById('time-scrubber').value) || 0;
+  if ((document.getElementById('wave-overlay-toggle') as HTMLInputElement).checked && windTimesLoaded) {
+    const idx = parseInt((document.getElementById('time-scrubber') as HTMLInputElement).value) || 0;
     fetchWavePoints(idx);
   }
-  if (document.getElementById('current-overlay-toggle').checked && allCurrentPoints.length > 0) {
+  if ((document.getElementById('current-overlay-toggle') as HTMLInputElement).checked && allCurrentPoints.length > 0) {
     renderCurrentOverlay();
   }
 });
 
-map.on('click', (e) => {
+map.on('click', (e: L.LeafletMouseEvent) => {
   const { lat, lng } = e.latlng;
   const lines = [];
 
   // Wind section — shown when wind overlay is active
-  if (allWindPoints.length > 0 && document.getElementById('wind-overlay-toggle').checked) {
+  if (allWindPoints.length > 0 && (document.getElementById('wind-overlay-toggle') as HTMLInputElement).checked) {
     const wp = allWindPoints.find((p) => Math.abs(p.lat - lat) < 0.04 && Math.abs(p.lon - lng) < 0.04);
     if (wp) {
       const twsKn = Math.sqrt(wp.u * wp.u + wp.v * wp.v) * 1.94384;
@@ -2598,7 +2651,7 @@ map.on('click', (e) => {
   }
 
   // Wave section — shown when wave overlay is active
-  if (allWavePoints.length > 0 && document.getElementById('wave-overlay-toggle').checked) {
+  if (allWavePoints.length > 0 && (document.getElementById('wave-overlay-toggle') as HTMLInputElement).checked) {
     const wp = allWavePoints.find(
       (p) => Math.abs(p.lat - lat) < 0.04 && Math.abs(p.lon - lng) < 0.04 && p.waveHeight != null,
     );
@@ -2609,7 +2662,7 @@ map.on('click', (e) => {
   }
 
   // Current section — shown when current overlay is active
-  if (allCurrentPoints.length > 0 && document.getElementById('current-overlay-toggle').checked) {
+  if (allCurrentPoints.length > 0 && (document.getElementById('current-overlay-toggle') as HTMLInputElement).checked) {
     const cp = allCurrentPoints.find((p) => Math.abs(p.lat - lat) < 0.06 && Math.abs(p.lon - lng) < 0.06);
     if (cp) {
       const spdKn = (Math.sqrt(cp.u * cp.u + cp.v * cp.v) * 1.94384).toFixed(1);
@@ -2623,8 +2676,8 @@ map.on('click', (e) => {
   }
 });
 
-document.getElementById('wind-overlay-toggle').addEventListener('change', (e) => {
-  if (e.target.checked) {
+document.getElementById('wind-overlay-toggle')!.addEventListener('change', (e) => {
+  if ((e.target as HTMLInputElement).checked) {
     if (allWindPoints.length > 0) renderWindOverlay();
   } else {
     if (windOverlayLayer) {
@@ -2634,9 +2687,9 @@ document.getElementById('wind-overlay-toggle').addEventListener('change', (e) =>
   }
 });
 
-document.getElementById('wave-overlay-toggle').addEventListener('change', (e) => {
-  const legend = document.getElementById('wave-legend');
-  if (e.target.checked) {
+document.getElementById('wave-overlay-toggle')!.addEventListener('change', (e) => {
+  const legend = document.getElementById('wave-legend')!;
+  if ((e.target as HTMLInputElement).checked) {
     legend.style.display = 'flex';
     if (allWavePoints.length > 0) renderWaveOverlay();
   } else {
@@ -2648,8 +2701,8 @@ document.getElementById('wave-overlay-toggle').addEventListener('change', (e) =>
   }
 });
 
-document.getElementById('current-overlay-toggle').addEventListener('change', (e) => {
-  if (e.target.checked) {
+document.getElementById('current-overlay-toggle')!.addEventListener('change', (e) => {
+  if ((e.target as HTMLInputElement).checked) {
     if (allCurrentPoints.length > 0) renderCurrentOverlay();
   } else {
     if (currentOverlayLayer) {
@@ -2659,33 +2712,33 @@ document.getElementById('current-overlay-toggle').addEventListener('change', (e)
   }
 });
 
-document.getElementById('isochrone-toggle').addEventListener('change', (e) => {
-  if (e.target.checked) {
+document.getElementById('isochrone-toggle')!.addEventListener('change', (e) => {
+  if ((e.target as HTMLInputElement).checked) {
     isochroneLayerGroup.addTo(map);
   } else {
     map.removeLayer(isochroneLayerGroup);
   }
 });
 
-document.getElementById('safety-margin-toggle').addEventListener('change', () => {
-  if (document.getElementById('land-toggle').checked) {
+document.getElementById('safety-margin-toggle')!.addEventListener('change', () => {
+  if ((document.getElementById('land-toggle') as HTMLInputElement).checked) {
     renderLandOverlay();
   }
 });
 
 // REQ-126: re-render route when label toggle/interval changes
-document.getElementById('waypoint-labels-toggle').addEventListener('change', () => {
+document.getElementById('waypoint-labels-toggle')!.addEventListener('change', () => {
   if (routeLayer) fetchAndDrawRoute();
 });
-document.getElementById('waypoint-label-interval').addEventListener('input', () => {
+document.getElementById('waypoint-label-interval')!.addEventListener('input', () => {
   if (routeLayer) fetchAndDrawRoute();
 });
 
-const saveRouteBtn = document.getElementById('save-route-btn');
-const saveModalOverlay = document.getElementById('save-modal-overlay');
-const routeNameInput = document.getElementById('route-name-input');
-const modalSaveBtn = document.getElementById('modal-save-btn');
-const modalCancelBtn = document.getElementById('modal-cancel-btn');
+const saveRouteBtn = document.getElementById('save-route-btn')!;
+const saveModalOverlay = document.getElementById('save-modal-overlay')!;
+const routeNameInput = document.getElementById('route-name-input') as HTMLInputElement;
+const modalSaveBtn = document.getElementById('modal-save-btn') as HTMLButtonElement;
+const modalCancelBtn = document.getElementById('modal-cancel-btn')!;
 
 saveRouteBtn.addEventListener('click', () => {
   const defaultName = `Weather Route ${new Date().toLocaleString()}`;
@@ -2727,13 +2780,13 @@ modalSaveBtn.addEventListener('click', async () => {
   }
 });
 
-function showConfirm(title, msg, onConfirm) {
-  document.getElementById('confirm-modal-title').textContent = title;
-  document.getElementById('confirm-modal-msg').textContent = msg;
-  const overlay = document.getElementById('confirm-modal-overlay');
+function showConfirm(title: string, msg: string, onConfirm: () => void | Promise<void>) {
+  document.getElementById('confirm-modal-title')!.textContent = title;
+  document.getElementById('confirm-modal-msg')!.textContent = msg;
+  const overlay = document.getElementById('confirm-modal-overlay')!;
   overlay.classList.add('visible');
-  const okBtn = document.getElementById('confirm-modal-ok');
-  const cancelBtn = document.getElementById('confirm-modal-cancel');
+  const okBtn = document.getElementById('confirm-modal-ok')!;
+  const cancelBtn = document.getElementById('confirm-modal-cancel')!;
   const cleanup = () => {
     overlay.classList.remove('visible');
     okBtn.removeEventListener('click', onOk);
@@ -2748,15 +2801,15 @@ function showConfirm(title, msg, onConfirm) {
 }
 
 // Promise-based yes/no confirm reusing the confirm-modal (for the upload flow).
-function confirmYesNo(title, msg) {
+function confirmYesNo(title: string, msg: string): Promise<boolean> {
   return new Promise((resolve) => {
-    document.getElementById('confirm-modal-title').textContent = title;
-    document.getElementById('confirm-modal-msg').textContent = msg;
-    const overlay = document.getElementById('confirm-modal-overlay');
+    document.getElementById('confirm-modal-title')!.textContent = title;
+    document.getElementById('confirm-modal-msg')!.textContent = msg;
+    const overlay = document.getElementById('confirm-modal-overlay')!;
     overlay.classList.add('visible');
-    const okBtn = document.getElementById('confirm-modal-ok');
-    const cancelBtn = document.getElementById('confirm-modal-cancel');
-    const done = (val) => {
+    const okBtn = document.getElementById('confirm-modal-ok')!;
+    const cancelBtn = document.getElementById('confirm-modal-cancel')!;
+    const done = (val: boolean) => {
       overlay.classList.remove('visible');
       okBtn.removeEventListener('click', onOk);
       cancelBtn.removeEventListener('click', onCancel);
@@ -2774,8 +2827,8 @@ async function checkDilatedReady() {
   // In webapp mode, dilated index readiness is determined by the data layer
   if (dataLayer.dilatedLandDataReady()) {
     dilatedIndexReady = true;
-    document.getElementById('safety-margin-building').style.display = 'none';
-    document.getElementById('safety-margin-wrap').style.display = '';
+    document.getElementById('safety-margin-building')!.style.display = 'none';
+    document.getElementById('safety-margin-wrap')!.style.display = '';
     if (dilatedPollTimer) {
       clearInterval(dilatedPollTimer);
       dilatedPollTimer = null;
@@ -2788,8 +2841,8 @@ checkDilatedReady();
 // Poll less frequently — land data loads once, not incrementally
 dilatedPollTimer = setInterval(checkDilatedReady, 5000);
 
-const svgEl = document.getElementById('conditions-svg');
-const tooltip = document.getElementById('graph-tooltip');
+const svgEl = document.getElementById('conditions-svg')!;
+const tooltip = document.getElementById('graph-tooltip')!;
 
 svgEl.addEventListener('mousemove', (e) => {
   if (!graphMeta || !graphLayout) return;
@@ -2803,9 +2856,9 @@ svgEl.addEventListener('mousemove', (e) => {
   const idx0 = Math.max(0, Math.min(graphMeta.length - 2, Math.floor(exactIdx)));
   const idx1 = Math.min(idx0 + 1, graphMeta.length - 1);
   const t = exactIdx - idx0;
-  const m0 = graphMeta[idx0],
-    m1 = graphMeta[idx1];
-  const lerp = (a, b) => a + (b - a) * t;
+  const m0 = graphMeta[idx0]!,
+    m1 = graphMeta[idx1]!;
+  const lerp = (a: number, b: number) => a + (b - a) * t;
 
   const d = new Date(m0.time);
   const dateStr =
@@ -2846,7 +2899,7 @@ svgEl.addEventListener('mouseleave', () => {
 // Modal: per-file timeline with real coverage, granularity transitions, staleness,
 // the low-confidence skill band (REQ-132), the departure-aware optimized-combination
 // proposal, and select/deselect. Replaces the sidebar checkbox list.
-function gmFormat(ms) {
+function gmFormat(ms: number): string {
   const d = new Date(ms);
   return (
     d.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
@@ -2856,13 +2909,13 @@ function gmFormat(ms) {
 }
 
 // Positions (ms) where the timestep coarsens by >1.5× — marks non-uniform granularity.
-function granularityChanges(times) {
+function granularityChanges(times: string[]): number[] {
   if (!times || times.length < 3) return [];
   const out = [];
-  let prev = new Date(times[1]).getTime() - new Date(times[0]).getTime();
+  let prev = new Date(times[1]!).getTime() - new Date(times[0]!).getTime();
   for (let i = 2; i < times.length; i++) {
-    const step = new Date(times[i]).getTime() - new Date(times[i - 1]).getTime();
-    if (prev > 0 && step > prev * 1.5) out.push(new Date(times[i]).getTime());
+    const step = new Date(times[i]!).getTime() - new Date(times[i - 1]!).getTime();
+    if (prev > 0 && step > prev * 1.5) out.push(new Date(times[i]!).getTime());
     prev = step;
   }
   return out;
@@ -2883,7 +2936,7 @@ function syncBboxLayers() {
         { color, weight: 2, fill: false, dashArray: '6 4' },
       ).addTo(map);
     } else if (!want && has) {
-      map.removeLayer(gribBoundsLayers[i]);
+      map.removeLayer(gribBoundsLayers[i]!);
       gribBoundsLayers[i] = null;
     }
   });

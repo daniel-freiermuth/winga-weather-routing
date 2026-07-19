@@ -13,27 +13,27 @@
 
 import { haversineNM, bearingTo, windSpeedKnots, windDirection } from '../src/lib/geo';
 import { parsePolarCsv, interpolateBoatSpeed } from '../src/lib/polar';
-import * as dataLayer from './data-layer.js';
+import * as dataLayer from './data-layer';
 
-/**
- * @typedef {Object} WaypointWeather
- * @property {number} idx          Waypoint index (0 = departure)
- * @property {number} lat
- * @property {number} lon
- * @property {string} eta          ISO 8601 timestamp
- * @property {number} etaMs        Milliseconds since epoch
- * @property {number} legDistNm    Distance of the leg ending at this waypoint (0 for departure)
- * @property {number} legDurationH Duration of the leg in hours (0 for departure)
- * @property {number} cumDistNm    Cumulative distance from departure
- * @property {number} cumDurationH Cumulative time from departure in hours
- * @property {number|null} twsKn   True wind speed at this point (knots)
- * @property {number|null} twdDeg  True wind direction at this point (degrees FROM)
- * @property {number|null} twaAbs  Absolute TWA for the next leg (degrees, 0-180)
- * @property {number|null} boatSpeedKn  Estimated boat speed on the next leg (knots)
- * @property {number|null} waveHeightM  Significant wave height (metres)
- * @property {number|null} currentSpeedKn  Ocean current speed (knots)
- * @property {number|null} currentDirDeg   Current direction (degrees FROM)
- */
+export interface WaypointWeather {
+  idx: number;
+  lat: number;
+  lon: number;
+  eta: string;
+  etaMs: number;
+  legDistNm: number;
+  legDurationH: number;
+  cumDistNm: number;
+  cumDurationH: number;
+  twsKn: number | null;
+  gustKn: number | null;
+  twdDeg: number | null;
+  twaAbs: number | null;
+  boatSpeedKn: number | null;
+  waveHeightM: number | null;
+  currentSpeedKn: number | null;
+  currentDirDeg: number | null;
+}
 
 /**
  * Analyse weather conditions along a fixed route.
@@ -44,17 +44,17 @@ import * as dataLayer from './data-layer.js';
  * @param {(pct: number) => void} [onProgress]  Progress callback (0-100)
  * @returns {Promise<WaypointWeather[]>}
  */
-export async function analyseRouteWeather(waypoints, departureMs, polarCsv, onProgress) {
+export async function analyseRouteWeather(waypoints: Array<{ lat: number; lon: number }>, departureMs: number, polarCsv: string, onProgress?: (pct: number) => void): Promise<WaypointWeather[]> {
   if (waypoints.length < 2) return [];
 
   const polar = parsePolarCsv(polarCsv);
-  const results = [];
+  const results: WaypointWeather[] = [];
   let currentTimeMs = departureMs;
   let cumDistNm = 0;
   let cumDurationH = 0;
 
   for (let i = 0; i < waypoints.length; i++) {
-    const wp = waypoints[i];
+    const wp = waypoints[i]!;
     if (onProgress) onProgress(Math.round((i / waypoints.length) * 100));
 
     // Query weather at this waypoint at the estimated arrival time
@@ -73,12 +73,12 @@ export async function analyseRouteWeather(waypoints, departureMs, polarCsv, onPr
     let legDurationH = 0;
 
     if (i > 0) {
-      const prev = waypoints[i - 1];
+      const prev = waypoints[i - 1]!;
       legDistNm = haversineNM(prev.lat, prev.lon, wp.lat, wp.lon);
     }
 
     if (i < waypoints.length - 1 && twdDeg !== null && twsKn !== null) {
-      const nextWp = waypoints[i + 1];
+      const nextWp = waypoints[i + 1]!;
       const bearing = bearingTo(wp.lat, wp.lon, nextWp.lat, nextWp.lon);
       let twa = (bearing - twdDeg + 360) % 360;
       if (twa > 180) twa = 360 - twa;
