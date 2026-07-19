@@ -580,23 +580,18 @@ document.getElementById('waypoints-route').addEventListener('change', (e) => {
 });
 
 async function loadConfig() {
-  const r = await apiFetch(`${API}/config`);
-  if (!r.ok) return;
-  const cfg = await r.json();
-  if (cfg.configuration?.hideTestButtons) {
-    for (const id of ['run-test', 'run-helsinki-test', 'run-gothenburg-test'])
-      document.getElementById(id).style.display = 'none';
-  }
-  if (cfg.configuration?.waveOverlayMaxM != null) {
-    waveOverlayMaxM = cfg.configuration.waveOverlayMaxM;
-  }
-  windSpeedMs = !!cfg.configuration?.windSpeedMs;
-  if (cfg.configuration?.conditionsGraphHeight != null) {
-    conditionsGraphHeight = cfg.configuration.conditionsGraphHeight;
-  }
-  if (cfg.configuration?.forecastSkillHorizonHours != null) {
-    forecastSkillHorizonHours = cfg.configuration.forecastSkillHorizonHours;
-  }
+  // In webapp mode, config comes from localStorage instead of server plugin settings
+  const stored = localStorage.getItem('wr-config');
+  const cfg = stored ? JSON.parse(stored) : {};
+
+  // Test buttons: hide by default in webapp mode (no test GRIB data available)
+  for (const id of ['run-test', 'run-helsinki-test', 'run-gothenburg-test'])
+    document.getElementById(id).style.display = 'none';
+
+  if (cfg.waveOverlayMaxM != null) waveOverlayMaxM = cfg.waveOverlayMaxM;
+  windSpeedMs = !!cfg.windSpeedMs;
+  if (cfg.conditionsGraphHeight != null) conditionsGraphHeight = cfg.conditionsGraphHeight;
+  if (cfg.forecastSkillHorizonHours != null) forecastSkillHorizonHours = cfg.forecastSkillHorizonHours;
 
   try {
     const up = await fetch('/signalk/v1/unitpreferences/active');
@@ -700,113 +695,17 @@ function clearGribBoundsLayers() {
 }
 
 async function loadGribInfo() {
-  try {
-    const r = await apiFetch(`${API}/grib-info`, { cache: 'no-store' });
-    const j = await r.json();
-
-    clearGribBoundsLayers();
-
-    const currentInfoEl = document.getElementById('current-info');
-    const hasWindFiles = j.files && j.files.length > 0;
-    const hasCurrentFiles = j.currentFiles && j.currentFiles.length > 0;
-
-    if (!hasWindFiles && !hasCurrentFiles) {
-      gribLoaded = false;
-      gribInfo.innerHTML = j.gribDir
-        ? `<span>No GRIB files found in</span><br>${escapeHtml(j.gribDir)}`
-        : '<span>No GRIB directory configured</span>';
-      currentInfoEl.style.display = 'none';
-      const removeOldBtn = document.getElementById('remove-old-gribs-btn');
-      removeOldBtn.style.display = 'none';
-      showGribWarning(j.failedFiles ?? []);
-      updateCalcButton();
-      return;
-    }
-
-    gribLoaded = hasWindFiles;
-
-    gribInfoFiles = j.files ?? [];
-
-    // Draw one dashed bbox rectangle per file in C64 palette order
-    let boundsUnion = null;
-    j.files.forEach((f, i) => {
-      const color = C64_PALETTE[i % C64_PALETTE.length];
-      const layer = L.rectangle(
-        [
-          [f.latMin, f.lonMin],
-          [f.latMax, f.lonMax],
-        ],
-        {
-          color,
-          weight: 2,
-          fill: false,
-          dashArray: '6 4',
-        },
-      ).addTo(map);
-      gribBoundsLayers[i] = layer;
-      const b = L.latLngBounds([
-        [f.latMin, f.lonMin],
-        [f.latMax, f.lonMax],
-      ]);
-      boundsUnion = boundsUnion ? boundsUnion.extend(b) : b;
-    });
-    if (boundsUnion) map.fitBounds(boundsUnion);
-
-    // Sidebar: compact summary + "Open GRIB Manager" button (REQ-131). Per-file
-    // selection, timeline, warnings, and the optimized-combination proposal live in
-    // the Grib Manager modal. Bounding-box rectangles stay on the map per enabled file.
-    enabledGribPaths = new Set(j.files.map((f) => f.path));
-    gribInfo.innerHTML = !hasWindFiles
-      ? '<span>No wind GRIB files loaded</span>'
-      : '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
-        `<span style="font-size:11px;color:#cdd6f4">${j.files.length} wind GRIB${j.files.length === 1 ? '' : 's'}</span>` +
-        (j.currentFiles && j.currentFiles.length > 0
-          ? `<span style="font-size:11px;color:#89dceb">${j.currentFiles.length} ocean current</span>`
-          : '') +
-        `<span style="font-size:10px;color:#a6adc8"><b id="grib-enabled-count">${j.files.length}</b> enabled</span>` +
-        `<button id="open-grib-manager-btn" style="font-size:11px;cursor:pointer">Open GRIB Manager…</button>` +
-        '</div>';
-    const openMgrBtn = document.getElementById('open-grib-manager-btn');
-    if (openMgrBtn) openMgrBtn.addEventListener('click', openGribManager);
-
-    // Current files: stored for the Grib Manager (single-file provider). The sidebar
-    // current section is no longer rendered — current GRIBs are managed in the modal.
-    currentInfoFiles = j.currentFiles ?? [];
-    currentEnabled = true;
-    currentInfoEl.style.display = 'none';
-    if (currentInfoFiles.length > 0) {
-      const f = currentInfoFiles[0];
-      if (currentBoundsLayer) map.removeLayer(currentBoundsLayer);
-      currentBoundsLayer = L.rectangle(
-        [
-          [f.latMin, f.lonMin],
-          [f.latMax, f.lonMax],
-        ],
-        { color: '#89dceb', weight: 2, fill: false, dashArray: '6 4' },
-      ).addTo(map);
-      const scrubberVal = parseInt(document.getElementById('time-scrubber').value);
-      const refMs = windTimes[scrubberVal] ? new Date(windTimes[scrubberVal]).getTime() : Date.now();
-      fetchCurrentPoints(refMs);
-    } else {
-      if (currentBoundsLayer) {
-        map.removeLayer(currentBoundsLayer);
-        currentBoundsLayer = null;
-      }
-      allCurrentPoints = [];
-      if (currentOverlayLayer) {
-        map.removeLayer(currentOverlayLayer);
-        currentOverlayLayer = null;
-      }
-    }
-
-    // "Remove old GRIBs" visibility is driven from the Grib Manager (renderGribManagerBody).
-
-    showGribWarning(j.failedFiles ?? []);
-    updateCalcButton();
-    initWindScrubber();
-  } catch (e) {
-    gribInfo.textContent = 'Could not reach plugin API';
-  }
+  // In webapp/Windy mode, there are no GRIB files to manage.
+  // Show a simple status message in the GRIB panel.
+  gribInfo.innerHTML = '<span style="color:#89b4fa">Using Windy ECMWF forecast</span>';
+  gribLoaded = false; // no GRIB files — Windy tiles used instead
+  document.getElementById('current-info').style.display = 'none';
+  // Hide GRIB-management buttons
+  const gribManager = document.getElementById('grib-manager-overlay');
+  if (gribManager) gribManager.style.display = 'none';
+  const openGribMgr = document.getElementById('open-grib-manager');
+  if (openGribMgr) openGribMgr.style.display = 'none';
+  updateCalcButton();
 }
 
 function showGribWarning(failedFiles) {
@@ -861,11 +760,9 @@ async function loadRegions() {
       .filter((r) => r.geometry);
 
     // Fetch avoid list from the plugin endpoint.
-    const avoidR = await apiFetch(`${API}/avoid-regions`);
-    if (avoidR.ok) {
-      const avoidJ = await avoidR.json();
-      regionAvoidIds = avoidJ.avoidRegionIds ?? [];
-    }
+    // Load avoid list from localStorage instead of server
+    const stored = localStorage.getItem('wr-avoid-regions');
+    regionAvoidIds = stored ? JSON.parse(stored) : [];
 
     // Update the region list sidebar and overlay.
     renderRegionList();
@@ -908,8 +805,6 @@ function renderRegionList() {
 }
 
 async function toggleRegionAvoid(uuid, avoid) {
-  // Refresh region geometry and the avoid list from the backend before toggling,
-  // so the overlay reflects any edits made in freeboard-sk (REQ-98).
   await loadRegions();
   if (avoid) {
     if (!regionAvoidIds.includes(uuid)) regionAvoidIds.push(uuid);
@@ -918,16 +813,8 @@ async function toggleRegionAvoid(uuid, avoid) {
   }
   renderRegionList();
   await renderRegionOverlay();
-  // Persist immediately via PUT /avoid-regions.
-  try {
-    await apiFetch(`${API}/avoid-regions`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ avoidRegionIds: regionAvoidIds }),
-    });
-  } catch {
-    /* best-effort */
-  }
+  // Persist to localStorage
+  localStorage.setItem('wr-avoid-regions', JSON.stringify(regionAvoidIds));
 }
 
 async function renderRegionOverlay() {
@@ -1706,23 +1593,9 @@ async function initWindScrubber() {
   statusEl.textContent = 'Ready';
 }
 
-async function fetchAndDrawRoute() {
-  // If we have local route data from the worker, use it directly
+function fetchAndDrawRoute() {
   if (pendingRouteData) {
     drawRouteFromData(pendingRouteData);
-    return;
-  }
-  // Fallback: fetch from server (server mode)
-  try {
-    const r = await apiFetch(`${API}/pending-route`);
-    if (!r.ok) {
-      setStatus('error', `Could not fetch route (HTTP ${r.status})`);
-      return;
-    }
-    const route = await r.json();
-    drawRouteFromData(route);
-  } catch (e) {
-    setStatus('error', String(e));
   }
 }
 
@@ -2261,7 +2134,10 @@ function activatePlacing(which) {
 }
 
 function updateCalcButton() {
-  calcBtn.disabled = !(startLatLon && endLatLon && gribLoaded && gribWarningAcked);
+  // In Windy mode (no GRIB files), the button is enabled when start+end are set and wind times are loaded.
+  // In server mode, also requires gribLoaded && gribWarningAcked.
+  const hasData = gribLoaded || windTimesLoaded; // either GRIB or Windy tiles
+  calcBtn.disabled = !(startLatLon && endLatLon && hasData && (gribWarningAcked || !gribLoaded));
 }
 
 function setTestRoute(s, e, departureValue) {
@@ -2520,14 +2396,20 @@ modalSaveBtn.addEventListener('click', async () => {
   const name = routeNameInput.value.trim() || `Weather Route ${new Date().toLocaleString()}`;
   modalSaveBtn.disabled = true;
   try {
-    const r = await apiFetch(`${API}/save-route`, {
+    if (!pendingRouteData?.feature) throw new Error('No route to save');
+    // POST directly to SignalK Resources API
+    const routeBody = {
+      name,
+      feature: pendingRouteData.feature,
+    };
+    const r = await fetch('/signalk/v2/api/resources/routes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(routeBody),
     });
-    const j = await r.json();
-    if (j.error) {
-      setStatus('error', `Save failed: ${j.error}`);
+    if (!r.ok) {
+      const text = await r.text().catch(() => '');
+      setStatus('error', `Save failed: HTTP ${r.status} ${text}`);
     } else {
       setStatus('done', `Route saved: ${name}`);
     }
@@ -2612,30 +2494,22 @@ document.getElementById('current-info').addEventListener('click', (e) => {
 });
 
 async function checkDilatedReady() {
-  try {
-    const r = await apiFetch(`${API}/status`);
-    const j = await r.json();
-    if (j.polarMinTws != null) polarMinTws = j.polarMinTws;
-    if (j.hiresLandActive) document.getElementById('land-toggle-label').textContent = 'Land overlay (hires)';
-    if (j.dilatedIndexReady) {
-      dilatedIndexReady = true;
-      document.getElementById('safety-margin-building').style.display = 'none';
-      document.getElementById('safety-margin-wrap').style.display = '';
-      if (dilatedPollTimer) {
-        clearInterval(dilatedPollTimer);
-        dilatedPollTimer = null;
-      }
-    } else {
-      document.getElementById('safety-margin-building').style.display = 'block';
-      document.getElementById('safety-margin-pct').textContent = j.dilatedBuildProgress ?? 0;
+  // In webapp mode, dilated index readiness is determined by the data layer
+  if (dataLayer.dilatedLandDataReady()) {
+    dilatedIndexReady = true;
+    document.getElementById('safety-margin-building').style.display = 'none';
+    document.getElementById('safety-margin-wrap').style.display = '';
+    if (dilatedPollTimer) {
+      clearInterval(dilatedPollTimer);
+      dilatedPollTimer = null;
     }
-  } catch {
-    /* ignore — server may still be starting */
   }
+  // polarMinTws stays at default (0) — no server polar info in webapp mode
 }
 
 checkDilatedReady();
-dilatedPollTimer = setInterval(checkDilatedReady, 3000);
+// Poll less frequently — land data loads once, not incrementally
+dilatedPollTimer = setInterval(checkDilatedReady, 5000);
 
 const svgEl = document.getElementById('conditions-svg');
 const tooltip = document.getElementById('graph-tooltip');
