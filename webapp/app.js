@@ -1,3 +1,5 @@
+import * as dataLayer from './data-layer.js';
+
 const API = '/plugins/signalk-weather-routing';
 
 // Escapes HTML special characters for safe insertion into innerHTML (BUG-117).
@@ -381,7 +383,8 @@ document.addEventListener('click', (e) => {
 const now = new Date(Math.ceil(Date.now() / 1800000) * 1800000);
 document.getElementById('departure-time').value = toLocalDateTimeInput(now);
 
-loadGribInfo();
+loadGribInfo(); // server mode: loads GRIB metadata and then calls initWindScrubber
+initWindScrubber(); // Windy mode: loads forecast directly from Windy minifest (harmless if loadGribInfo succeeds first)
 loadCharts();
 loadDepartureResources();
 loadWaypointRoutes();
@@ -1228,41 +1231,29 @@ function windBarbSvg(tws, windDir, color = '#333') {
 }
 
 async function fetchWindPoints(timeIdx, signal) {
-  // No wind GRIB checked — clear overlay without hitting backend
-  // (backend with no path params returns all files, not an empty result)
-  const enabled = enabledWindMeta();
-  if (enabled.length === 0) {
-    allWindPoints = [];
-    if (windOverlayLayer) {
-      map.removeLayer(windOverlayLayer);
-      windOverlayLayer = null;
-    }
-    return;
-  }
-  // Clear overlay if this time step has no wind/wave coverage (e.g. current-only)
+  if (!windTimesLoaded) return;
   const timeStr = windTimes[timeIdx];
   if (!timeStr || !windNativeTimes.includes(timeStr)) {
     allWindPoints = [];
-    if (windOverlayLayer) {
-      map.removeLayer(windOverlayLayer);
-      windOverlayLayer = null;
-    }
+    if (windOverlayLayer) { map.removeLayer(windOverlayLayer); windOverlayLayer = null; }
     return;
   }
-  const params = new URLSearchParams({ timeIdx: windNativeTimes.indexOf(timeStr) });
-  enabled.forEach((f) => params.append('path', f.path));
-  let r;
+  // Map unified timeIdx to the wind-native index
+  const nativeIdx = windNativeTimes.indexOf(timeStr);
+  const bounds = map.getBounds();
+  const bbox = {
+    latMin: bounds.getSouth(),
+    latMax: bounds.getNorth(),
+    lonMin: bounds.getWest(),
+    lonMax: bounds.getEast(),
+  };
   try {
-    r = await apiFetch(`${API}/wind-grid?${params}`, { signal });
+    allWindPoints = await dataLayer.fetchWindGrid(nativeIdx, bbox, signal);
   } catch (e) {
     if (e.name === 'AbortError') return;
     throw e;
   }
-  if (!r.ok) return;
-  const { points } = await r.json();
-  allWindPoints = points;
   updateScrubberLabel(timeIdx);
-
   if (document.getElementById('wind-overlay-toggle').checked) renderWindOverlay();
   if (document.getElementById('wave-overlay-toggle').checked) renderWaveOverlay();
 }
@@ -1276,40 +1267,38 @@ function waveColor(h) {
 }
 
 async function fetchWavePoints(timeIdx, signal) {
-  const enabled = enabledWindMeta();
-  // No GRIB files are active — clear overlay immediately; don't hit the backend
-  // (backend with no path params returns all files, not an empty result)
-  if (enabled.length === 0) {
-    allWavePoints = [];
-    if (waveOverlayLayer) {
-      map.removeLayer(waveOverlayLayer);
-      waveOverlayLayer = null;
-    }
-    return;
-  }
-  // Clear overlay if this time step has no wind/wave coverage (e.g. current-only)
+  if (!windTimesLoaded) return;
   const timeStr = windTimes[timeIdx];
   if (!timeStr || !windNativeTimes.includes(timeStr)) {
     allWavePoints = [];
-    if (waveOverlayLayer) {
-      map.removeLayer(waveOverlayLayer);
-      waveOverlayLayer = null;
-    }
+    if (waveOverlayLayer) { map.removeLayer(waveOverlayLayer); waveOverlayLayer = null; }
     return;
   }
-  const params = new URLSearchParams({ timeIdx: windNativeTimes.indexOf(timeStr) });
-  enabled.forEach((f) => params.append('path', f.path));
-  let r;
+  const nativeIdx = windNativeTimes.indexOf(timeStr);
+  const bounds = map.getBounds();
+  const bbox = {
+    latMin: bounds.getSouth(),
+    latMax: bounds.getNorth(),
+    lonMin: bounds.getWest(),
+    lonMax: bounds.getEast(),
+  };
   try {
-    r = await apiFetch(`${API}/wave-grid?${params}`, { signal });
+    const result = await dataLayer.fetchWaveGrid(nativeIdx, bbox, signal);
+    allWavePoints = result.points;
+    // Compute grid meta from the actual points for the canvas renderer
+    if (allWavePoints.length > 0) {
+      const lats = allWavePoints.map((p) => p.lat);
+      const lons = allWavePoints.map((p) => p.lon);
+      waveGridMeta = {
+        latMin: Math.min(...lats), latMax: Math.max(...lats),
+        lonMin: Math.min(...lons), lonMax: Math.max(...lons),
+        latStep: 0.5, lonStep: 0.5,
+      };
+    }
   } catch (e) {
     if (e.name === 'AbortError') return;
     throw e;
   }
-  if (!r.ok) return;
-  const { points, latMin, latMax, lonMin, lonMax, latStep, lonStep } = await r.json();
-  allWavePoints = points;
-  waveGridMeta = { latMin, latMax, lonMin, lonMax, latStep, lonStep };
   if (document.getElementById('wave-overlay-toggle').checked) renderWaveOverlay();
 }
 
@@ -1457,16 +1446,19 @@ function renderWindOverlay() {
 }
 
 async function fetchCurrentPoints(timeMs, signal) {
-  let r;
+  const bounds = map.getBounds();
+  const bbox = {
+    latMin: bounds.getSouth(),
+    latMax: bounds.getNorth(),
+    lonMin: bounds.getWest(),
+    lonMax: bounds.getEast(),
+  };
   try {
-    r = await apiFetch(`${API}/current-grid?timeMs=${timeMs}`, { signal });
+    allCurrentPoints = await dataLayer.fetchCurrentGrid(timeMs, bbox, signal);
   } catch (e) {
     if (e.name === 'AbortError') return;
     throw e;
   }
-  if (!r.ok) return;
-  const { points } = await r.json();
-  allCurrentPoints = points;
   if (document.getElementById('current-overlay-toggle').checked) renderCurrentOverlay();
 }
 
@@ -1637,30 +1629,33 @@ function toggleScrubberRange() {
 function rebuildScrubberTimes() {
   const windSet = new Set();
   const enabled = enabledWindMeta();
-  for (const f of enabled) {
-    if (!f.timeStart || !f.nTimes) continue;
-    const startMs = new Date(f.timeStart).getTime();
-    const endMs = new Date(f.timeEnd).getTime();
-    if (gribTimesMap.has(f.path)) {
-      // Actual per-file timesteps from /grib-times (REQ-130/REQ-131): reflects non-uniform
-      // spacing (ICON-EU hourly→3-hourly) without client-side reconstruction.
-      for (const t of gribTimesMap.get(f.path)) {
-        const ms = new Date(t).getTime();
-        if (ms >= startMs && ms <= endMs) windSet.add(t);
-      }
-    } else if (actualWindTimes) {
-      // Fallback A: merged backend axis filtered to this file's range.
-      for (const t of actualWindTimes) {
-        const ms = new Date(t).getTime();
-        if (ms >= startMs && ms <= endMs) windSet.add(t);
-      }
-    } else {
-      // Fallback B: reconstruct from metadata with even spacing (imprecise).
-      const step = f.nTimes > 1 ? (endMs - startMs) / (f.nTimes - 1) : 0;
-      for (let k = 0; k < f.nTimes; k++) {
-        windSet.add(new Date(Math.round(startMs + k * step)).toISOString());
+
+  if (enabled.length > 0) {
+    // Server mode: filter by enabled GRIB files
+    for (const f of enabled) {
+      if (!f.timeStart || !f.nTimes) continue;
+      const startMs = new Date(f.timeStart).getTime();
+      const endMs = new Date(f.timeEnd).getTime();
+      if (gribTimesMap.has(f.path)) {
+        for (const t of gribTimesMap.get(f.path)) {
+          const ms = new Date(t).getTime();
+          if (ms >= startMs && ms <= endMs) windSet.add(t);
+        }
+      } else if (actualWindTimes) {
+        for (const t of actualWindTimes) {
+          const ms = new Date(t).getTime();
+          if (ms >= startMs && ms <= endMs) windSet.add(t);
+        }
+      } else {
+        const step = f.nTimes > 1 ? (endMs - startMs) / (f.nTimes - 1) : 0;
+        for (let k = 0; k < f.nTimes; k++) {
+          windSet.add(new Date(Math.round(startMs + k * step)).toISOString());
+        }
       }
     }
+  } else if (actualWindTimes) {
+    // Windy mode: no GRIB files — use actualWindTimes directly from minifest
+    for (const t of actualWindTimes) windSet.add(t);
   }
   const windArr = Array.from(windSet).sort();
   windTimesCount = windArr.length;
@@ -1697,36 +1692,18 @@ function rebuildScrubberTimes() {
 async function initWindScrubber() {
   const statusEl = document.getElementById('status-box');
   statusEl.className = 'loading';
-  statusEl.innerHTML = 'Loading wind data<span class="wr-spinner"></span>';
+  statusEl.innerHTML = 'Loading forecast data<span class="wr-spinner"></span>';
+
   try {
-    const rc = await apiFetch(`${API}/current-times`);
-    if (rc.ok) {
-      const { times: cTimes } = await rc.json();
-      currentFileTimes = cTimes;
-    }
-  } catch (_) {
-    /* current-times unavailable */
-  }
-  // Pre-load wind GRIB data so /wind-grid and /wave-grid don't return 503
-  try {
-    const wt = await apiFetch(`${API}/wind-times`);
-    if (wt.ok) {
-      const { times } = await wt.json();
-      actualWindTimes = times;
-    }
-  } catch (_) {
-    /* wind-times unavailable */
-  }
-  // Per-file actual timestep axes (REQ-131): lets rebuildScrubberTimes honour each
-  // file's real (non-uniform) spacing and powers the Grib Manager timeline.
-  try {
-    const gt = await apiFetch(`${API}/grib-times`);
-    if (gt.ok) {
-      const { files } = await gt.json();
-      gribTimesMap = new Map((files ?? []).map((f) => [f.path, f.times]));
-    }
-  } catch (_) {
-    /* grib-times unavailable — rebuildScrubberTimes falls back to actualWindTimes */
+    const { windTimes: wt, currentTimes: ct } = await dataLayer.loadTimesFromWindy();
+    actualWindTimes = wt;
+    currentFileTimes = ct;
+    // Treat all wind times as a single "file" for the scrubber
+    gribTimesMap = new Map([['windy', wt]]);
+  } catch (e) {
+    statusEl.className = 'error';
+    statusEl.textContent = 'Failed to load forecast: ' + (e.message || e);
+    return;
   }
 
   rebuildScrubberTimes();
