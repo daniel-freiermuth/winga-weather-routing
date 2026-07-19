@@ -51,6 +51,7 @@
   },
   "dependencies": {
     "@kristianwiklund/wr-land-data": "1.0.0",
+    "@signalk-weather-routing/windy-lib": "workspace:*",
     "gdal-async": "^3.9.0",
     "jsts": "^2.12.1",
     "express": "^5.2.1",
