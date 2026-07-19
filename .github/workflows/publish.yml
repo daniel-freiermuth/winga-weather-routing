@@ -12,12 +12,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-
-      - run: npm install --ignore-scripts
+      - run: pnpm install --ignore-scripts
 
       - name: Read gdal-async version
         id: gdal-version
@@ -88,8 +90,8 @@ jobs:
           cp -r tmp/x64/node22/binding/* node_modules/gdal-async/lib/binding/
           cp -r tmp/x64/node24/binding/* node_modules/gdal-async/lib/binding/
 
-      - run: npm run build
-      - run: npm test
-      - run: npm publish --provenance --access public
+      - run: pnpm build
+      - run: pnpm test
+      - run: pnpm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

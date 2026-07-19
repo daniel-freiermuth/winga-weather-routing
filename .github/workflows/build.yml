@@ -27,11 +27,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-
-      - run: npm install --ignore-scripts
+      - run: pnpm install --ignore-scripts
 
       - name: Build gdal-async native binary from source
         run: |
@@ -50,11 +52,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-
-      - run: npm install --ignore-scripts
+      - run: pnpm install --ignore-scripts
 
       - uses: actions/download-artifact@v4
         with:
@@ -100,11 +104,11 @@ jobs:
           cp -r tmp/x64/node22/* node_modules/gdal-async/lib/binding/
           cp -r tmp/x64/node24/* node_modules/gdal-async/lib/binding/
 
-      - run: npm run build
-      - run: npm test
+      - run: pnpm build
+      - run: pnpm test
 
       - name: Package tarball
-        run: npm pack
+        run: pnpm pack
 
       - uses: actions/upload-artifact@v4
         with:

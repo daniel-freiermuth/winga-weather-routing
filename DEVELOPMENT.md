@@ -9,7 +9,7 @@ The SignalK data/plugin directory is bind-mounted:
 <signalk-server-repo>/docker/signalk_conf/  ←→  /home/node/.signalk  (inside container)
 ```
 
-Node.js is not installed directly on the host — use `docker exec` for all `node`/`npm` commands.
+Node.js is not installed directly on the host — use `docker exec` for all `node`/`pnpm` commands.
 
 ## Generating land data (one-time, or when updating GSHHG resolution)
 
@@ -46,8 +46,8 @@ Then commit `data/edge-index.bin.gz` and `data/dilated-edge-index.bin.gz`.
 
 ## Install / full rebuild
 
-npm v10 installs a local path as a symlink, not a copy. Use `npm pack` to produce a
-tarball, then install from that.
+pnpm installs a local path as a symlink into the content-addressable store. Use `pnpm pack` to
+produce a tarball, then install from that.
 
 ```bash
 # 1. Copy source into the bind-mounted volume so the container can see it
@@ -56,9 +56,9 @@ cp -r <plugin-src> <signalk-server-repo>/docker/signalk_conf/_weather-routing-sr
 # 2. Install dev deps, compile TypeScript, pack
 docker exec signalk-server sh -c \
   "cd /home/node/.signalk/_weather-routing-src && \
-   npm install && \
-   npm run build && \
-   npm pack --ignore-scripts"
+   pnpm install && \
+   pnpm build && \
+   pnpm pack --ignore-scripts"
 
 # 3. Install from the tarball (real copy, not symlink)
 docker exec signalk-server sh -c \
@@ -82,7 +82,7 @@ Recompile in-place inside the installed package, then reload via the SignalK API
 
 ```bash
 docker exec signalk-server sh -c \
-  "cd /home/node/.signalk/node_modules/signalk-weather-routing && npm run build"
+  "cd /home/node/.signalk/node_modules/signalk-weather-routing && pnpm build"
 
 curl -X PUT http://localhost:3000/skServer/plugins/signalk-weather-routing/restart
 ```
@@ -108,7 +108,7 @@ easy to verify the expected code is deployed.
 
 ```bash
 docker exec signalk-server sh -c \
-  "cd /home/node/.signalk/node_modules/signalk-weather-routing && npm test"
+  "cd /home/node/.signalk/node_modules/signalk-weather-routing && pnpm test"
 ```
 
 ## Uninstalling
@@ -123,7 +123,7 @@ docker restart signalk-server
 
 Three workflows run automatically:
 
-**CI** (`.github/workflows/ci.yml`) — triggers on every push and every pull request targeting `main`. Runs `npm ci`, `npm run build`, and `npm test` on Node.js 24 (ubuntu-latest). No manual action required.
+**CI** (`.github/workflows/ci.yml`) — triggers on every push and every pull request targeting `main`. Runs `pnpm install`, `pnpm build`, and `pnpm test` on Node.js 24 (ubuntu-latest). No manual action required.
 
 **Build** (`.github/workflows/build.yml`) — manual trigger (`workflow_dispatch`). Builds `gdal-async` from source on both `x64` (ubuntu-latest) and `arm64` (ubuntu-24.04-arm) runners for both Node.js 22 and Node.js 24, assembles the four ABIs into sub-packages, packs the plugin tarball, and uploads it as an artifact. Useful for pre-release verification.
 
@@ -147,7 +147,7 @@ At startup, `src/lib/ensure-gdal-binary.ts` copies the matching binary from the 
 
 ### Publishing a new version
 
-**Prerequisite:** prebuilt gdal-async binaries must exist in [`kristianwiklund/wr-gdal-async-prebuilt`](https://github.com/kristianwiklund/wr-gdal-async-prebuilt) for the exact `gdal-async` version locked in `package-lock.json`. If `gdal-async` has not changed since the last release, the existing release is reused automatically. If `gdal-async` was updated, trigger the **Build gdal-async binaries** workflow in that repo first (set `gdal_async_version` to the new version) and wait for the release to appear before proceeding.
+**Prerequisite:** prebuilt gdal-async binaries must exist in [`kristianwiklund/wr-gdal-async-prebuilt`](https://github.com/kristianwiklund/wr-gdal-async-prebuilt) for the exact `gdal-async` version locked in `pnpm-lock.yaml`. If `gdal-async` has not changed since the last release, the existing release is reused automatically. If `gdal-async` was updated, trigger the **Build gdal-async binaries** workflow in that repo first (set `gdal_async_version` to the new version) and wait for the release to appear before proceeding.
 
 1. Bump `version` in `package.json` following [Semantic Versioning](https://semver.org/).
 2. Update `optionalDependencies` in `package.json` to the exact gdal-async version (e.g. `"3.12.3"`) if it changed.
