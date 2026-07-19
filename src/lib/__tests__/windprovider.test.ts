@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { MultiFileWindProvider, nearestIdx } from '../windprovider';
+import { MultiFileWindProvider } from '../windprovider';
+import { nearestIdx } from '../geo';
 import type { GribData, GribFileEntry } from '../../types';
 
 function makeGrib(opts: {

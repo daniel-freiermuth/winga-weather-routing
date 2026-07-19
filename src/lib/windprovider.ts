@@ -6,22 +6,8 @@
 import type { GribFileEntry, WindProvider, WindVector } from '../types';
 import { getWindAt, getWaveAt, nearestTimeIndex } from './grib';
 
-export function nearestIdx(times: Date[], t: Date): number {
-  const ms = t.getTime();
-  let best = 0,
-    bestDiff = Infinity;
-  // for...of avoids noUncheckedIndexedAccess on times[i]
-  let i = 0;
-  for (const entry of times) {
-    const diff = Math.abs(entry.getTime() - ms);
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      best = i;
-    }
-    i++;
-  }
-  return best;
-}
+// Re-export for backward compatibility — canonical location is geo.ts.
+export { nearestIdx } from './geo';
 
 // Mean interval between consecutive timesteps (ms). Smaller = temporally finer.
 // Single-step files have no measurable granularity and sort as coarsest so multi-step

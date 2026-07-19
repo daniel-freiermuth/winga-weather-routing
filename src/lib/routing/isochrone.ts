@@ -11,11 +11,10 @@ import type {
   RoutePoint,
 } from '../../types';
 import type { RoutingAlgorithm } from './algorithm';
-import { nearestIdx } from '../windprovider';
 import { interpolateBoatSpeed } from '../polar';
 import { segmentCrossesLandFast, isPointOnLand } from '../landmask';
 import { segmentCrossesRegion, isPointInRegion } from '../regions';
-import { haversineNM, bearingTo, destinationPoint, windSpeedKnots, windDirection, DEG_TO_RAD } from '../geo';
+import { haversineNM, bearingTo, destinationPoint, windSpeedKnots, windDirection, DEG_TO_RAD, nearestIdx } from '../geo';
 
 const DEFAULT_HEADING_STEP = 5;
 const DEFAULT_SECTOR_SIZE = 1;

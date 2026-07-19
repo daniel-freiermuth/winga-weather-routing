@@ -18,7 +18,8 @@ import type {
   GribFileEntry,
   WindVector,
 } from '../types';
-import { MultiFileWindProvider, nearestIdx } from './windprovider';
+import { MultiFileWindProvider } from './windprovider';
+import { nearestIdx } from './geo';
 import { SingleFileCurrentProvider } from './currentprovider';
 import type {
   BulkLoadableSource,
