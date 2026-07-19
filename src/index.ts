@@ -52,6 +52,7 @@ import type { SignalKApp } from './lib/signalk-app';
 import { computeGridBounds } from './lib/grid';
 import type { RoutingAlgorithm } from './lib/routing/algorithm';
 import { IsochroneAlgorithm } from './lib/routing/isochrone';
+import { GribForecastSource } from './lib/grib-source';
 
 const ALGORITHMS = new Map<string, RoutingAlgorithm>([['isochrone', new IsochroneAlgorithm()]]);
 
@@ -61,6 +62,10 @@ module.exports = (app: SignalKApp) => {
   let gribFiles: GribFileEntry[] = [];
   let currentFiles: CurrentFileEntry[] = [];
   let currentProvider: CurrentProvider | null = null;
+  // Unified weather data source — set after each GRIB directory scan.
+  // Used by the routing algorithm (via loadForRouting) and the planning
+  // view endpoint (via queryPoint). null until the first scan completes.
+  let weatherSource: GribForecastSource | null = null;
   let gribFailedFiles: { path: string; error: string }[] = [];
   let polar: PolarData | null = null;
   let landIndex: LandIndex | null = null; // polygon index — overlay only
@@ -186,6 +191,8 @@ module.exports = (app: SignalKApp) => {
         currentProvider = null;
       }
     }
+    // Create/refresh the unified weather source with the newly scanned files.
+    weatherSource = new GribForecastSource(gribFiles, currentFiles);
   }
 
   async function loadRegions(): Promise<void> {
@@ -577,17 +584,13 @@ module.exports = (app: SignalKApp) => {
             }
           }
 
-          const loadedEntries = selectedEntries.filter((e) => e.data !== null);
-          if (loadedEntries.length === 0) {
-            throw new Error('All relevant GRIB files failed to load — check file integrity');
-          }
-
-          const wind = new MultiFileWindProvider(loadedEntries);
+          if (weatherSource === null) throw new Error('Weather source not initialised — GRIB directory not configured or scan not yet complete');
+          const { wind, current: routingCurrent } = await weatherSource.loadForRouting(body.enabledGribPaths);
 
           let route: RoutePoint[];
           let warning: string | undefined;
 
-          const activeCurrentProvider = body.useCurrentGrib === false ? null : currentProvider;
+          const activeCurrentProvider = body.useCurrentGrib === false ? null : routingCurrent;
 
           if (waypoints.length === 0) {
             const result = await algorithm.calculate(
@@ -757,6 +760,8 @@ module.exports = (app: SignalKApp) => {
           }
         }
         const wind = new MultiFileWindProvider(gribFiles);
+        // Make the loaded provider available for queryPoint() on the planning view endpoint.
+        weatherSource?.setWindProvider(wind);
         res.json({ times: wind.times.map((t) => t.toISOString()) });
       }));
 

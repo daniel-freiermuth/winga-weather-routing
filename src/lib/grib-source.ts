@@ -105,10 +105,17 @@ export class GribForecastSource implements BulkLoadableSource {
   }
 
   async loadForRouting(enabledPaths?: string[]): Promise<RoutingData> {
-    const windFiles =
+    // Only entries with data already lazy-loaded (via loadGrib()) are included.
+    // Callers must load GRIB data before calling loadForRouting().
+    const windFiles = (
       enabledPaths !== undefined
         ? this.windFiles.filter((f) => enabledPaths.includes(f.meta.path))
-        : this.windFiles;
+        : this.windFiles
+    ).filter((f) => f.data !== null);
+
+    if (windFiles.length === 0) {
+      throw new Error('loadForRouting: no GRIB data loaded — call loadGrib() on entries first');
+    }
 
     this.windProvider = new MultiFileWindProvider(windFiles);
 
