@@ -1,8 +1,10 @@
-// Data layer — provides wind/wave/current grid data from Windy tiles.
-// Replaces the server API calls (/wind-grid, /wave-grid, /current-grid, /wind-times).
+// Data layer — provides wind/wave/current grid data from Windy tiles,
+// and land polygon data from the GSHHG edge-index binary.
+// Replaces server API calls (/wind-grid, /wave-grid, /current-grid,
+// /wind-times, /land-polygons).
 //
 // All functions return the same data shapes that app.js expects so the UI
-// rendering code (renderWindOverlay, renderWaveOverlay, etc.) doesn't change.
+// rendering code doesn't change.
 
 import jpeg from 'jpeg-js';
 import {
@@ -212,4 +214,70 @@ export async function fetchCurrentGrid(timeMs, bbox, signal) {
   if (!step) return [];
   const raw = await sampleOverlayGrid('cmems', cmemsModelRun, step.compact, 'seacurrents', true, bbox, 0.5, signal);
   return raw.filter((p) => p.speed > 0.01);
+}
+
+// ── Land overlay ──────────────────────────────────────────────────────────────
+
+import { fetchLandIndex, parseIndexFromArrayBuffer } from '../src/lib/land-index-loader';
+import { polygonsInBbox, buildLandIndex } from '../src/lib/landmask';
+
+let landIndex = null;       // LandIndex for the standard (h-tier) coastline
+let dilatedLandIndex = null; // LandIndex for the dilated (safety margin) coastline
+
+/**
+ * Load the land edge-index binary from a URL. Call once; subsequent calls
+ * for the same URL are no-ops.
+ *
+ * @param {string} url           URL to edge-index.bin.gz
+ * @param {string} [dilatedUrl]  URL to dilated-edge-index.bin.gz (optional)
+ */
+export async function loadLandData(url, dilatedUrl) {
+  if (!landIndex) {
+    const edgeIndex = await fetchLandIndex(url);
+    landIndex = buildLandIndex(edgeIndex.polygons);
+  }
+  if (dilatedUrl && !dilatedLandIndex) {
+    try {
+      const dilatedEdge = await fetchLandIndex(dilatedUrl);
+      dilatedLandIndex = buildLandIndex(dilatedEdge.polygons);
+    } catch {
+      // Dilated index is optional — safety margin just won't be available
+    }
+  }
+}
+
+/** Whether land data has been loaded. */
+export function landDataReady() { return landIndex !== null; }
+
+/** Whether dilated land data has been loaded. */
+export function dilatedLandDataReady() { return dilatedLandIndex !== null; }
+
+/**
+ * Return a GeoJSON FeatureCollection of land polygons within the bbox.
+ * Same shape as the old /land-polygons endpoint.
+ *
+ * @param {{latMin:number,latMax:number,lonMin:number,lonMax:number}} bbox
+ * @param {boolean} [dilated=false]
+ * @returns {{type:string, features:object[]}}
+ */
+export function getLandPolygonsGeoJSON(bbox, dilated = false) {
+  const idx = dilated ? dilatedLandIndex : landIndex;
+  if (!idx) return { type: 'FeatureCollection', features: [] };
+
+  const polys = polygonsInBbox(idx, bbox.latMin, bbox.lonMin, bbox.latMax, bbox.lonMax);
+
+  const features = polys.map((p) => {
+    const coords = [];
+    for (let j = 0; j + 1 < p.exterior.length; j += 2) {
+      coords.push([p.exterior[j], p.exterior[j + 1]]); // [lon, lat]
+    }
+    if (coords.length > 0) coords.push(coords[0]); // close the ring
+    return {
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [coords] },
+      properties: null,
+    };
+  });
+
+  return { type: 'FeatureCollection', features };
 }

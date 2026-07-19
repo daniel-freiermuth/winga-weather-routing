@@ -2330,28 +2330,28 @@ function redIcon() {
 }
 
 async function renderLandOverlay() {
-  if (!gribLoaded) return;
   const token = ++renderLandOverlayToken;
 
-  if (landLayerOrig) {
-    map.removeLayer(landLayerOrig);
-    landLayerOrig = null;
-  }
-  if (landLayerDilated) {
-    map.removeLayer(landLayerDilated);
-    landLayerDilated = null;
-  }
+  if (landLayerOrig) { map.removeLayer(landLayerOrig); landLayerOrig = null; }
+  if (landLayerDilated) { map.removeLayer(landLayerDilated); landLayerDilated = null; }
 
   if (!document.getElementById('land-toggle').checked) return;
 
-  const b = map.getBounds();
-  const bboxQuery = `latMin=${b.getSouth()}&lonMin=${b.getWest()}&latMax=${b.getNorth()}&lonMax=${b.getEast()}`;
-  const safetyOn = dilatedIndexReady && document.getElementById('safety-margin-toggle').checked;
+  // Load land data on first use
+  if (!dataLayer.landDataReady()) {
+    try {
+      await dataLayer.loadLandData('./data/edge-index.bin.gz', './data/dilated-edge-index.bin.gz');
+    } catch (e) {
+      console.warn('Land data load failed:', e);
+      return;
+    }
+  }
+  if (token !== renderLandOverlayToken) return;
 
-  const r = await apiFetch(`${API}/land-polygons?${bboxQuery}`);
-  if (!r.ok) return;
-  if (token !== renderLandOverlayToken || !document.getElementById('land-toggle').checked) return;
-  const data = await r.json();
+  const b = map.getBounds();
+  const bbox = { latMin: b.getSouth(), latMax: b.getNorth(), lonMin: b.getWest(), lonMax: b.getEast() };
+
+  const data = dataLayer.getLandPolygonsGeoJSON(bbox, false);
   if (token !== renderLandOverlayToken || !document.getElementById('land-toggle').checked) return;
 
   landLayerOrig = L.geoJSON(data, {
@@ -2359,11 +2359,9 @@ async function renderLandOverlay() {
     renderer: L.canvas({ pane: 'landPane' }),
   }).addTo(map);
 
+  const safetyOn = dataLayer.dilatedLandDataReady() && document.getElementById('safety-margin-toggle')?.checked;
   if (safetyOn) {
-    const r2 = await apiFetch(`${API}/land-polygons?dilated=true&${bboxQuery}`);
-    if (!r2.ok) return;
-    if (token !== renderLandOverlayToken || !document.getElementById('land-toggle').checked) return;
-    const data2 = await r2.json();
+    const data2 = dataLayer.getLandPolygonsGeoJSON(bbox, true);
     if (token !== renderLandOverlayToken || !document.getElementById('land-toggle').checked) return;
 
     landLayerDilated = L.geoJSON(data2, {
