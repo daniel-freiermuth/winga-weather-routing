@@ -1,3 +1,6 @@
+packages:
+  - "windy-lib/ts"
+
 allowBuilds:
   esbuild: true
   gdal-async: true

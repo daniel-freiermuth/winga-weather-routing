@@ -1,0 +1,36 @@
+{
+  "name": "@signalk-weather-routing/windy-lib",
+  "version": "0.1.0",
+  "description": "Reverse-engineered Windy.com internal API client — tiles, point forecasts, auth",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": ["windy", "weather", "forecast", "tiles", "signalk"],
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^6.0.0"
+  },
+  "peerDependencies": {
+    "sharp": ">=0.33"
+  },
+  "peerDependenciesMeta": {
+    "sharp": {
+      "optional": true,
+      "description": "Required only for Node.js tile pixel sampling (sampleAtPosition). Not needed for browsers or for point forecasts."
+    }
+  }
+}
