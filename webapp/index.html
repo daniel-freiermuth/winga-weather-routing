@@ -7,17 +7,92 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body, #app { width: 100%; height: 100%; overflow: hidden; }
+      html, body { width: 100%; height: 100%; overflow: hidden; font: 13px/1.5 system-ui, sans-serif; }
+      #app { display: flex; width: 100%; height: 100%; }
+      #sidebar { width: 320px; min-width: 280px; height: 100%; overflow-y: auto;
+        background: #1e1e2e; color: #cdd6f4; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+      #sidebar h1 { font-size: 16px; font-weight: 600; color: #89b4fa; margin-bottom: 4px; }
+      #sidebar h2 { font-size: 13px; font-weight: 600; color: #a6adc8; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 8px; }
+      #sidebar label { display: block; margin-bottom: 2px; color: #bac2de; font-size: 12px; }
+      #sidebar select, #sidebar input[type="text"], #sidebar input[type="datetime-local"],
+      #sidebar input[type="file"], #sidebar input[type="number"] {
+        width: 100%; padding: 6px 8px; border: 1px solid #45475a; border-radius: 4px;
+        background: #313244; color: #cdd6f4; font-size: 13px; }
+      #sidebar select:focus, #sidebar input:focus { outline: none; border-color: #89b4fa; }
+      .btn { padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600;
+        cursor: pointer; transition: background 0.15s; }
+      .btn-primary { background: #89b4fa; color: #1e1e2e; }
+      .btn-primary:hover { background: #74c7ec; }
+      .btn-primary:disabled { background: #45475a; color: #6c7086; cursor: not-allowed; }
+      .group { display: flex; flex-direction: column; gap: 4px; }
+      #map-container { flex: 1; position: relative; }
       #map { width: 100%; height: 100%; }
-      #status { position: absolute; bottom: 8px; left: 8px; z-index: 1000;
-        background: rgba(0,0,0,0.7); color: #fff; padding: 4px 10px;
-        border-radius: 4px; font: 13px/1.4 system-ui, sans-serif; }
+      #status-bar { position: absolute; bottom: 0; left: 0; right: 0; z-index: 1000;
+        background: rgba(30,30,46,0.85); color: #cdd6f4; padding: 6px 12px;
+        font-size: 12px; backdrop-filter: blur(8px); }
+      .progress-bar { height: 3px; background: #45475a; border-radius: 2px; margin-top: 4px; }
+      .progress-fill { height: 100%; background: #89b4fa; border-radius: 2px; transition: width 0.2s; }
+      .route-info { background: #313244; border-radius: 6px; padding: 8px 10px; font-size: 12px; }
+      .route-info td { padding: 2px 8px 2px 0; }
+      .route-info .wp-name { color: #89b4fa; }
+      .route-info .wx-val { font-family: 'JetBrains Mono', monospace; }
+      #version { font-size: 10px; color: #585b70; margin-top: auto; }
     </style>
   </head>
   <body>
     <div id="app">
-      <div id="map"></div>
-      <div id="status">Loading…</div>
+      <div id="sidebar">
+        <h1>⛵ Weather Routing</h1>
+
+        <h2>Route</h2>
+        <div class="group">
+          <label for="route-select">SignalK Route</label>
+          <select id="route-select"><option value="">Loading routes…</option></select>
+        </div>
+
+        <h2>Departure</h2>
+        <div class="group">
+          <label for="departure-time">Departure Time</label>
+          <input type="datetime-local" id="departure-time" />
+        </div>
+
+        <h2>Boat</h2>
+        <div class="group">
+          <label for="polar-file">Polar Diagram (CSV)</label>
+          <input type="file" id="polar-file" accept=".csv,.pol,.txt" />
+          <span id="polar-status" style="font-size:11px; color:#6c7086">No polar loaded</span>
+        </div>
+
+        <h2>Options</h2>
+        <div class="group">
+          <label for="wind-model">Wind Model</label>
+          <select id="wind-model">
+            <option value="ecmwf" selected>ECMWF (9 km)</option>
+            <option value="gfs">GFS (22 km)</option>
+            <option value="icon">ICON (13 km)</option>
+          </select>
+        </div>
+        <div class="group">
+          <label for="land-avoidance">
+            <input type="checkbox" id="land-avoidance" checked /> Coast avoidance
+          </label>
+        </div>
+
+        <button id="calculate-btn" class="btn btn-primary" disabled>Calculate Route</button>
+
+        <div id="result-panel" class="route-info" style="display:none"></div>
+
+        <div id="version"></div>
+      </div>
+      <div id="map-container">
+        <div id="map"></div>
+        <div id="status-bar">
+          <span id="status-text">Connecting…</span>
+          <div class="progress-bar" id="progress-bar" style="display:none">
+            <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
     </div>
     <script type="module" src="./main.ts"></script>
   </body>
