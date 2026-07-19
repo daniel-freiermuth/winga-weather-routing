@@ -177,6 +177,10 @@ let graphLayout = null;
 let gribLoaded = false; // true when at least one GRIB file is indexed
 let gribWarningAcked = false;
 let calcStream = null;
+let pendingRouteData = null; // route result from worker (replaces /pending-route)
+
+// Routing Web Worker — runs isochrone off the main thread
+const routingWorker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 let enabledGribPaths = new Set(); // wind GRIB paths enabled — single source of truth (REQ-131)
 let currentInfoFiles = []; // ocean-current GRIB meta (single-file provider; rendered in the Grib Manager)
 let gribTimesMap = new Map(); // path → ISO[] actual per-file timesteps from /grib-times
@@ -382,6 +386,25 @@ document.addEventListener('click', (e) => {
 
 const now = new Date(Math.ceil(Date.now() / 1800000) * 1800000);
 document.getElementById('departure-time').value = toLocalDateTimeInput(now);
+
+// Polar file upload handler — stores CSV in localStorage for worker
+const polarFileInput = document.getElementById('polar-file-input');
+const polarFileStatus = document.getElementById('polar-file-status');
+if (polarFileInput) {
+  polarFileInput.addEventListener('change', async () => {
+    const file = polarFileInput.files?.[0];
+    if (!file) return;
+    const csv = await file.text();
+    localStorage.setItem('wr-polar-csv', csv);
+    polarFileStatus.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+    polarFileStatus.style.color = '#a6e3a1';
+  });
+  // Restore status if polar was previously uploaded
+  if (localStorage.getItem('wr-polar-csv')) {
+    polarFileStatus.textContent = 'Polar loaded from previous session';
+    polarFileStatus.style.color = '#a6e3a1';
+  }
+}
 
 loadGribInfo(); // server mode: loads GRIB metadata and then calls initWindScrubber
 initWindScrubber(); // Windy mode: loads forecast directly from Windy minifest (harmless if loadGribInfo succeeds first)
@@ -1014,172 +1037,138 @@ async function startCalculation() {
   landToggle.style.opacity = '0.4';
   progressWrap.style.display = 'block';
   progressBar.style.width = '0';
-  setStatus('', 'Connecting…');
-  console.log(`[startCalculation] t=${Date.now()}`);
+  setStatus('', 'Loading tiles…');
 
-  // Open SSE stream and wait for onopen before sending the POST.
-  // This guarantees the server has registered the client in sseClients
-  // before the calculation starts, so no onProgress events are missed.
-  try {
-    await openCalcStream();
-  } catch (e) {
-    setStatus('error', `Could not open event stream: ${e.message}`);
+  // Build bounding box from start/end/waypoints with 3° margin
+  let latMin = Math.min(startLatLon.lat, endLatLon.lat);
+  let latMax = Math.max(startLatLon.lat, endLatLon.lat);
+  let lonMin = Math.min(startLatLon.lon, endLatLon.lon);
+  let lonMax = Math.max(startLatLon.lon, endLatLon.lon);
+  for (const wp of routeWaypoints) {
+    if (wp.lat < latMin) latMin = wp.lat;
+    if (wp.lat > latMax) latMax = wp.lat;
+    if (wp.lon < lonMin) lonMin = wp.lon;
+    if (wp.lon > lonMax) lonMax = wp.lon;
+  }
+  const margin = 3;
+
+  // Read polar CSV from the file upload (if available)
+  const polarFileInput = document.getElementById('polar-file-input');
+  let polarCsv = null;
+  if (polarFileInput && polarFileInput.files && polarFileInput.files[0]) {
+    polarCsv = await polarFileInput.files[0].text();
+  }
+  if (!polarCsv) {
+    // Try localStorage fallback
+    polarCsv = localStorage.getItem('wr-polar-csv');
+  }
+  if (!polarCsv) {
+    setStatus('error', 'No polar diagram loaded — upload a polar CSV file');
     calcBtn.disabled = false;
     landToggle.disabled = false;
     landToggle.style.opacity = '';
     return;
   }
 
-  setStatus('', 'Sending request…');
-
-  try {
-    const r = await apiFetch(`${API}/calculate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+  pendingRouteData = null;
+  routingWorker.postMessage({
+    type: 'calculate',
+    payload: {
+      request: {
         start: startLatLon,
         end: endLatLon,
         departureTime: new Date(depTime).toISOString(),
         ...(routeWaypoints.length > 0 ? { waypoints: routeWaypoints } : {}),
-        avoidRegionIds: regionAvoidIds,
-        useSafetyMargin: document.getElementById('safety-margin-toggle').checked,
         useLandAvoidance: document.getElementById('land-avoidance-toggle').checked,
-        enabledGribPaths: gribInfoFiles
-          .filter((f) => f.type !== 'current' && enabledGribPaths.has(f.path))
-          .map((f) => f.path),
-        useCurrentGrib: currentEnabled,
         options: {
-          motorBelowKn:
-            _parse(parseFloat(document.getElementById('motor-below-kn').value) || 0, 'speed') || undefined,
-          motorSpeedKn:
-            _parse(parseFloat(document.getElementById('motor-speed-kn').value) || 0, 'speed') || undefined,
+          motorBelowKn: parseFloat(document.getElementById('motor-below-kn').value) || undefined,
+          motorSpeedKn: parseFloat(document.getElementById('motor-speed-kn').value) || undefined,
           waitForWind: document.getElementById('wait-for-wind-toggle').checked || undefined,
-          maxWindKn:
-            _parse(parseFloat(document.getElementById('max-wind-kn').value) || 0, 'speed', windSpeedMs) ||
-            undefined,
-          maxWaveM: _parse(parseFloat(document.getElementById('max-wave-m').value) || 0, 'depth') || undefined,
+          maxWindKn: parseFloat(document.getElementById('max-wind-kn').value) || undefined,
+          maxWaveM: parseFloat(document.getElementById('max-wave-m').value) || undefined,
         },
-      }),
-    });
-    const j = await r.json();
-    if (j.error) {
-      if (calcStream) {
-        calcStream.close();
-        calcStream = null;
-      }
-      setStatus('error', j.error);
-      calcBtn.disabled = false;
-      landToggle.disabled = false;
-      landToggle.style.opacity = '';
-      return;
-    }
-  } catch (e) {
-    if (calcStream) {
-      calcStream.close();
-      calcStream = null;
-    }
-    setStatus('error', String(e));
-    calcBtn.disabled = false;
-    landToggle.disabled = false;
-    landToggle.style.opacity = '';
-    return;
-  }
+      },
+      polarCsv,
+      tileBbox: {
+        latMin: latMin - margin,
+        latMax: latMax + margin,
+        lonMin: lonMin - margin,
+        lonMax: lonMax + margin,
+      },
+      landIndexUrl: './data/edge-index.bin.gz',
+      windModel: 'ecmwf',
+      useSafetyMargin: document.getElementById('safety-margin-toggle')?.checked ?? false,
+    },
+  });
 
-  if (!calcStream) return; // SSE error/done already handled the result
   setStatus('', 'Calculating…');
 }
 
-function openCalcStream() {
-  return new Promise((resolve, reject) => {
-    console.log(`[openCalcStream] EventSource created t=${Date.now()}`);
-    const stream = new EventSource(`${API}/calculation-stream`);
-    const hangTimer = setTimeout(() => {
-      console.log(`[openCalcStream] HANG: onopen has not fired after 5s, readyState=${stream.readyState}`);
-    }, 5000);
+// Worker message handler — replaces the SSE calculation-stream
+routingWorker.addEventListener('message', (e) => {
+  const j = e.data;
 
-    stream.onopen = () => {
-      clearTimeout(hangTimer);
-      console.log(`[openCalcStream] onopen fired t=${Date.now()}`);
-      calcStream = stream;
-      resolve();
-    };
-
-    stream.onmessage = (e) => {
-      const j = JSON.parse(e.data);
-
-      if (j.type === 'progress') {
-        progressBar.style.width = `${j.progress}%`;
-        setStatus('', `Calculating… ${j.progress}%`);
-        if (j.frontier?.length && document.getElementById('isochrone-toggle').checked) {
-          const pts = sortByBearing(
-            j.frontier.map(([lat, lon]) => [lat, lon]),
-            startLatLon,
-          );
-          const colour = ISOCHRONE_COLOURS[isochroneLayerGroup.getLayers().length % ISOCHRONE_COLOURS.length];
-          const segments = splitByAngularGap(pts, startLatLon, ISOCHRONE_GAP_THRESHOLD_DEG);
-          for (const seg of segments) {
-            L.polyline(seg, { color: colour, weight: 1.0, opacity: 0.6, interactive: false }).addTo(
-              isochroneLayerGroup,
-            );
-          }
-        }
-      } else if (j.type === 'done') {
-        stream.close();
-        calcStream = null;
-        progressBar.style.width = '100%';
-        setStatus('done', 'Route calculated.');
-        calcBtn.disabled = false;
-        landToggle.disabled = false;
-        landToggle.style.opacity = '';
-        document.getElementById('save-route-btn').style.display = 'block';
-        fetchAndDrawRoute();
-      } else if (j.type === 'warning') {
-        stream.close();
-        calcStream = null;
-        progressBar.style.width = '100%';
-        setStatus('done', `Partial route: ${j.warning}`);
-        showFailurePopup(j.warning, true);
-        calcBtn.disabled = false;
-        landToggle.disabled = false;
-        landToggle.style.opacity = '';
-        document.getElementById('save-route-btn').style.display = 'block';
-        fetchAndDrawRoute();
-      } else if (j.type === 'error') {
-        stream.close();
-        calcStream = null;
-        const reasonText =
-          {
-            land: 'All available paths are blocked by land.',
-            wind: 'Wind is too light or adverse to make progress under sail.',
-            grib_exhausted: 'Destination not reached before the forecast period ends.',
-          }[j.reason] ?? '';
-        const errMsg = (j.error ?? 'Unknown error') + (reasonText ? ` — ${reasonText}` : '');
-        setStatus('error', errMsg);
-        showFailurePopup(errMsg, false);
-        calcBtn.disabled = false;
-        landToggle.disabled = false;
-        landToggle.style.opacity = '';
-        progressWrap.style.display = 'none';
+  if (j.type === 'progress') {
+    const pct = Math.round(j.pct ?? j.progress ?? 0);
+    progressBar.style.width = `${pct}%`;
+    setStatus('', `Calculating… ${pct}%`);
+    if (j.frontier?.length && document.getElementById('isochrone-toggle').checked) {
+      const pts = sortByBearing(
+        j.frontier.map(([lat, lon]) => [lat, lon]),
+        startLatLon,
+      );
+      const colour = ISOCHRONE_COLOURS[isochroneLayerGroup.getLayers().length % ISOCHRONE_COLOURS.length];
+      const segments = splitByAngularGap(pts, startLatLon, ISOCHRONE_GAP_THRESHOLD_DEG);
+      for (const seg of segments) {
+        L.polyline(seg, { color: colour, weight: 1.0, opacity: 0.6, interactive: false }).addTo(
+          isochroneLayerGroup,
+        );
       }
+    }
+  } else if (j.type === 'result') {
+    progressBar.style.width = '100%';
+    calcBtn.disabled = false;
+    landToggle.disabled = false;
+    landToggle.style.opacity = '';
+    document.getElementById('save-route-btn').style.display = 'block';
+
+    // Store route and draw it — same format as /pending-route
+    const route = j.route ?? [];
+    pendingRouteData = {
+      feature: {
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: route.map((p) => [p.lon, p.lat]) },
+        properties: {
+          coordinatesMeta: route.map((p) => ({
+            name: new Date(p.time).toISOString(),
+            time: new Date(p.time).toISOString(),
+            windDir: Math.round(p.windDir),
+            heading: Math.round(p.heading),
+            twa: Math.round(p.twa),
+            tws: Math.round(p.tws * 10) / 10,
+            ...(p.boatSpeed != null ? { boatSpeed: Math.round(p.boatSpeed * 10) / 10 } : {}),
+            ...(p.waveHeight != null ? { waveHeight: Math.round(p.waveHeight * 100) / 100 } : {}),
+          })),
+        },
+      },
     };
 
-    stream.onerror = () => {
-      console.log(`[openCalcStream] onerror fired t=${Date.now()} calcStream=${calcStream !== null}`);
-      stream.close();
-      if (!calcStream) {
-        // onopen never fired — connection failed
-        reject(new Error('stream connection failed'));
-      } else {
-        calcStream = null;
-        setStatus('error', 'Lost connection to calculation stream');
-        calcBtn.disabled = false;
-        landToggle.disabled = false;
-        landToggle.style.opacity = '';
-        progressWrap.style.display = 'none';
-      }
-    };
-  });
-}
+    if (j.warning) {
+      setStatus('done', `Partial route: ${j.warning}`);
+      showFailurePopup(j.warning, true);
+    } else {
+      setStatus('done', 'Route calculated.');
+    }
+    drawRouteFromData(pendingRouteData);
+  } else if (j.type === 'error') {
+    setStatus('error', j.message ?? 'Unknown error');
+    showFailurePopup(j.message ?? 'Unknown error', false);
+    calcBtn.disabled = false;
+    landToggle.disabled = false;
+    landToggle.style.opacity = '';
+    progressWrap.style.display = 'none';
+  }
+});
 
 function clearIsochrones() {
   isochroneLayerGroup.clearLayers();
@@ -1718,6 +1707,12 @@ async function initWindScrubber() {
 }
 
 async function fetchAndDrawRoute() {
+  // If we have local route data from the worker, use it directly
+  if (pendingRouteData) {
+    drawRouteFromData(pendingRouteData);
+    return;
+  }
+  // Fallback: fetch from server (server mode)
   try {
     const r = await apiFetch(`${API}/pending-route`);
     if (!r.ok) {
@@ -1725,6 +1720,14 @@ async function fetchAndDrawRoute() {
       return;
     }
     const route = await r.json();
+    drawRouteFromData(route);
+  } catch (e) {
+    setStatus('error', String(e));
+  }
+}
+
+function drawRouteFromData(route) {
+  try {
     const coords = route.feature?.geometry?.coordinates;
     if (!coords) {
       setStatus('error', 'Route has no coordinates');
