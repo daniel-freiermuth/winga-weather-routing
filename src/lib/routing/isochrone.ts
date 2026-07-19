@@ -160,9 +160,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     const stepTimings: StepTiming[] = [];
     let stepsCompleted = 0;
     let lastFrontier: IsochronePoint[] | null = null;
-    let lastRejectedByLand = 0;
-    let lastRejectedByPolar = 0;
-    let lastRejectedByGrib = 0;
+    const lastRejected = { byLand: 0, byPolar: 0, byGrib: 0 };
 
     for (let step = startTimeIdx; step < wind.times.length - 1; step++) {
       const stepStart = performance.now();
@@ -344,9 +342,9 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       const stepCalcMs = performance.now() - stepStart;
       for (const c of candidates) c.stepCalcMs = Math.round(stepCalcMs);
 
-      lastRejectedByLand = rejectedByLand;
-      lastRejectedByPolar = rejectedByPolar;
-      lastRejectedByGrib = rejectedByGrib;
+      lastRejected.byLand = rejectedByLand;
+      lastRejected.byPolar = rejectedByPolar;
+      lastRejected.byGrib = rejectedByGrib;
 
       const t0prune = performance.now();
       isochrone = pruneToFrontier(candidates, start.lat, start.lon, sectorSize);
@@ -356,9 +354,9 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
       if (isochrone.length === 0) {
         const reason: FailureReason =
-          lastRejectedByGrib > lastRejectedByLand && lastRejectedByGrib > lastRejectedByPolar
+          lastRejected.byGrib > lastRejected.byLand && lastRejected.byGrib > lastRejected.byPolar
             ? 'grib_exhausted'
-            : lastRejectedByLand > lastRejectedByPolar
+            : lastRejected.byLand > lastRejected.byPolar
               ? 'land'
               : 'wind';
         const reasonText = (r: FailureReason) =>
@@ -367,7 +365,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
             : r === 'grib_exhausted'
               ? 'frontier reached GRIB boundary'
               : 'wind too adverse or light';
-        const counts = `(land: ${String(lastRejectedByLand)}, wind: ${String(lastRejectedByPolar)}, grib: ${String(lastRejectedByGrib)})`;
+        const counts = `(land: ${String(lastRejected.byLand)}, wind: ${String(lastRejected.byPolar)}, grib: ${String(lastRejected.byGrib)})`;
         if (lastFrontier !== null) {
           const closest = closestTo(lastFrontier, end);
           const dist = Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon));
