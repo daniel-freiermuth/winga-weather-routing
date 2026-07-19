@@ -193,30 +193,56 @@ export function latLonToPixel(
 /**
  * Decode the 8-row rescale header from raw RGBA pixel data.
  *
- * @param rgba   Flat Uint8Array of RGBA values for the full 265×257 image,
- *               as returned by canvas.getContext("2d").getImageData().data
- *               or by decoding the JPEG with a library like `sharp`.
+ * Verified against Windy index.js v50.1.2 functions p_() and m_():
+ *
+ *   function p_(e, t) {           // e = RGBA buffer, t = quality tier (0=extreme)
+ *     let l = t*4*4 + 8;          // start offset: tier 0 → byte 8 = pixel 2
+ *     for (a = 0; a < 28; a++)
+ *       ..., l += 16;             // ← stride 16 bytes (4 pixels) — each byte
+ *     return c;                   //   is stored in 4 REDUNDANT consecutive pixels
+ *   }
+ *
+ *   function m_(e) {              // e = Float32Array from p_()
+ *     return {
+ *       decoderRmin:  e[0],       // layout: [Rmin, Rmax, Gmin, Gmax, Bmin, Bmax, ?]
+ *       decoderRstep: (e[1]-e[0])/255,   // ← step = range / 255
+ *       decoderGmin:  e[2],
+ *       decoderGstep: (e[3]-e[2])/255,
+ *       decoderBmin:  e[4],       // for USE_BLUE_CHANNEL overlays (SST etc.)
+ *       decoderBstep: (e[5]-e[4])/255,
+ *     }
+ *   }
+ *
+ * Three common bugs (all present in earlier versions of this file):
+ *   Bug 1 — stride 4 instead of 16: reads interleaved redundant copies → garbled bytes.
+ *   Bug 2 — float layout [Rstep,Rmin,...] instead of [Rmin,Rmax,...]: wrong indices.
+ *   Bug 3 — decoderRstep = floats[1] instead of (floats[1]-floats[0])/255: wrong magnitude.
+ *
+ * @param rgba  Flat Uint8Array of RGBA from getImageData() or sharp().raw().
+ *              Must be the full 265×257×4 buffer (header rows included).
  */
 export function decodeTileHeader(rgba: Uint8Array): WindyTileHeader {
-  // Header bytes start at pixel 2 (byte offset 8) within row 0.
+  // p_() with quality tier t=0: start at byte offset 8 (pixel 2)
   const buf = new ArrayBuffer(28);
   const bytes = new Uint8Array(buf);
   const floats = new Float32Array(buf);
 
-  let offset = 8; // skip 2 preamble pixels (8 bytes RGBA)
+  let offset = 8;
   for (let i = 0; i < 28; i++) {
-    const r = Math.round((rgba[offset] ?? 0) / 64);      // 2 bits
-    const g = Math.round((rgba[offset + 1] ?? 0) / 16);  // 4 bits
-    const b = Math.round((rgba[offset + 2] ?? 0) / 64);  // 2 bits
+    const r = Math.round((rgba[offset]     ?? 0) / 64);  // 2 bits from R
+    const g = Math.round((rgba[offset + 1] ?? 0) / 16);  // 4 bits from G
+    const b = Math.round((rgba[offset + 2] ?? 0) / 64);  // 2 bits from B
     bytes[i] = (r << 6) | (g << 2) | b;
-    offset += 4; // next RGBA pixel
+    offset += 16; // BUG 1 FIX: skip 3 redundant copies (4 pixels × 4 bytes)
   }
 
+  // m_(): float layout is [Rmin, Rmax, Gmin, Gmax, Bmin, Bmax, ?]
+  // BUG 2+3 FIX: step = (max - min) / 255, not floats[0] or floats[1]/255
   return {
-    decoderRstep: floats[0] ?? 0,
-    decoderRmin: floats[1] ?? 0,
-    decoderGstep: floats[2] ?? 0,
-    decoderGmin: floats[3] ?? 0,
+    decoderRmin:  floats[0] ?? 0,
+    decoderRstep: ((floats[1] ?? 0) - (floats[0] ?? 0)) / 255,
+    decoderGmin:  floats[2] ?? 0,
+    decoderGstep: ((floats[3] ?? 0) - (floats[2] ?? 0)) / 255,
   };
 }
 
