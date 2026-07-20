@@ -65,50 +65,46 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
   // 1. Load polar (synchronous — just CSV parsing)
   const polar = parsePolarCsv(polarCsv);
 
+  // Helper: fetch a .bin.gz URL, auto-detecting whether the server already
+  // decompressed it (Content-Encoding: gzip) or we need to decompress manually.
+  async function fetchGzBinary(url: string): Promise<ArrayBuffer> {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${String(r.status)}: ${url}`);
+
+    const buf = await r.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+
+    // Gzip magic: 1f 8b. If present, the server did NOT auto-decompress.
+    const isGzipped = bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+    if (!isGzipped) return buf; // already decompressed by the browser
+
+    // Manually decompress
+    const ds = new DecompressionStream('gzip');
+    const writer = ds.writable.getWriter();
+    void writer.write(bytes).then(() => writer.close());
+    const reader = ds.readable.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const result = await reader.read();
+      if (result.done) break;
+      const chunk: Uint8Array = result.value;
+      chunks.push(chunk);
+      total += chunk.length;
+    }
+    const combined = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) { combined.set(c, off); off += c.length; }
+    return combined.buffer;
+  }
+
   // 2. Pre-fetch wind + wave + current tiles and land index in parallel
-  const landFetch = fetch(landIndexUrl)
-    .then(async (r) => {
-      if (!r.ok || r.body === null) throw new Error(`Land index HTTP ${String(r.status)}`);
-      const ds = new DecompressionStream('gzip');
-      const decompressed: ReadableStream<Uint8Array> = r.body.pipeThrough(ds);
-      const reader = decompressed.getReader();
-      const chunks: Uint8Array[] = [];
-      let total = 0;
-      for (;;) {
-        const result = await reader.read();
-        if (result.done) break;
-        const chunk: Uint8Array = result.value;
-        chunks.push(chunk);
-        total += chunk.length;
-      }
-      const combined = new Uint8Array(total);
-      let off = 0;
-      for (const c of chunks) { combined.set(c, off); off += c.length; }
-      return parseIndexFromArrayBuffer(combined.buffer);
-    });
+  const landFetch = fetchGzBinary(landIndexUrl).then(buf => parseIndexFromArrayBuffer(buf));
 
   let dilatedFetch: Promise<ReturnType<typeof parseIndexFromArrayBuffer> | null> = Promise.resolve(null);
   if (useSafetyMargin === true && dilatedIndexUrl !== undefined) {
-    dilatedFetch = fetch(dilatedIndexUrl)
-      .then(async (r) => {
-        if (!r.ok || r.body === null) return null;
-        const ds = new DecompressionStream('gzip');
-        const decompressed: ReadableStream<Uint8Array> = r.body.pipeThrough(ds);
-        const reader = decompressed.getReader();
-        const chunks: Uint8Array[] = [];
-        let total = 0;
-        for (;;) {
-          const result = await reader.read();
-          if (result.done) break;
-          const chunk: Uint8Array = result.value;
-          chunks.push(chunk);
-          total += chunk.length;
-        }
-        const combined = new Uint8Array(total);
-        let off = 0;
-        for (const c of chunks) { combined.set(c, off); off += c.length; }
-        return parseIndexFromArrayBuffer(combined.buffer);
-      })
+    dilatedFetch = fetchGzBinary(dilatedIndexUrl)
+      .then(buf => parseIndexFromArrayBuffer(buf))
       .catch(() => null);
   }
 

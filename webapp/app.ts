@@ -1317,7 +1317,10 @@ async function startCalculation() {
         lonMin: lonMin - margin,
         lonMax: lonMax + margin,
       },
-      landIndexUrl: './data/edge-index.bin.gz',
+      landIndexUrl: new URL('./data/edge-index.bin.gz', import.meta.url).href,
+      dilatedIndexUrl: (document.getElementById('safety-margin-toggle') as HTMLInputElement | null)?.checked
+        ? new URL('./data/dilated-edge-index.bin.gz', import.meta.url).href
+        : undefined,
       windModel: 'ecmwf',
       useSafetyMargin: (document.getElementById('safety-margin-toggle') as HTMLInputElement | null)?.checked ?? false,
     },

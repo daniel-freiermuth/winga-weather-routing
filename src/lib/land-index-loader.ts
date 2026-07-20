@@ -84,18 +84,28 @@ export function parseIndexFromArrayBuffer(buffer: ArrayBuffer): LandEdgeIndex {
 export async function fetchLandIndex(url: string): Promise<LandEdgeIndex> {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Land index fetch failed: HTTP ${String(resp.status)}`);
-  if (resp.body === null) throw new Error('Land index response has no body');
 
-  // Decompress gzip stream and collect into a single ArrayBuffer.
+  const buf = await resp.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+
+  // If the server set Content-Encoding: gzip, the browser already decompressed it.
+  // Detect by checking for the gzip magic bytes (1f 8b).
+  const isGzipped = bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+  if (!isGzipped) {
+    return parseIndexFromArrayBuffer(buf);
+  }
+
+  // Manually decompress
   const ds = new DecompressionStream('gzip');
-  const decompressed: ReadableStream<Uint8Array> = resp.body.pipeThrough(ds);
-  const reader = decompressed.getReader();
+  const writer = ds.writable.getWriter();
+  void writer.write(bytes).then(async () => writer.close());
+  const reader = ds.readable.getReader() as ReadableStreamDefaultReader<Uint8Array>;
   const chunks: Uint8Array[] = [];
   let totalLength = 0;
   for (;;) {
     const result = await reader.read();
     if (result.done) break;
-    const chunk: Uint8Array = result.value;
+    const chunk = result.value;
     chunks.push(chunk);
     totalLength += chunk.length;
   }
