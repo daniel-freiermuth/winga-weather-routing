@@ -58,7 +58,7 @@ const nodeRgbaDecoder: RgbaDecoder = async (url: string): Promise<Uint8Array> =>
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Tile fetch failed: HTTP ${String(resp.status)} — ${url}`);
   const buf = await resp.arrayBuffer();
-  const decoded = jpeg.decode(Buffer.from(buf), { useTArray: true });
+  const decoded = jpeg.decode(new Uint8Array(buf), { useTArray: true });
   return decoded.data;
 };
 

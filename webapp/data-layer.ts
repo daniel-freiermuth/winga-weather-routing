@@ -6,7 +6,6 @@
 // All functions return the same data shapes that app.js expects so the UI
 // rendering code doesn't change.
 
-import jpeg from 'jpeg-js';
 import {
   fetchMinifest,
   refToCompact,
@@ -29,9 +28,17 @@ async function fetchTile(url: string) {
   if (pending) return pending;
   pending = (async () => {
     const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`Tile ${resp.status}`);
-    const buf = await resp.arrayBuffer();
-    const { data } = jpeg.decode(new Uint8Array(buf), { useTArray: true });
+    if (!resp.ok) throw new Error(`Tile ${String(resp.status)}`);
+    const blob = await resp.blob();
+    const bitmap = await createImageBitmap(blob);
+    // Draw to an OffscreenCanvas to extract RGBA pixel data
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Failed to get 2d context');
+    ctx.drawImage(bitmap, 0, 0);
+    const imageData = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+    const data = new Uint8Array(imageData.data.buffer);
+    bitmap.close();
     const header = decodeTileHeader(data);
     return { rgba: data, header };
   })();

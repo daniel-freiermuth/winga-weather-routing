@@ -397,7 +397,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       const frontier: [number, number][] = isochrone.map((p) => [p.lat, p.lon]);
       stepsCompleted++;
       onProgress(Math.round(((step - startTimeIdx + 1) / nSteps) * 100), frontier);
-      await new Promise<void>((resolve) => { setImmediate(resolve); }); // yield event loop so SSE progress events are flushed to the browser
+      await new Promise<void>((resolve) => { setTimeout(resolve, 0); }); // yield event loop for progress updates
     }
 
     logTimingSummary(stepTimings);

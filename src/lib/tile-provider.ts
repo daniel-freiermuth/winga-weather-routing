@@ -17,10 +17,23 @@
 //
 // BROWSER COMPATIBILITY
 // ──────────────────────
-// This module uses only fetch() and pure JS (jpeg-js). No Node.js APIs.
-// It runs in a browser, Web Worker, or Node.js without changes.
+// This module uses fetch() + OffscreenCanvas for JPEG decoding. No Node.js APIs.
+// It runs in a browser or Web Worker (OffscreenCanvas is available in both).
 
-import jpeg from 'jpeg-js';
+// Browser/Worker APIs — declared here so the module compiles under the server
+// tsconfig (lib: ES2023, no DOM). At runtime, these are only called in browser/worker contexts.
+declare function createImageBitmap(blob: Blob): Promise<ImageBitmap>;
+declare class OffscreenCanvas {
+  constructor(width: number, height: number);
+  getContext(type: '2d'): OffscreenCanvasRenderingContext2D | null;
+}
+declare interface OffscreenCanvasRenderingContext2D {
+  drawImage(image: ImageBitmap, dx: number, dy: number): void;
+  getImageData(sx: number, sy: number, sw: number, sh: number): ImageData;
+}
+declare interface ImageBitmap { width: number; height: number; close(): void; }
+declare interface ImageData { data: Uint8ClampedArray; width: number; height: number; }
+
 import {
   WINDY_MODELS,
   buildTileUrl,
@@ -64,8 +77,15 @@ async function fetchAndDecode(url: string): Promise<CachedTile> {
   pending = (async () => {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`Tile HTTP ${String(resp.status)}: ${url}`);
-    const buf = await resp.arrayBuffer();
-    const rgba = jpeg.decode(Buffer.from(buf), { useTArray: true }).data;
+    const blob = await resp.blob();
+    const bitmap = await createImageBitmap(blob);
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Failed to get 2d context from OffscreenCanvas');
+    ctx.drawImage(bitmap, 0, 0);
+    const imageData = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+    const rgba = new Uint8Array(imageData.data.buffer);
+    bitmap.close();
     const header = decodeTileHeader(rgba);
     return { rgba, header };
   })();
