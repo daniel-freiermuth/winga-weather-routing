@@ -11,12 +11,17 @@
   }
   let { onchange }: Props = $props();
 
+  // Restore polar from localStorage on init
+  const savedPolar = localStorage.getItem('wr-polar-csv');
+  if (savedPolar) window._polarCsv = savedPolar;
+
   async function handleFileUpload(e: Event) {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
     const csv = await file.text();
     localStorage.setItem('wr-polar-csv', csv);
+    window._polarCsv = csv;
     status = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
     statusColor = '#a6e3a1';
     onchange?.();
@@ -52,6 +57,7 @@
     }
 
     localStorage.setItem('wr-polar-csv', csv);
+    window._polarCsv = csv;
     status = `Generated: ${String(u)}/${String(b)}/${String(d)} kn (upwind/beam/downwind)`;
     statusColor = '#a6e3a1';
     onchange?.();
