@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -12,10 +13,10 @@ const commitHash = (() => {
 })();
 
 export default defineConfig(({ command }) => ({
-  // Relative base for production so the app works when Signal K mounts it
-  // under a subpath (e.g. /signalk-weather-routing/). Dev server keeps '/'
-  // so Vite HMR and module resolution work correctly.
+  base: command === 'build' ? './' : '/',
   root: __dir,
+
+  plugins: [svelte()],
 
 
   define: {

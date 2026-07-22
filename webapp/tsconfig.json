@@ -17,5 +17,5 @@
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "include": ["./**/*.ts", "../src/lib/**/*.ts", "../src/types.ts"]
+  "include": ["./**/*.ts", "./**/*.svelte", "../src/lib/**/*.ts", "../src/types.ts"]
 }
