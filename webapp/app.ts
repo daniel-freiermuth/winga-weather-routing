@@ -46,14 +46,14 @@ function skWebSocketUrl(path: string): string {
   return `${proto}//${location.host}${path}`;
 }
 
-// ── Mount App ─────────────────────────────────────────────────────────────────
+// ── Mount App first (renders the #map container into the DOM) ─────────────────
 
 mount(App, {
   target: document.getElementById('app')!,
   props: { skFetch, skWebSocketUrl, escapeHtml },
 });
 
-// ── Create MapLibre map ───────────────────────────────────────────────────────
+// ── Create MapLibre map (needs #map div from App template) ────────────────────
 
 const map = new maplibregl.Map({
   container: 'map',
@@ -78,4 +78,9 @@ const map = new maplibregl.Map({
     referrerPolicy: 'strict-origin-when-cross-origin' as ReferrerPolicy,
   }),
 });
-mapInstance.set(map);
+
+// Only publish the map after the style is fully loaded, so consumers can
+// safely call addSource/addLayer without hitting "Style is not done loading".
+map.on('load', () => {
+  mapInstance.set(map);
+});

@@ -4,7 +4,7 @@
   // when data or visibility changes. Data re-fetch on map move is handled
   // by app.ts (calls fetchWindPoints which updates the windPoints store).
 
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import maplibregl from 'maplibre-gl';
   import { mapInstance, windPoints, windOverlayVisible } from '../stores';
@@ -63,12 +63,15 @@
   }
 
   const unsubs: (() => void)[] = [];
+  let mapReady = false;
 
-  onMount(() => {
-    map = get(mapInstance);
+  unsubs.push(mapInstance.subscribe((m) => {
+    if (!m || mapReady) return;
+    mapReady = true;
+    map = m;
     unsubs.push(windPoints.subscribe(() => render()));
     unsubs.push(windOverlayVisible.subscribe(() => render()));
-  });
+  }));
 
   onDestroy(() => {
     unsubs.forEach(fn => fn());

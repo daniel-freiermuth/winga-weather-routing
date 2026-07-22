@@ -2,7 +2,7 @@
   // Renderless Svelte component — renders land polygons (original + dilated safety margin)
   // as GeoJSON source + fill/line layers on the map.
 
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import { mapInstance, landOverlayVisible } from '../stores';
   import * as dataLayer from '../data-layer';
@@ -97,18 +97,17 @@
   }
 
   const unsubs: (() => void)[] = [];
+  let mapReady = false;
 
-  onMount(() => {
-    map = get(mapInstance);
-
+  unsubs.push(mapInstance.subscribe((m) => {
+    if (!m || mapReady) return;
+    mapReady = true;
+    map = m;
     unsubs.push(landOverlayVisible.subscribe(() => void render()));
-
-    if (map) {
-      const handler = () => { if (get(landOverlayVisible)) void render(); };
-      map.on('moveend', handler);
-      unsubs.push(() => map!.off('moveend', handler));
-    }
-  });
+    const handler = () => { if (get(landOverlayVisible)) void render(); };
+    map.on('moveend', handler);
+    unsubs.push(() => map!.off('moveend', handler));
+  }));
 
   onDestroy(() => {
     unsubs.forEach(fn => fn());

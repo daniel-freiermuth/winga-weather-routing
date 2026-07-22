@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { mapInstance, skConnected } from '../stores';
   import { get } from 'svelte/store';
 
@@ -66,7 +66,13 @@
     if (chart) applyChart(chart);
   }
 
-  onMount(async () => {
+  const unsubs: (() => void)[] = [];
+  let mapReady = false;
+
+  unsubs.push(mapInstance.subscribe(async (m) => {
+    if (!m || mapReady) return;
+    mapReady = true;
+
     // Load additional charts from SignalK
     if (get(skConnected)) {
       try {
@@ -88,10 +94,12 @@
       }
     }
 
-    // Apply the default chart
+    // Apply the default chart (replaces the bootstrap 'osm' source/layer)
     const first = charts[0];
     if (first) applyChart(first);
-  });
+  }));
+
+  onDestroy(() => unsubs.forEach(fn => fn()));
 </script>
 
 <div class="chart-selector">

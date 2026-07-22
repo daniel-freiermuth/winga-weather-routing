@@ -2,7 +2,6 @@
   // Root application component — owns layout, state, and all event wiring.
   // app.ts creates the MapLibre map and mounts this component.
 
-  import { onMount } from 'svelte';
   import { mount, unmount } from 'svelte';
   import { get } from 'svelte/store';
   import ChartSelector from './ChartSelector.svelte';
@@ -152,9 +151,14 @@
   let routingOptions: RoutingOptionsApi | null = null;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
-
-  onMount(() => {
-    const map = get(mapInstance)!;
+  // Wait for the map to be ready (style loaded) before initializing.
+  // mapInstance is set by app.ts inside map.on('load').
+  let mapInitialized = false;
+  const unsubMap = mapInstance.subscribe((m) => {
+    if (!m || mapInitialized) return;
+    mapInitialized = true;
+    unsubMap();
+    const map = m;
     const isochroneState = { sourceIds: [] as string[], layerIds: [] as string[], count: 0, map };
     const routingWorker = new Worker(new URL('../worker.ts', import.meta.url), { type: 'module' });
     const startMarker = new maplibregl.Marker({ element: greenIcon(), anchor: 'center' }); // not added until placed

@@ -3,7 +3,7 @@
   // Shows avoidance regions as semi-transparent red overlays and regular regions as dashed outlines.
   // The region list sidebar is managed here via direct DOM for now.
 
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import { mapInstance, regionOverlayVisible } from '../stores';
 
@@ -187,14 +187,17 @@
   }
 
   const unsubs: (() => void)[] = [];
+  let mapReady = false;
 
-  onMount(() => {
-    map = get(mapInstance);
+  unsubs.push(mapInstance.subscribe((m) => {
+    if (!m || mapReady) return;
+    mapReady = true;
+    map = m;
     unsubs.push(regionOverlayVisible.subscribe((visible) => {
       if (visible) void loadRegions();
       else renderOverlay();
     }));
-  });
+  }));
 
   onDestroy(() => {
     unsubs.forEach(fn => fn());

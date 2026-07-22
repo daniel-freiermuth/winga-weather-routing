@@ -1,7 +1,7 @@
 <script lang="ts">
   // Renderless Svelte component — manages ocean current arrows on the map.
 
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import maplibregl from 'maplibre-gl';
   import { mapInstance, currentPoints, currentOverlayVisible } from '../stores';
@@ -69,12 +69,15 @@
   }
 
   const unsubs: (() => void)[] = [];
+  let mapReady = false;
 
-  onMount(() => {
-    map = get(mapInstance);
+  unsubs.push(mapInstance.subscribe((m) => {
+    if (!m || mapReady) return;
+    mapReady = true;
+    map = m;
     unsubs.push(currentPoints.subscribe(() => render()));
     unsubs.push(currentOverlayVisible.subscribe(() => render()));
-  });
+  }));
 
   onDestroy(() => {
     unsubs.forEach(fn => fn());

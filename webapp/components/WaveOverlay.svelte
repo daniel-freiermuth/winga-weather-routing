@@ -1,7 +1,7 @@
 <script lang="ts">
   // Renderless Svelte component — renders wave height heatmap as an image source + raster layer.
 
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import type { ImageSource } from 'maplibre-gl';
   import { mapInstance, wavePoints, waveOverlayVisible, waveGridMetaStore, waveOverlayMaxMStore } from '../stores';
@@ -114,13 +114,16 @@
   }
 
   const unsubs: (() => void)[] = [];
+  let mapReady = false;
 
-  onMount(() => {
-    map = get(mapInstance);
+  unsubs.push(mapInstance.subscribe((m) => {
+    if (!m || mapReady) return;
+    mapReady = true;
+    map = m;
     unsubs.push(wavePoints.subscribe(() => render()));
     unsubs.push(waveOverlayVisible.subscribe(() => render()));
     unsubs.push(waveGridMetaStore.subscribe(() => render()));
-  });
+  }));
 
   onDestroy(() => {
     unsubs.forEach(fn => fn());
