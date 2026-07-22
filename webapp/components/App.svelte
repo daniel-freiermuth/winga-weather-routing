@@ -414,7 +414,7 @@
     // SK-dependent features
     void (async () => {
       try {
-        const r = await skFetch('/signalk/v2/api');
+        const r = await skFetch('/signalk');
         if (!r.ok) throw new Error(`HTTP ${String(r.status)}`);
         skConnected.set(true);
         void _loadDepartureResources(skDeps);
