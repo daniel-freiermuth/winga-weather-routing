@@ -28,7 +28,7 @@
   }: Props = $props();
 </script>
 
-<button id="calculate" disabled={!canCalculate} onclick={onCalculate}>Calculate Route</button>
+<button id="calculate" disabled onclick={onCalculate}>Calculate Route</button>
 {#if calcHint}
   <span class="hint" id="calc-hint">{calcHint}</span>
 {/if}
@@ -37,7 +37,7 @@
 <button id="run-gothenburg-test" onclick={onRunGothenburg}>Gothenburg test</button>
 <button id="save-route-btn" disabled={!hasPendingRoute} onclick={onSaveRoute}>Save Route…</button>
 
-<button id="analyse-weather-btn" disabled={!canAnalyse} class="analyse-btn" onclick={onAnalyse}>Analyse Route Weather</button>
+<button id="analyse-weather-btn" class="analyse-btn">Analyse Route Weather</button>
 {#if analyseHint}
   <span class="hint" id="analyse-hint">{analyseHint}</span>
 {/if}
