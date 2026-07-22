@@ -1,80 +1,83 @@
 <script lang="ts">
-  let expanded = $state(true);
-
-  // ── Element refs for parent access ──────────────────────────────────────────
-  let panelEl = $state<HTMLDivElement | undefined>();
-  let labelEl = $state<HTMLSpanElement | undefined>();
-  let rangeEl = $state<HTMLInputElement | undefined>();
-  let nowMarkerEl = $state<HTMLDivElement | undefined>();
-  let coverageBarEl = $state<HTMLDivElement | undefined>();
-  let trackWrapperEl = $state<HTMLDivElement | undefined>();
-  let jumpToNowEl = $state<HTMLButtonElement | undefined>();
-  let rangeToggleEl = $state<HTMLButtonElement | undefined>();
-  let useAsDepartureEl = $state<HTMLButtonElement | undefined>();
-  let rightSpacerEl = $state<HTMLDivElement | undefined>();
-
-  function toggle() {
-    expanded = !expanded;
+  interface Props {
+    windTimes: string[];
+    scrubberIndex: number;
+    lockedRange: { i0: number; iN: number } | null;
+    label: string;
+    coverageHtml: string;
+    nowMarkerLeft: string | null;
+    showRangeToggle: boolean;
+    rangeToggleLabel: string;
+    showRightSpacer: boolean;
+    visible: boolean;
+    onIndexChange: (idx: number) => void;
+    onJumpToNow: () => void;
+    onToggleRange: () => void;
+    onUseAsDeparture: (timeIso: string) => void;
   }
+  let {
+    windTimes, scrubberIndex, lockedRange, label, coverageHtml,
+    nowMarkerLeft, showRangeToggle, rangeToggleLabel, showRightSpacer,
+    visible, onIndexChange, onJumpToNow, onToggleRange, onUseAsDeparture,
+  }: Props = $props();
 
-  export function getElements() {
-    return {
-      panel: panelEl,
-      label: labelEl,
-      range: rangeEl,
-      nowMarker: nowMarkerEl,
-      coverageBar: coverageBarEl,
-      trackWrapper: trackWrapperEl,
-      jumpToNow: jumpToNowEl,
-      rangeToggle: rangeToggleEl,
-      useAsDeparture: useAsDepartureEl,
-      rightSpacer: rightSpacerEl,
-    };
+  let expanded = $state(true);
+  const min = $derived(lockedRange?.i0 ?? 0);
+  const max = $derived(lockedRange?.iN ?? Math.max(0, windTimes.length - 1));
+
+  function handleInput(e: Event) {
+    const idx = parseInt((e.target as HTMLInputElement).value);
+    onIndexChange(idx);
   }
 </script>
 
-<div id="time-scrubber-panel" bind:this={panelEl}>
+{#if visible}
+<div class="scrubber-panel">
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div id="scrubber-handle" title={expanded ? 'Collapse panel' : 'Expand panel'} onclick={toggle}>
+  <div class="scrubber-handle" title={expanded ? 'Collapse panel' : 'Expand panel'} onclick={() => expanded = !expanded}>
     <span>Time scrubber</span>
-    <span id="scrubber-toggle">{expanded ? '\u25B2' : '\u25BC'}</span>
+    <span class="scrubber-toggle">{expanded ? '\u25B2' : '\u25BC'}</span>
   </div>
   {#if expanded}
-    <div id="scrubber-body">
-      <span id="time-scrubber-label" bind:this={labelEl}></span>
-      <button id="use-as-departure" title="Set this time as the route departure time" bind:this={useAsDepartureEl}>
+    <div class="scrubber-body">
+      <span class="time-label">{label}</span>
+      <button class="btn-use-departure" title="Set this time as the route departure time"
+              onclick={() => onUseAsDeparture(windTimes[scrubberIndex] ?? '')}>
         Use as departure
       </button>
-      <div id="scrubber-track-wrapper" bind:this={trackWrapperEl}>
-        <div id="scrubber-now-marker" bind:this={nowMarkerEl}></div>
-        <div id="scrubber-coverage-bar" bind:this={coverageBarEl}></div>
-        <input type="range" id="time-scrubber" min="0" max="0" value="0" bind:this={rangeEl} />
+      <div class="track-wrapper">
+        {#if nowMarkerLeft != null}
+          <div class="now-marker" style:left={nowMarkerLeft}></div>
+        {/if}
+        <div class="coverage-bar">{@html coverageHtml}</div>
+        <input type="range" {min} {max} value={scrubberIndex} oninput={handleInput} />
       </div>
-      <button id="jump-to-now" title="Jump scrubber to current time" bind:this={jumpToNowEl}>Now</button>
-      <button
-        id="scrubber-range-toggle"
-        title="Toggle between route duration and full GRIB range"
-        style="display: none"
-        bind:this={rangeToggleEl}
-      >
-        Full range
-      </button>
-      <div id="time-scrubber-right-spacer" bind:this={rightSpacerEl}></div>
+      <button class="btn-jump-now" title="Jump scrubber to current time" onclick={onJumpToNow}>Now</button>
+      {#if showRangeToggle}
+        <button class="btn-range-toggle" title="Toggle between route duration and full GRIB range"
+                onclick={onToggleRange}>
+          {rangeToggleLabel}
+        </button>
+      {/if}
+      {#if showRightSpacer}
+        <div class="right-spacer"></div>
+      {/if}
     </div>
   {/if}
 </div>
+{/if}
 
 <style>
-  #time-scrubber-panel {
-    display: none;
+  .scrubber-panel {
+    display: flex;
     flex-direction: column;
     overflow: hidden;
     background: #1e2230;
     border-top: 1px solid #313244;
     flex-shrink: 0;
   }
-  #scrubber-handle {
+  .scrubber-handle {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -86,25 +89,25 @@
     flex-shrink: 0;
     user-select: none;
   }
-  #scrubber-handle:hover {
+  .scrubber-handle:hover {
     background: #313244;
   }
-  #scrubber-body {
+  .scrubber-body {
     display: flex;
     flex-direction: row;
     align-items: center;
     gap: 8px;
     padding: 4px 10px;
   }
-  #scrubber-toggle {
+  .scrubber-toggle {
     background: #363a4f;
     padding: 1px 6px;
     border-radius: 3px;
   }
-  #scrubber-handle:hover #scrubber-toggle {
+  .scrubber-handle:hover .scrubber-toggle {
     background: #45475a;
   }
-  #time-scrubber-label {
+  .time-label {
     font-size: 11px;
     color: #a6adc8;
     white-space: nowrap;
@@ -113,7 +116,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  #scrubber-track-wrapper {
+  .track-wrapper {
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -122,12 +125,12 @@
     position: relative;
     padding-top: 8px;
   }
-  #scrubber-coverage-bar {
+  .coverage-bar {
     display: flex;
     flex-direction: column;
     gap: 1px;
   }
-  #scrubber-now-marker {
+  .now-marker {
     position: absolute;
     top: 0;
     width: 0;
@@ -136,20 +139,18 @@
     border-right: 5px solid transparent;
     border-top: 7px solid #f9e2af;
     transform: translateX(-50%);
-    display: none;
     pointer-events: none;
   }
-  #time-scrubber {
+  input[type="range"] {
     width: 100%;
     accent-color: #89b4fa;
     cursor: pointer;
   }
-  #time-scrubber-right-spacer {
+  .right-spacer {
     flex-shrink: 0;
-    display: none;
     width: 52px;
   }
-  #use-as-departure {
+  .btn-use-departure {
     font-size: 10px;
     color: #a6adc8;
     background: transparent;
@@ -160,11 +161,11 @@
     flex-shrink: 0;
     white-space: nowrap;
   }
-  #use-as-departure:hover {
+  .btn-use-departure:hover {
     color: #cdd6f4;
     border-color: #89b4fa;
   }
-  #jump-to-now {
+  .btn-jump-now {
     font-size: 10px;
     color: #a6adc8;
     background: transparent;
@@ -174,11 +175,11 @@
     cursor: pointer;
     flex-shrink: 0;
   }
-  #jump-to-now:hover {
+  .btn-jump-now:hover {
     color: #cdd6f4;
     border-color: #89b4fa;
   }
-  #scrubber-range-toggle {
+  .btn-range-toggle {
     font-size: 10px;
     color: #a6adc8;
     background: transparent;
@@ -188,7 +189,7 @@
     cursor: pointer;
     flex-shrink: 0;
   }
-  #scrubber-range-toggle:hover {
+  .btn-range-toggle:hover {
     color: #cdd6f4;
     border-color: #89b4fa;
   }

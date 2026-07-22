@@ -1,84 +1,78 @@
 <script lang="ts">
-  import {
-    windOverlayVisible,
-    waveOverlayVisible,
-    currentOverlayVisible,
-    landOverlayVisible,
-    regionOverlayVisible,
-    isochroneVisible,
-  } from '../stores';
+  interface RegionInfo {
+    id: string;
+    name: string;
+    avoided: boolean;
+  }
 
   interface Props {
     regionEnabled?: boolean;
+    windVisible: boolean;
+    waveVisible: boolean;
+    currentVisible: boolean;
+    landVisible: boolean;
+    regionVisible: boolean;
+    isochroneVisible: boolean;
+    regions?: RegionInfo[];
+    onToggleRegionAvoid?: (id: string, avoid: boolean) => void;
   }
 
-  let { regionEnabled = false }: Props = $props();
-
-  let windChecked = $state(true);
-  let waveChecked = $state(false);
-  let currentChecked = $state(false);
-  let landChecked = $state(false);
-  let isochroneChecked = $state(true);
-  let regionChecked = $state(false);
-
-  $effect(() => {
-    windOverlayVisible.set(windChecked);
-  });
-  $effect(() => {
-    waveOverlayVisible.set(waveChecked);
-  });
-  $effect(() => {
-    currentOverlayVisible.set(currentChecked);
-  });
-  $effect(() => {
-    landOverlayVisible.set(landChecked);
-  });
-  $effect(() => {
-    isochroneVisible.set(isochroneChecked);
-  });
-  $effect(() => {
-    regionOverlayVisible.set(regionChecked);
-  });
+  let {
+    regionEnabled = false,
+    windVisible = $bindable(),
+    waveVisible = $bindable(),
+    currentVisible = $bindable(),
+    landVisible = $bindable(),
+    regionVisible = $bindable(),
+    isochroneVisible = $bindable(),
+    regions = [],
+    onToggleRegionAvoid,
+  }: Props = $props();
 </script>
 
 <div class="section">
   <div class="section-title">Layers</div>
   <label class="layer-toggle">
-    <input type="checkbox" bind:checked={landChecked} />
+    <input type="checkbox" bind:checked={landVisible} />
     <span>Land overlay</span>
   </label>
   <label class="layer-toggle">
-    <input type="checkbox" bind:checked={windChecked} />
+    <input type="checkbox" bind:checked={windVisible} />
     Wind overlay
   </label>
   <label class="layer-toggle">
-    <input type="checkbox" bind:checked={waveChecked} />
+    <input type="checkbox" bind:checked={waveVisible} />
     Wave overlay
   </label>
   <label class="layer-toggle">
-    <input type="checkbox" bind:checked={currentChecked} />
+    <input type="checkbox" bind:checked={currentVisible} />
     Currents
   </label>
   <label class="layer-toggle">
-    <input type="checkbox" bind:checked={isochroneChecked} />
+    <input type="checkbox" bind:checked={isochroneVisible} />
     Isochrones
   </label>
   <label class="layer-toggle">
-    <input type="checkbox" bind:checked={regionChecked} disabled={!regionEnabled} />
+    <input type="checkbox" bind:checked={regionVisible} disabled={!regionEnabled} />
     Regions
   </label>
-  <div
-    id="region-list"
-    style="display: none; flex-direction: column; gap: 4px; margin-top: 4px; max-height: 180px; overflow-y: auto"
-  ></div>
-</div>
-
-<div id="wave-legend" class:visible={waveChecked}>
-  <div id="wave-legend-bar"></div>
-  <div id="wave-legend-labels">
-    <span id="wave-legend-min">0</span>
-    <span id="wave-legend-max">3 m</span>
-  </div>
+  {#if regions.length > 0}
+    <div class="region-list">
+      {#each regions as reg}
+        <label
+          class="region-item"
+          class:avoided={reg.avoided}
+        >
+          <input
+            type="checkbox"
+            checked={reg.avoided}
+            onchange={() => onToggleRegionAvoid?.(reg.id, !reg.avoided)}
+          />
+          <span class="region-name">{reg.name}</span>
+        </label>
+      {/each}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -110,32 +104,38 @@
     cursor: not-allowed;
     opacity: 0.5;
   }
-
-  #wave-legend {
-    position: absolute;
-    bottom: 8px;
-    right: 8px;
-    background: rgba(30, 30, 46, 0.85);
-    border-radius: 4px;
-    padding: 4px 8px;
-    z-index: 1000;
-    display: none;
+  .region-list {
+    display: flex;
     flex-direction: column;
-    gap: 2px;
-    font-size: 10px;
+    gap: 4px;
+    margin-top: 4px;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+  .region-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
     color: #cdd6f4;
+    background: #2a2f45;
+    border: 1px solid transparent;
   }
-  #wave-legend.visible {
-    display: flex;
+  .region-item.avoided {
+    background: #3a1f28;
+    border-color: #f38ba8;
   }
-  #wave-legend-bar {
-    width: 120px;
-    height: 10px;
-    border-radius: 2px;
-    background: linear-gradient(to right, #00f, #0ff, #0f0, #ff0, #f00);
+  .region-item input[type='checkbox'] {
+    accent-color: #f38ba8;
+    cursor: pointer;
   }
-  #wave-legend-labels {
-    display: flex;
-    justify-content: space-between;
+  .region-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

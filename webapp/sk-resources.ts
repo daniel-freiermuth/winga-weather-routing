@@ -2,8 +2,6 @@
 
 import maplibregl from 'maplibre-gl';
 
-import { escapeHtml } from './utils';
-
 type LatLon = { lat: number; lon: number };
 
 /** Mutable state shared between sk-resources functions and app.ts. */
@@ -25,17 +23,14 @@ export interface SkDeps {
   map: maplibregl.Map;
   startMarker: maplibregl.Marker;
   endMarker: maplibregl.Marker;
-  startCoords: HTMLElement;
-  endCoords: HTMLElement;
-  updateCalcButton: () => void;
-  updateAnalyseButton: () => void;
+  setStartCoordsText: (text: string) => void;
+  setEndCoordsText: (text: string) => void;
   state: SkState;
 }
 
 // ── Departure resources ──────────────────────────────────────────────────────
 
 export async function loadDepartureResources(deps: SkDeps): Promise<void> {
-  const sel = document.getElementById('departure-resource')!;
   const entries: { label: string; lat: number; lon: number }[] = [];
   const [routesRes, wpsRes] = await Promise.allSettled([
     deps.skFetch('/signalk/v2/api/resources/routes'),
@@ -67,11 +62,6 @@ export async function loadDepartureResources(deps: SkDeps): Promise<void> {
     }
   }
   deps.state.departureResources = entries;
-  if (entries.length === 0) { sel.style.display = 'none'; return; }
-  sel.innerHTML =
-    '<option value="">— set from resources —</option>' +
-    entries.map((e, i) => `<option value="${String(i)}">${escapeHtml(e.label)}</option>`).join('');
-  sel.style.display = '';
 }
 
 // ── Waypoint routes ──────────────────────────────────────────────────────────
@@ -96,30 +86,23 @@ export async function loadWaypointRoutes(deps: SkDeps): Promise<void> {
       routes.push({ label: (v['name'] as string | undefined) ?? 'Unnamed', coords });
     }
     deps.state.waypointRoutes = routes;
-    if (routes.length === 0) return;
-    const sec = document.getElementById('waypoints-route-section')!;
-    sec.style.display = '';
-    const sel = document.getElementById('waypoints-route')!;
-    sel.innerHTML =
-      '<option value="">— route waypoints —</option>' +
-      routes.map((rt, i) => `<option value="${String(i)}">${escapeHtml(rt.label)}</option>`).join('');
   } catch { /* offline */ }
 }
 
 export function handleWaypointRouteChange(deps: SkDeps, e: Event): void {
   const idx = parseInt((e.target as HTMLSelectElement).value);
   clearRouteWaypoints(deps);
-  if (isNaN(idx) || !deps.state.waypointRoutes[idx]) { deps.updateCalcButton(); return; }
+  if (isNaN(idx) || !deps.state.waypointRoutes[idx]) return;
   const route = deps.state.waypointRoutes[idx]!;
   const coords = route.coords;
   if (coords.length >= 2) {
     const first = coords[0]!;
     deps.state.startLatLon = { lat: first[1]!, lon: first[0]! };
-    deps.startCoords.textContent = `${first[1]!.toFixed(4)}, ${first[0]!.toFixed(4)}`;
+    deps.setStartCoordsText(`${first[1]!.toFixed(4)}, ${first[0]!.toFixed(4)}`);
     deps.startMarker.setLngLat([first[0]!, first[1]!]).addTo(deps.map);
     const last = coords[coords.length - 1]!;
     deps.state.endLatLon = { lat: last[1]!, lon: last[0]! };
-    deps.endCoords.textContent = `${last[1]!.toFixed(4)}, ${last[0]!.toFixed(4)}`;
+    deps.setEndCoordsText(`${last[1]!.toFixed(4)}, ${last[0]!.toFixed(4)}`);
     deps.endMarker.setLngLat([last[0]!, last[1]!]).addTo(deps.map);
   }
   for (let i = 1; i < coords.length - 1; i++) {
@@ -133,8 +116,6 @@ export function handleWaypointRouteChange(deps: SkDeps, e: Event): void {
   }
   const bounds = coords.reduce((b, [lon, lat]) => b.extend([lon!, lat!] as [number, number]), new maplibregl.LngLatBounds());
   deps.map.fitBounds(bounds, { padding: 30 });
-  deps.updateCalcButton();
-  deps.updateAnalyseButton();
 }
 
 // ── Departure resource picker ────────────────────────────────────────────────
@@ -144,10 +125,9 @@ export function handleDepartureResourceChange(deps: SkDeps, e: Event): void {
   if (isNaN(idx) || !deps.state.departureResources[idx]) return;
   const { lat, lon } = deps.state.departureResources[idx]!;
   deps.state.startLatLon = { lat, lon };
-  deps.startCoords.textContent = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+  deps.setStartCoordsText(`${lat.toFixed(4)}, ${lon.toFixed(4)}`);
   deps.startMarker.setLngLat([lon, lat]).addTo(deps.map);
   clearRouteWaypoints(deps);
-  deps.updateCalcButton();
 }
 
 // ── Vessel position stream ───────────────────────────────────────────────────
@@ -168,8 +148,6 @@ export function connectVesselPositionStream(deps: SkDeps): void {
         for (const v of update.values ?? []) {
           if (v.path === 'navigation.position' && v.value) {
             deps.state.vesselPosition = { lat: v.value.latitude, lon: v.value.longitude };
-            (document.getElementById('btn-vessel-position') as HTMLButtonElement).disabled = false;
-            document.getElementById('btn-vessel-position')!.title = 'Set start to vessel position';
           }
         }
       }
@@ -177,8 +155,6 @@ export function connectVesselPositionStream(deps: SkDeps): void {
   };
   ws.onclose = () => {
     deps.state.vesselPosition = null;
-    (document.getElementById('btn-vessel-position') as HTMLButtonElement).disabled = true;
-    document.getElementById('btn-vessel-position')!.title = 'Vessel position not available';
     deps.state.vesselPositionWs = null;
     setTimeout(() => connectVesselPositionStream(deps), 5000);
   };
@@ -188,8 +164,7 @@ export function handleVesselPositionClick(deps: SkDeps): void {
   if (!deps.state.vesselPosition) return;
   const { lat, lon } = deps.state.vesselPosition;
   deps.state.startLatLon = { lat, lon };
-  deps.startCoords.textContent = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+  deps.setStartCoordsText(`${lat.toFixed(4)}, ${lon.toFixed(4)}`);
   deps.startMarker.setLngLat([lon, lat]).addTo(deps.map);
   clearRouteWaypoints(deps);
-  deps.updateCalcButton();
 }

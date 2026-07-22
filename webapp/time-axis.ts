@@ -1,7 +1,6 @@
 // Time axis management — builds the unified wind+current timeline,
 // manages scrubber range, and handles Windy tile time loading.
 
-import { forecastLoaded, windTimesLoaded as windTimesLoadedStore } from './stores';
 import * as dataLayer from './data-layer';
 import type { GribFileMeta } from './types';
 
@@ -84,10 +83,6 @@ export function rebuildTimes(mgr: TimeAxisManager): TimeAxisManager {
   }
 
   const loaded = unified.length > 0;
-  if (loaded) {
-    forecastLoaded.set(true);
-    windTimesLoadedStore.set(true);
-  }
 
   return {
     ...mgr,

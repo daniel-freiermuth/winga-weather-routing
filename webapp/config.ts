@@ -3,7 +3,7 @@
 import type { UnitPref } from './types';
 import { unitPrefsStore, windSpeedMsStore } from './units';
 import { fmt } from './units';
-import { waveOverlayMaxMStore, conditionsGraphHeight as conditionsGraphHeightStore } from './stores';
+import { waveOverlayMaxMStore } from './stores';
 
 export interface ConfigState {
   get waveOverlayMaxM(): number;
@@ -18,9 +18,16 @@ export interface ConfigState {
   set unitPrefs(v: Record<string, UnitPref> | null);
 }
 
+export interface ConfigCallbacks {
+  setBuildVersion: (v: string) => void;
+  setWaveLegendMax: (text: string) => void;
+  setSafetyMarginDist: (text: string) => void;
+}
+
 export async function loadConfig(
   skFetch: (path: string, options?: RequestInit) => Promise<Response>,
   state: ConfigState,
+  callbacks: ConfigCallbacks,
 ): Promise<void> {
   try {
     const cfgRes = await fetch('./config.json');
@@ -34,7 +41,6 @@ export async function loadConfig(
     windSpeedMsStore.set(state.windSpeedMs);
     if ((cfg['conditionsGraphHeight'] as number | undefined) != null) {
       state.conditionsGraphHeight = cfg['conditionsGraphHeight'] as number;
-      conditionsGraphHeightStore.set(state.conditionsGraphHeight);
     }
     if ((cfg['forecastSkillHorizonHours'] as number | undefined) != null)
       state.forecastSkillHorizonHours = cfg['forecastSkillHorizonHours'] as number;
@@ -49,20 +55,15 @@ export async function loadConfig(
   } catch { /* offline or not supported */ }
 
   const depthSym = fmt(0, 'depth').sym;
-  const legendMax = document.getElementById('wave-legend-max');
-  if (legendMax) legendMax.textContent = `${fmt(state.waveOverlayMaxM, 'depth').num} ${depthSym}`;
-  const safetyDist = document.getElementById('safety-margin-dist');
-  if (safetyDist) {
-    const smFmt = fmt(0.5, 'distance');
-    safetyDist.textContent = `${smFmt.num} ${smFmt.sym}`;
-  }
+  callbacks.setWaveLegendMax(`${fmt(state.waveOverlayMaxM, 'depth').num} ${depthSym}`);
+  const smFmt = fmt(0.5, 'distance');
+  callbacks.setSafetyMarginDist(`${smFmt.num} ${smFmt.sym}`);
 
   try {
     const bi = await fetch('./buildinfo.json');
     if (bi.ok) {
       const { version } = await bi.json() as { version: string };
-      const el = document.getElementById('build-version');
-      if (el) el.textContent = `v${version}`;
+      callbacks.setBuildVersion(`v${version}`);
     }
   } catch { /* no buildinfo */ }
 }

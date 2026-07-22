@@ -9,7 +9,6 @@ import { drawRoute } from './route-display';
 import { buildConditionsGraph } from './conditions-graph';
 import { buildWorkerPayload, renderIsochrone, clearIsochrones } from './routing-engine';
 import type { IsochroneState } from './routing-engine';
-import * as scrubberCtrl from './scrubber-controller';
 
 type LatLon = { lat: number; lon: number };
 
@@ -55,35 +54,37 @@ export interface CalculationContext {
   routingWorker: Worker;
   isochroneState: IsochroneState;
 
-  // Fixed DOM refs
-  progressWrap: HTMLElement;
-  progressBar: HTMLElement;
-  calcBtn: HTMLButtonElement;
-  landToggle: HTMLInputElement;
-
-  // Callbacks
+  // Callbacks (replace DOM refs)
+  setProgress(pct: number): void;
+  setCalculating(v: boolean): void;
+  setShowProgress(v: boolean): void;
   setStatus(type: string, msg: string): void;
   showFailurePopup(msg: string, isWarning: boolean): void;
   fetchWindPointsAt(timeIdx: number): Promise<void>;
   fetchWavePointsAt(timeIdx: number): Promise<void>;
   scrubberState(): ScrubberState;
 
-  // Getters for read-only state owned by app.ts
+  // Conditions graph callbacks (replace getElementById)
+  setConditionsGraph(data: { svgContent: string; viewBox: string; hasWave: boolean; layout: GraphLayout } | null): void;
+  setConditionsVisible(v: boolean): void;
+  lockScrubberToRoute(i0: number, iN: number): void;
+  setShowRangeToggle(v: boolean): void;
+
+  // Getters for read-only state owned by App.svelte
   getStartLatLon(): LatLon | null;
   getEndLatLon(): LatLon | null;
   getRouteWaypoints(): LatLon[];
   getRoutingOptions(): RoutingOptionsLike | null;
-  getAppInstance(): Record<string, unknown>;
   getWindSpeedMs(): boolean;
   getWindTimes(): string[];
   getWindTimesLoaded(): boolean;
-  getConditionsGraphHeight(): number;
-  getConditionsExpanded(): boolean;
-  getConditionsFullscreen(): boolean;
+  getDepartureTime(): string;
+  getIsochroneEnabled(): boolean;
   getGribInfoFiles(): GribFileMeta[];
   getForecastSkillHorizonHours(): number;
+  getPolarCsv(): string | undefined;
 
-  /** Shared mutable state — app.ts creates and proxies to its own lets. */
+  /** Shared mutable state — App.svelte creates and proxies to its own lets. */
   state: CalcMutableState;
 }
 
@@ -112,31 +113,16 @@ function findScrubberPosition(graphMeta: WaypointMeta[] | null, tMs: number) {
 }
 
 function drawConditionsGraph(ctx: CalculationContext, meta: WaypointMeta[], intermediateIdxs: number[] = []) {
-  const panel = document.getElementById('conditions-panel')!;
   const result = buildConditionsGraph({
     meta, intermediateIdxs, windSpeedMs: ctx.getWindSpeedMs(), gribInfoFiles: ctx.getGribInfoFiles(),
     c64Palette: C64_PALETTE, forecastSkillHorizonHours: ctx.getForecastSkillHorizonHours(),
     toDisplay: _toDisplay, fmt: _fmt,
   });
-  if (!result) { panel.style.display = 'none'; return; }
+  if (!result) { ctx.setConditionsVisible(false); return; }
   ctx.state.graphMeta = meta;
   ctx.state.graphLayout = result.layout;
-  document.getElementById('conditions-y-left')!.innerHTML = '';
-  const rightAxis = document.getElementById('conditions-y-right')!;
-  const rightSpacer = document.getElementById('time-scrubber-right-spacer')!;
-  if (result.hasWave) {
-    rightAxis.style.display = 'block';
-    rightSpacer.style.display = 'block';
-  } else {
-    rightAxis.style.display = 'none';
-    rightSpacer.style.display = 'none';
-    rightAxis.innerHTML = '';
-  }
-  const svgEl = document.getElementById('conditions-svg')!;
-  svgEl.setAttribute('viewBox', result.viewBox);
-  svgEl.innerHTML = result.svgContent;
-  if (!ctx.getConditionsFullscreen()) panel.style.height = ctx.getConditionsExpanded() ? `${String(ctx.getConditionsGraphHeight())}px` : '24px';
-  panel.style.display = 'flex';
+  ctx.setConditionsGraph({ svgContent: result.svgContent, viewBox: result.viewBox, hasWave: result.hasWave, layout: result.layout });
+  ctx.setConditionsVisible(true);
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -186,7 +172,7 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
         let iN = windTimes.findIndex((t) => new Date(t).getTime() >= tNms);
         if (i0 < 0) i0 = 0;
         if (iN < 0) iN = windTimes.length - 1;
-        scrubberCtrl.lockToRoute(i0, iN, windTimes, ctx.scrubberState());
+        ctx.lockScrubberToRoute(i0, iN);
         state.routeScrubberRange = { i0, iN };
         state.scrubberLockedToRoute = true;
         ctx.fetchWindPointsAt(i0);
@@ -244,16 +230,9 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
     if (!startLatLon || !endLatLon) return;
     state.routeScrubberRange = null;
     state.scrubberLockedToRoute = false;
-    document.getElementById('scrubber-range-toggle')!.style.display = 'none';
+    ctx.setShowRangeToggle(false);
 
-    const appInst = ctx.getAppInstance();
-    const getRegionOverlay = appInst['getRegionOverlay'];
-    if (typeof getRegionOverlay === 'function') {
-      const overlay = getRegionOverlay() as { reload(): Promise<void> } | undefined;
-      if (overlay) await overlay.reload();
-    }
-
-    const depTime = (document.getElementById('departure-time') as HTMLInputElement).value;
+    const depTime = ctx.getDepartureTime();
     if (!depTime) return ctx.setStatus('error', 'Please set a departure time');
 
     clearIsochrones(isochroneState);
@@ -263,22 +242,18 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
     for (const m of state.legLabelLayer) m.remove();
     state.legLabelLayer = [];
     if (state.highlightLegLayer) { removeSourceAndLayer(map, state.highlightLegLayer); state.highlightLegLayer = null; }
-    document.getElementById('conditions-panel')!.style.display = 'none';
-    ctx.progressWrap.style.display = '';
-    ctx.progressBar.style.width = '0%';
-    ctx.calcBtn.disabled = true;
-    ctx.landToggle.disabled = true;
-    ctx.landToggle.style.opacity = '0.4';
+    ctx.setConditionsVisible(false);
+    ctx.setShowProgress(true);
+    ctx.setProgress(0);
+    ctx.setCalculating(true);
     if (state.calcStream) { state.calcStream.close(); state.calcStream = null; }
 
     ctx.setStatus('', 'Starting calculation…');
 
-    const polarCsv = window._polarCsv as string | undefined;
+    const polarCsv = ctx.getPolarCsv();
     if (!polarCsv) {
       ctx.setStatus('error', 'No polar diagram loaded — upload a polar CSV file');
-      ctx.calcBtn.disabled = false;
-      ctx.landToggle.disabled = false;
-      ctx.landToggle.style.opacity = '';
+      ctx.setCalculating(false);
       return;
     }
 
@@ -310,16 +285,14 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
     const j = e.data as { type: string; pct?: number; progress?: number; frontier?: number[][]; route?: RouteData; error?: string };
     if (j.type === 'progress') {
       const pct = Math.round(j.pct ?? j.progress ?? 0);
-      ctx.progressBar.style.width = `${String(pct)}%`;
+      ctx.setProgress(pct);
       ctx.setStatus('', `Calculating… ${String(pct)}%`);
-      if (j.frontier?.length && (document.getElementById('isochrone-toggle') as HTMLInputElement).checked) {
+      if (j.frontier?.length && ctx.getIsochroneEnabled()) {
         renderIsochrone(j.frontier, ctx.getStartLatLon()!, isochroneState);
       }
     } else if (j.type === 'result') {
-      ctx.progressWrap.style.display = 'none';
-      ctx.calcBtn.disabled = false;
-      ctx.landToggle.disabled = false;
-      ctx.landToggle.style.opacity = '';
+      ctx.setShowProgress(false);
+      ctx.setCalculating(false);
       if (j.route) {
         state.pendingRouteData = j.route;
         ctx.setStatus('done', 'Route calculated');

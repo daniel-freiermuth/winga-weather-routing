@@ -2,8 +2,6 @@
   // Root application component — owns layout, state, and all event wiring.
   // app.ts creates the MapLibre map and mounts this component.
 
-  import { mount, unmount } from 'svelte';
-  import { get } from 'svelte/store';
   import ChartSelector from './ChartSelector.svelte';
   import LayerToggles from './LayerToggles.svelte';
   import RoutingOptions from './RoutingOptions.svelte';
@@ -25,61 +23,134 @@
   import FailurePopup from './FailurePopup.svelte';
 
   import type { WaypointMeta, GraphLayout, RouteData, UnitPref, GribFileMeta } from '../types';
-  import { mapInstance, skConnected, forecastLoaded, routeWeatherResults, statusMessage } from '../stores';
+  import type { CalcMutableState, CalculationApi } from '../calculation';
+  import type { SkDeps } from '../sk-resources';
+  import type { ConfigState, ConfigCallbacks } from '../config';
+  import type { WaypointWeather } from '../route-weather';
+  import type { WindPoint, WavePoint, CurrentPoint, WaveGridMeta } from '../stores';
+  import { forecastLoaded, windPoints as windPointsStore, wavePoints as wavePointsStore, currentPoints as currentPointsStore, waveGridMetaStore as waveGridMetaStoreRef } from '../stores';
   import { fmt as _fmt } from '../units';
   import { toLocalDateTimeInput } from '../utils';
   import * as forecaster from '../forecast-fetcher';
-  import * as scrubberCtrl from '../scrubber-controller';
+  import { computeLabel, computeCoverageHtml, computeNowMarkerLeft, findNowIndex } from '../scrubber-controller';
+  import type { ScrubberState } from '../scrubber-controller';
   import { createTimeAxis, loadWindyTimes, rebuildTimes } from '../time-axis';
   import { setupCalculation } from '../calculation';
-  import type { CalcMutableState } from '../calculation';
-  import { greenIcon, redIcon, activatePlacing as _activatePlacing, setupPlacementClick, setupInfoPopupClick, setupViewportRefresh, runTest as _runTest, runHelsinkiTest as _runHelsinkiTest, runGothenburgTest as _runGothenburgTest } from '../map-interaction';
-  import type { PlacementCallbacks, TestRouteCallbacks } from '../map-interaction';
-  import { setStatus as _setStatus, showFailurePopup, hideFailurePopup } from '../status';
-  import { loadConfig as _loadConfig } from '../config';
-  import type { ConfigState } from '../config';
-  import { setupGraphTooltip } from '../graph-tooltip';
-  import { loadDepartureResources as _loadDepartureResources, clearRouteWaypoints as _clearRouteWaypoints, loadWaypointRoutes as _loadWaypointRoutes, handleWaypointRouteChange, handleDepartureResourceChange, connectVesselPositionStream as _connectVesselPositionStream, handleVesselPositionClick } from '../sk-resources';
-  import type { SkDeps } from '../sk-resources';
+  import { greenIcon, redIcon, setupInfoPopupClick, setupViewportRefresh } from '../map-interaction';
+  import { loadDepartureResources as _loadDepartureResources, loadWaypointRoutes as _loadWaypointRoutes, connectVesselPositionStream as _connectVesselPositionStream } from '../sk-resources';
   import { analyseRouteWeather } from '../route-weather';
   import * as dataLayer from '../data-layer';
+  import { setupGraphTooltip } from '../graph-tooltip';
+  import { loadConfig as _loadConfig } from '../config';
   import maplibregl from 'maplibre-gl';
+  import { MapLibre } from 'svelte-maplibre-gl';
 
+  // ── Props ──────────────────────────────────────────────────────────────────
   interface Props {
     skFetch: (path: string, options?: RequestInit) => Promise<Response>;
     skWebSocketUrl: (path: string) => string;
-    escapeHtml: (s: string) => string;
   }
 
-  let { skFetch, skWebSocketUrl, escapeHtml }: Props = $props();
+  let { skFetch, skWebSocketUrl }: Props = $props();
 
-  // ── State ─────────────────────────────────────────────────────────────────
+  // ── Reactive State ─────────────────────────────────────────────────────────
 
-  let regionEnabled = $state(false);
-  let regionOverlayRef: { getAvoidIds: () => string[]; reload: () => Promise<void> } | undefined;
+  // UI text
+  let startCoordsText = $state('—');
+  let endCoordsText = $state('—');
+  let statusType = $state('');
+  let statusText = $state('Ready');
+  let gribStatusHtml = $state('<span style="color:#89b4fa">Loading…</span>');
+  let departureTime = $state(defaultDepartureTime());
+  let buildVersion = $state('');
+  let waveLegendMax = $state('3 m');
 
-  // Reactive state — used in template bindings
+  // Booleans / numbers
+  let polarCsv = $state<string | null>(localStorage.getItem('wr-polar-csv'));
+  const polarLoaded = $derived(!!polarCsv);
+  let isCalculating = $state(false);
+  let isAnalysing = $state(false);
+  let calcProgress = $state(0);
+  let showProgress = $state(false);
+
+  // Navigation / placement state
   let vesselPosition = $state<{ lat: number; lon: number } | null>(null);
   let departureResources = $state<{ label: string; lat: number; lon: number }[]>([]);
   let pendingRouteData = $state<RouteData | null>(null);
+  let regionEnabled = $state(false);
+  let startLatLon = $state<{ lat: number; lon: number } | null>(null);
+  let endLatLon = $state<{ lat: number; lon: number } | null>(null);
+  let placing = $state<string | null>(null);
+  let routeWaypoints = $state<{ lat: number; lon: number }[]>([]);
+  let waypointRoutes = $state<{ label: string; coords: number[][] }[]>([]);
+  let windTimesLoaded = $state(false);
+  let skConnectedState = $state(false);
 
-  // Mutable state — internal, not directly in template
-  let startLatLon: { lat: number; lon: number } | null = null;
-  let endLatLon: { lat: number; lon: number } | null = null;
-  let placing: string | null = null;
-  let routeWaypoints: { lat: number; lon: number }[] = [];
+  // Analysis results (drives {#if} block in template)
+  let analyseResults = $state<WaypointWeather[]>([]);
+
+  // Save modal
+  let showSaveModal = $state(false);
+
+  // Failure popup
+  let failurePopupMsg = $state('');
+  let failurePopupType = $state<'error' | 'warning'>('error');
+  let failurePopupVisible = $state(false);
+
+  // Overlay visibility (bound to LayerToggles via $bindable)
+  let windOverlayVisible = $state(true);
+  let waveOverlayVisible = $state(false);
+  let currentOverlayVisible = $state(false);
+  let landOverlayVisible = $state(false);
+  let regionOverlayVisible = $state(false);
+  let isochroneVisibleState = $state(true);
+
+  // Overlay data (synced from stores written by forecast-fetcher)
+  let windPointsData = $state<WindPoint[]>([]);
+  let wavePointsData = $state<WavePoint[]>([]);
+  let currentPointsData = $state<CurrentPoint[]>([]);
+  let waveGridMetaData = $state<WaveGridMeta | null>(null);
+
+  // ── Derived State ──────────────────────────────────────────────────────────
+
+  const hasRoute = $derived(
+    (!!startLatLon && !!endLatLon) || routeWaypoints.length > 0
+  );
+  const canCalculate = $derived(hasRoute && windTimesLoaded && !isCalculating);
+  const canAnalyse = $derived(
+    hasRoute && polarLoaded && !!departureTime && windTimesLoaded && !isAnalysing
+  );
+  const calcHint = $derived.by(() => {
+    if (isCalculating) return '';
+    const m: string[] = [];
+    if (!windTimesLoaded) m.push('loading forecast…');
+    if (!hasRoute) m.push('set route');
+    return m.length ? 'Needs: ' + m.join(', ') : '';
+  });
+  const analyseHint = $derived.by(() => {
+    if (isAnalysing) return '';
+    const m: string[] = [];
+    if (!windTimesLoaded) m.push('loading forecast…');
+    if (!hasRoute) m.push('set route');
+    if (!polarLoaded) m.push('load polar');
+    if (!departureTime) m.push('set departure');
+    return m.length ? 'Needs: ' + m.join(', ') : '';
+  });
+
+  // ── Internal (non-reactive) State ──────────────────────────────────────────
+
+  let regionOverlayRef: { getAvoidIds: () => string[]; reload: () => Promise<void>; toggleAvoid: (id: string, avoid: boolean) => void } | undefined;
+  let regionListData = $state<{ id: string; name: string; avoided: boolean }[]>([]);
   let routeWaypointMarkers: maplibregl.Marker[] = [];
-  let waypointRoutes: { label: string; coords: number[][] }[] = [];
   let currentEnabled = true;
   let windSpeedMs = false;
-  let waveOverlayMaxM = 3.0;
-  let conditionsGraphHeight = 200;
+  let waveOverlayMaxM = $state(3.0);
+  let conditionsGraphHeight = $state(200);
   let windTimes: string[] = [];
   let windTimesCount = 0;
   let routeScrubberRange: { i0: number; iN: number } | null = null;
   let scrubberLockedToRoute = false;
   let windNativeTimes: string[] = [];
-  let windTimesLoaded = false;
   let currentFileTimes: string[] = [];
   let gribInfoFiles: GribFileMeta[] = [];
   let dilatedIndexReady = false;
@@ -90,6 +161,34 @@
   let enabledGribPaths = new Set<string>();
   let timeAxis = createTimeAxis();
 
+  // Scrubber reactive state
+  let scrubberIndex = $state(0);
+  let scrubberLabel = $state('');
+  let coverageHtml = $state('');
+  let nowMarkerLeft = $state<string | null>(null);
+  let showRangeToggle = $state(false);
+  let rangeToggleLabel = $state('Full range');
+  let showRightSpacer = $state(false);
+  let scrubberVisible = $state(false);
+
+  // Conditions panel reactive state
+  let conditionsVisible = $state(false);
+  let conditionsExpanded = $state(true);
+  let conditionsFullscreen = $state(false);
+  let conditionsSvgContent = $state('');
+  let conditionsSvgViewBox = $state('0 0 820 200');
+  let conditionsHasWave = $state(false);
+
+  // Bind:this refs for graph tooltip
+  let graphTooltipEl = $state<HTMLDivElement | undefined>();
+  let conditionsPanelRef: { getSvgEl(): SVGSVGElement | undefined } | undefined;
+
+  // Subscribe to overlay data stores (forecast-fetcher writes to these)
+  windPointsStore.subscribe(v => { windPointsData = v; });
+  wavePointsStore.subscribe(v => { wavePointsData = v; });
+  currentPointsStore.subscribe(v => { currentPointsData = v; });
+  waveGridMetaStoreRef.subscribe(v => { waveGridMetaData = v; });
+
   // MapLibre layers / markers
   let routeLayer: { sourceId: string; layerId: string } | null = null;
   let windBarbLayer: maplibregl.Marker[] = [];
@@ -99,29 +198,68 @@
   let highlightLegLayer: { sourceId: string; layerId: string } | null = null;
   let prevHighlightWpIdx = -1;
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // Map refs at component level
+  let mapRef = $state<maplibregl.Map>(undefined as unknown as maplibregl.Map);
+  let startMarker: maplibregl.Marker | null = null;
+  let endMarker: maplibregl.Marker | null = null;
+  let isochroneState: { sourceIds: string[]; layerIds: string[]; count: number; map: maplibregl.Map } | null = null;
+  let routingWorker: Worker | null = null;
+  let calcApi: CalculationApi | null = null;
+  let routeWeatherMarkers: maplibregl.Marker[] = [];
+
+  // RoutingOptions component ref
+  interface RoutingOptionsApi {
+    getOptions: () => {
+      useLandAvoidance: boolean; useSafetyMargin: boolean;
+      motorBelowKn: number | undefined; motorSpeedKn: number | undefined;
+      waitForWind: boolean | undefined; maxWindKn: number | undefined; maxWaveM: number | undefined;
+      waypointLabels: boolean; waypointLabelInterval: number;
+    };
+  }
+  let routingOptionsRef: RoutingOptionsApi | undefined;
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  function defaultDepartureTime(): string {
+    const now = new Date(Math.ceil(Date.now() / 1800000) * 1800000);
+    return toLocalDateTimeInput(now);
+  }
 
   function setStatus(type: string, msg: string) {
-    const el = document.getElementById('status-box');
-    if (el) { el.className = type === 'error' || type === 'done' ? type : ''; el.textContent = msg; }
-    statusMessage.set({ type, text: msg });
+    statusType = type;
+    statusText = msg;
+  }
+
+  function handleShowFailurePopup(msg: string, isWarning: boolean) {
+    failurePopupMsg = msg;
+    failurePopupType = isWarning ? 'warning' : 'error';
+    failurePopupVisible = true;
   }
 
   function timeAxisState() { return { windTimes, windNativeTimes, windTimesLoaded }; }
 
   async function fetchWindPointsAt(idx: number, signal?: AbortSignal) {
-    await forecaster.fetchWindPoints(idx, timeAxisState(), signal);
-    scrubberCtrl.updateLabel(idx, windTimes);
+    await forecaster.fetchWindPoints(idx, timeAxisState(), mapRef!, signal);
+    scrubberLabel = computeLabel(idx, windTimes);
   }
   async function fetchWavePointsAt(idx: number, signal?: AbortSignal) {
-    await forecaster.fetchWavePoints(idx, timeAxisState(), signal);
+    await forecaster.fetchWavePoints(idx, timeAxisState(), mapRef!, signal);
   }
   async function fetchCurrentPointsAt(timeMs: number, signal?: AbortSignal) {
-    await forecaster.fetchCurrentPoints(timeMs, signal);
+    await forecaster.fetchCurrentPoints(timeMs, mapRef!, signal);
   }
 
-  function scrubberState(): scrubberCtrl.ScrubberState {
+  function scrubberState(): ScrubberState {
     return { windTimes, scrubberLockedToRoute, routeScrubberRange, graphMeta, gribInfoFiles, enabledGribPaths, currentEnabled, currentFileTimes };
+  }
+
+  /** Update all scrubber-derived reactive state from current windTimes / range. */
+  function updateScrubberView() {
+    const rangeStart = scrubberLockedToRoute && routeScrubberRange ? routeScrubberRange.i0 : 0;
+    const rangeEnd = scrubberLockedToRoute && routeScrubberRange ? routeScrubberRange.iN : Math.max(0, windTimes.length - 1);
+    coverageHtml = computeCoverageHtml(rangeStart, rangeEnd, scrubberState());
+    nowMarkerLeft = computeNowMarkerLeft(rangeStart, rangeEnd, windTimes);
+    scrubberLabel = computeLabel(scrubberIndex, windTimes);
   }
 
   function rebuildScrubberTimes() {
@@ -131,67 +269,278 @@
     windTimesCount = result.windTimesCount;
     windNativeTimes = result.windNativeTimes;
     windTimesLoaded = result.windTimesLoaded;
-    scrubberCtrl.applyScrubberTimes(windTimes, scrubberState());
+    if (result.windTimesLoaded) forecastLoaded.set(true);
+    if (windTimes.length === 0) {
+      scrubberVisible = false;
+      return;
+    }
+    scrubberVisible = true;
+    scrubberIndex = Math.min(scrubberIndex, Math.max(0, windTimes.length - 1));
+    updateScrubberView();
   }
 
   function useSafetyMargin(): boolean {
-    return routingOptions?.getOptions().useSafetyMargin ?? false;
+    return routingOptionsRef?.getOptions().useSafetyMargin ?? false;
   }
 
-  // ── Routing options ───────────────────────────────────────────────────────
+  // ── Scrubber Event Handlers ────────────────────────────────────────────────
 
-  interface RoutingOptionsApi {
-    getOptions: () => {
-      useLandAvoidance: boolean; useSafetyMargin: boolean;
-      motorBelowKn: number | undefined; motorSpeedKn: number | undefined;
-      waitForWind: boolean | undefined; maxWindKn: number | undefined; maxWaveM: number | undefined;
-      waypointLabels: boolean; waypointLabelInterval: number;
-    };
+  let scrubberDebounce: ReturnType<typeof setTimeout> | null = null;
+  let windAbort: AbortController | null = null;
+  let waveAbort: AbortController | null = null;
+  let currentAbort: AbortController | null = null;
+
+  function handleScrubberChange(idx: number) {
+    scrubberIndex = idx;
+    scrubberLabel = computeLabel(idx, windTimes);
+    clearTimeout(scrubberDebounce ?? undefined);
+    scrubberDebounce = setTimeout(() => {
+      windAbort?.abort(); windAbort = new AbortController();
+      waveAbort?.abort(); waveAbort = new AbortController();
+      void fetchWindPointsAt(idx, windAbort.signal);
+      void fetchWavePointsAt(idx, waveAbort.signal);
+      const timeMs = windTimes[idx] ? new Date(windTimes[idx]).getTime() : Date.now();
+      if (currentEnabled || forecaster.getCurrentPoints().length > 0) {
+        currentAbort?.abort(); currentAbort = new AbortController();
+        void fetchCurrentPointsAt(timeMs, currentAbort.signal);
+      }
+      calcApi?.updateScrubberHighlight(idx);
+    }, 100);
   }
-  let routingOptions: RoutingOptionsApi | null = null;
 
-  // ── Lifecycle ─────────────────────────────────────────────────────────────
-  // Wait for the map to be ready (style loaded) before initializing.
-  // mapInstance is set by app.ts inside map.on('load').
+  function handleJumpToNow() {
+    if (!windTimesLoaded) return;
+    const idx = findNowIndex(windTimes);
+    handleScrubberChange(idx);
+  }
+
+  function handleToggleRange() {
+    if (!routeScrubberRange) return;
+    scrubberLockedToRoute = !scrubberLockedToRoute;
+    rangeToggleLabel = scrubberLockedToRoute ? 'Full range' : 'Route only';
+    if (scrubberLockedToRoute) {
+      scrubberIndex = Math.max(routeScrubberRange.i0, Math.min(routeScrubberRange.iN, scrubberIndex));
+    }
+    updateScrubberView();
+  }
+
+  function handleUseAsDeparture(timeIso: string) {
+    if (timeIso) departureTime = toLocalDateTimeInput(new Date(timeIso));
+  }
+
+  function handleConditionsToggle() {
+    conditionsExpanded = !conditionsExpanded;
+  }
+
+  function handleConditionsFullscreenToggle() {
+    conditionsFullscreen = !conditionsFullscreen;
+  }
+
+  // ── Event Handlers ─────────────────────────────────────────────────────────
+
+  function activatePlacing(which: 'start' | 'end') {
+    placing = which;
+    setStatus('', `Click on the map to set ${which} point`);
+    if (mapRef) mapRef.getCanvas().style.cursor = 'crosshair';
+  }
+
+  function handleCalculate() {
+    void calcApi?.startCalculation();
+  }
+
+  function handleAnalyse() {
+    if (!departureTime) return;
+    const csv = polarCsv;
+    if (!csv) return;
+    isAnalysing = true;
+
+    void (async () => {
+      try {
+        let coords: number[][] | null = null;
+        if (startLatLon && endLatLon) {
+          coords = [[startLatLon.lon, startLatLon.lat], [endLatLon.lon, endLatLon.lat]];
+          if (routeWaypoints.length > 0) {
+            coords = [coords[0]!, ...routeWaypoints.map((wp) => [wp.lon, wp.lat]), coords[1]!];
+          }
+        }
+        if (!coords || coords.length < 2) {
+          setStatus('error', 'Need at least 2 route points for analysis');
+          return;
+        }
+        const waypoints = coords.map(([lon, lat]) => ({ lat: lat!, lon: lon! }));
+        const results = await analyseRouteWeather(waypoints, new Date(departureTime).getTime(), csv);
+        analyseResults = results;
+
+        // Add route weather markers on map
+        for (const m of routeWeatherMarkers) m.remove();
+        routeWeatherMarkers = results.map((r) => {
+          const el = document.createElement('div');
+          el.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#89b4fa;border:1px solid #1e2230';
+          const marker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([r.lon, r.lat]).addTo(mapRef!);
+          const tw = _fmt(r.twsKn ?? 0, 'speed');
+          const popup = new maplibregl.Popup({ offset: [0, -10], closeButton: false, closeOnClick: false })
+            .setHTML(`WP${String(r.idx)}<br>${tw.num} ${tw.sym}, ${Math.round(r.twdDeg ?? 0)}°`);
+          marker.setPopup(popup);
+          marker.getElement().addEventListener('mouseenter', () => popup.addTo(mapRef!));
+          marker.getElement().addEventListener('mouseleave', () => popup.remove());
+          return marker;
+        });
+      } catch (e) {
+        setStatus('error', `Analysis failed: ${String(e)}`);
+      } finally {
+        isAnalysing = false;
+      }
+    })();
+  }
+
+  const OREGRUND = { lat: 60.3996, lon: 18.3403 };
+
+  function setTestRoute(s: { lat: number; lon: number }, e: { lat: number; lon: number }, departure: string) {
+    startLatLon = s;
+    endLatLon = e;
+    startCoordsText = `${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}`;
+    endCoordsText = `${e.lat.toFixed(4)}, ${e.lon.toFixed(4)}`;
+    departureTime = departure;
+    startMarker?.setLngLat([s.lon, s.lat]).addTo(mapRef!);
+    endMarker?.setLngLat([e.lon, e.lat]).addTo(mapRef!);
+    routeWaypoints = [];
+    for (const m of routeWaypointMarkers) m.remove();
+    routeWaypointMarkers = [];
+  }
+
+  function handleRunTest() {
+    setTestRoute(OREGRUND, { lat: 58.5052, lon: 17.3474 }, '2026-05-24T08:00');
+  }
+
+  function handleRunHelsinki() {
+    setTestRoute(OREGRUND, { lat: 60.0881, lon: 24.953 }, '2026-06-06T02:00');
+  }
+
+  function handleRunGothenburg() {
+    setTestRoute(OREGRUND, { lat: 57.6138, lon: 11.598 }, '2026-06-06T02:00');
+  }
+
+  function handleSaveRoute() {
+    if (!pendingRouteData) {
+      setStatus('error', 'No route to save');
+      return;
+    }
+    showSaveModal = true;
+  }
+
+  async function handleSaveRouteConfirm(name: string) {
+    if (!pendingRouteData) return;
+    const body = { ...pendingRouteData, name };
+    const r = await skFetch('/signalk/v2/api/resources/routes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(`HTTP ${String(r.status)}`);
+    showSaveModal = false;
+  }
+
+  function handleUseVesselPosition() {
+    if (!vesselPosition) return;
+    const { lat, lon } = vesselPosition;
+    startLatLon = { lat, lon };
+    startCoordsText = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+    startMarker?.setLngLat([lon, lat]).addTo(mapRef!);
+    routeWaypoints = [];
+    for (const m of routeWaypointMarkers) m.remove();
+    routeWaypointMarkers = [];
+  }
+
+  function handleDepartureResourceSelect(index: number) {
+    const res = departureResources[index];
+    if (!res) return;
+    const { lat, lon } = res;
+    startLatLon = { lat, lon };
+    startCoordsText = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+    startMarker?.setLngLat([lon, lat]).addTo(mapRef!);
+    routeWaypoints = [];
+    for (const m of routeWaypointMarkers) m.remove();
+    routeWaypointMarkers = [];
+  }
+
+  function handleWaypointRouteChange(e: Event) {
+    const idx = parseInt((e.target as HTMLSelectElement).value);
+    // Clear existing waypoints
+    for (const m of routeWaypointMarkers) m.remove();
+    routeWaypointMarkers = [];
+    routeWaypoints = [];
+
+    if (isNaN(idx) || !waypointRoutes[idx]) return;
+    const route = waypointRoutes[idx]!;
+    const coords = route.coords;
+    if (coords.length >= 2) {
+      const first = coords[0]!;
+      startLatLon = { lat: first[1]!, lon: first[0]! };
+      startCoordsText = `${first[1]!.toFixed(4)}, ${first[0]!.toFixed(4)}`;
+      startMarker?.setLngLat([first[0]!, first[1]!]).addTo(mapRef!);
+
+      const last = coords[coords.length - 1]!;
+      endLatLon = { lat: last[1]!, lon: last[0]! };
+      endCoordsText = `${last[1]!.toFixed(4)}, ${last[0]!.toFixed(4)}`;
+      endMarker?.setLngLat([last[0]!, last[1]!]).addTo(mapRef!);
+    }
+    // Add intermediate waypoint markers
+    const newWaypoints: { lat: number; lon: number }[] = [];
+    const newMarkers: maplibregl.Marker[] = [];
+    for (let i = 1; i < coords.length - 1; i++) {
+      const wp = { lat: coords[i]![1]!, lon: coords[i]![0]! };
+      newWaypoints.push(wp);
+      const el = document.createElement('div');
+      el.innerHTML = '<div style="background:#f5c2e7;width:8px;height:8px;border-radius:50%;border:1px solid #1e2230"></div>';
+      newMarkers.push(
+        new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([wp.lon, wp.lat]).addTo(mapRef!),
+      );
+    }
+    routeWaypoints = newWaypoints;
+    routeWaypointMarkers = newMarkers;
+
+    // Fit map to route bounds
+    const bounds = coords.reduce(
+      (b, [lon, lat]) => b.extend([lon!, lat!] as [number, number]),
+      new maplibregl.LngLatBounds(),
+    );
+    mapRef?.fitBounds(bounds, { padding: 30 });
+  }
+
+  // ── Map Initialization ($effect — runs once when map becomes available) ────
+
   let mapInitialized = false;
-  const unsubMap = mapInstance.subscribe((m) => {
+  $effect(() => {
+    const m = mapRef;
     if (!m || mapInitialized) return;
     mapInitialized = true;
-    unsubMap();
-    const map = m;
-    const isochroneState = { sourceIds: [] as string[], layerIds: [] as string[], count: 0, map };
-    const routingWorker = new Worker(new URL('../worker.ts', import.meta.url), { type: 'module' });
-    const startMarker = new maplibregl.Marker({ element: greenIcon(), anchor: 'center' }); // not added until placed
-    const endMarker = new maplibregl.Marker({ element: redIcon(), anchor: 'center' });
 
-    // DOM refs
-    const startCoords = document.getElementById('start-coords')!;
-    const endCoords = document.getElementById('end-coords')!;
-    const calcBtn = document.getElementById('calculate') as HTMLButtonElement;
-    const landToggle = document.getElementById('land-toggle') as HTMLInputElement;
-    const progressWrap = document.getElementById('progress-bar-wrap')!;
-    const progressBar = document.getElementById('progress-bar')!;
-    const gribInfo = document.getElementById('grib-info')!;
-    const analyseBtn = document.getElementById('analyse-weather-btn') as HTMLButtonElement;
-    const routeWeatherPanel = document.getElementById('route-weather-panel')!;
-    let routeWeatherInstance: Record<string, unknown> | null = null;
+    startMarker = new maplibregl.Marker({ element: greenIcon(), anchor: 'center' });
+    endMarker = new maplibregl.Marker({ element: redIcon(), anchor: 'center' });
+    isochroneState = { sourceIds: [], layerIds: [], count: 0, map: m };
+    routingWorker = new Worker(new URL('../worker.ts', import.meta.url), { type: 'module' });
 
+    // ── Map click handler (placement) ──────────────────────────────────────
+    m.on('click', (e: maplibregl.MapMouseEvent) => {
+      if (!placing) return;
+      const { lat, lng } = e.lngLat;
+      if (placing === 'start') {
+        startLatLon = { lat, lon: lng };
+        startCoordsText = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        startMarker?.setLngLat([lng, lat]).addTo(mapRef!);
+        routeWaypoints = [];
+        for (const mk of routeWaypointMarkers) mk.remove();
+        routeWaypointMarkers = [];
+      } else if (placing === 'end') {
+        endLatLon = { lat, lon: lng };
+        endCoordsText = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        endMarker?.setLngLat([lng, lat]).addTo(mapRef!);
+      }
+      placing = null;
+      if (mapRef) mapRef.getCanvas().style.cursor = '';
+    });
 
-    // Departure time default
-    const now = new Date(Math.ceil(Date.now() / 1800000) * 1800000);
-    (document.getElementById('departure-time') as HTMLInputElement).value = toLocalDateTimeInput(now);
-
-    // RoutingOptions API
-    // Access happens after render; RoutingOptions exports getOptions via Svelte instance
-    const optEl = document.getElementById('routing-options-section');
-    if (optEl) {
-      setTimeout(() => {
-        routingOptions = (optEl.querySelector('[data-routing-options]') as unknown as RoutingOptionsApi | null) ?? null;
-      }, 0);
-    }
-
-    // ── Calculation module ──────────────────────────────────────────────
-
+    // ── Calculation module ──────────────────────────────────────────────────
     let calcStream: { close(): void } | null = null;
     const calcState: CalcMutableState = {
       get routeScrubberRange() { return routeScrubberRange; }, set routeScrubberRange(v) { routeScrubberRange = v; },
@@ -209,148 +558,51 @@
       get pendingRouteData() { return pendingRouteData; }, set pendingRouteData(v) { pendingRouteData = v; },
     };
 
-    const calcApi = setupCalculation({
-      map, routingWorker, isochroneState,
-      progressWrap, progressBar, calcBtn, landToggle,
-      setStatus, showFailurePopup,
+    calcApi = setupCalculation({
+      map: m, routingWorker: routingWorker!, isochroneState: isochroneState!,
+      setProgress: (pct: number) => { calcProgress = pct; },
+      setCalculating: (v: boolean) => { isCalculating = v; },
+      setShowProgress: (v: boolean) => { showProgress = v; },
+      getDepartureTime: () => departureTime,
+      getIsochroneEnabled: () => isochroneVisibleState,
+      setStatus,
+      showFailurePopup: handleShowFailurePopup,
       fetchWindPointsAt: (idx: number) => fetchWindPointsAt(idx),
       fetchWavePointsAt: (idx: number) => fetchWavePointsAt(idx),
       scrubberState,
       getStartLatLon: () => startLatLon,
       getEndLatLon: () => endLatLon,
       getRouteWaypoints: () => routeWaypoints,
-      getRoutingOptions: () => routingOptions ?? null,
-      getAppInstance: () => ({}),
+      getRoutingOptions: () => routingOptionsRef ?? null,
       getWindSpeedMs: () => windSpeedMs,
       getWindTimes: () => windTimes,
       getWindTimesLoaded: () => windTimesLoaded,
-      getConditionsGraphHeight: () => conditionsGraphHeight,
-      getConditionsExpanded: () => true,
-      getConditionsFullscreen: () => false,
       getGribInfoFiles: () => gribInfoFiles,
       getForecastSkillHorizonHours: () => forecastSkillHorizonHours,
+      getPolarCsv: () => polarCsv ?? undefined,
+      setConditionsGraph: (data) => {
+        if (data) {
+          conditionsSvgContent = data.svgContent;
+          conditionsSvgViewBox = data.viewBox;
+          conditionsHasWave = data.hasWave;
+          showRightSpacer = data.hasWave;
+          graphLayout = data.layout;
+        }
+      },
+      setConditionsVisible: (v) => { conditionsVisible = v; },
+      lockScrubberToRoute: (i0, iN) => {
+        routeScrubberRange = { i0, iN };
+        scrubberLockedToRoute = true;
+        scrubberIndex = i0;
+        showRangeToggle = true;
+        rangeToggleLabel = 'Full range';
+        updateScrubberView();
+      },
+      setShowRangeToggle: (v) => { showRangeToggle = v; },
       state: calcState,
     });
 
-    // ── Placement + test routes ─────────────────────────────────────────
-
-    function clearRouteWaypointsLocal() { _clearRouteWaypoints(skDeps); }
-    function updateCalcButton() {
-      const hasData = windTimesLoaded;
-      const hasStart = !!startLatLon;
-      const hasEnd = !!endLatLon;
-      const hasRouteWp = routeWaypoints.length > 0;
-      const ready = (hasStart && hasEnd || hasRouteWp) && hasData;
-      calcBtn.disabled = !ready;
-      let hint = document.getElementById('calc-hint');
-      if (!hint) { hint = document.createElement('span'); hint.id = 'calc-hint'; hint.style.cssText = 'font-size:10px;color:#6c7086;display:block;margin-top:2px'; calcBtn.after(hint); }
-      const missing: string[] = [];
-      if (!hasData) missing.push('loading forecast…');
-      if (!(hasStart && hasEnd || hasRouteWp)) missing.push('set route');
-      hint.textContent = missing.length > 0 ? `Needs: ${missing.join(', ')}` : '';
-    }
-
-    const placementCb: PlacementCallbacks = {
-      getPlacing: () => placing,
-      setStartLatLon: (v) => { startLatLon = v; },
-      setEndLatLon: (v) => { endLatLon = v; },
-      setPlacing: (v) => { placing = v; },
-      setStatus,
-      clearRouteWaypoints: clearRouteWaypointsLocal,
-      updateCalcButton,
-    };
-    setupPlacementClick(map, startMarker, endMarker, startCoords, endCoords, placementCb);
-
-    document.getElementById('btn-start')?.addEventListener('click', () => _activatePlacing(map, 'start', { setStatus, setPlacing: (v) => { placing = v; } }));
-    document.getElementById('btn-end')?.addEventListener('click', () => _activatePlacing(map, 'end', { setStatus, setPlacing: (v) => { placing = v; } }));
-    calcBtn.addEventListener('click', calcApi.startCalculation);
-
-    const testCb: TestRouteCallbacks = { setStartLatLon: (v) => { startLatLon = v; }, setEndLatLon: (v) => { endLatLon = v; }, clearRouteWaypoints: clearRouteWaypointsLocal, updateCalcButton };
-    document.getElementById('run-test')?.addEventListener('click', () => _runTest(map, startMarker, endMarker, startCoords, endCoords, testCb));
-    document.getElementById('run-helsinki-test')?.addEventListener('click', () => _runHelsinkiTest(map, startMarker, endMarker, startCoords, endCoords, testCb));
-    document.getElementById('run-gothenburg-test')?.addEventListener('click', () => _runGothenburgTest(map, startMarker, endMarker, startCoords, endCoords, testCb));
-
-    // ── Scrubber ────────────────────────────────────────────────────────
-
-    scrubberCtrl.setupScrubberHandlers({
-      getWindTimes: () => windTimes,
-      isLoaded: () => windTimesLoaded,
-      isCurrentEnabled: () => currentEnabled,
-      hasCurrentPoints: () => forecaster.getCurrentPoints().length > 0,
-      fetchWind: (idx, signal) => { void fetchWindPointsAt(idx, signal); },
-      fetchWave: (idx, signal) => { void fetchWavePointsAt(idx, signal); },
-      fetchCurrent: (timeMs, signal) => { void fetchCurrentPointsAt(timeMs, signal); },
-      onScrubberHighlight: calcApi.updateScrubberHighlight,
-      onToggleRange: () => { const r = scrubberCtrl.toggleRange(scrubberState()); scrubberLockedToRoute = r.locked; },
-    });
-
-    // ── Route weather analysis ──────────────────────────────────────────
-
-    function updateAnalyseButton() {
-      const hasRoute = !!startLatLon || routeWaypoints.length > 0;
-      const hasPolar = !!window._polarCsv;
-      const hasDep = !!(document.getElementById('departure-time') as HTMLInputElement | null)?.value;
-      analyseBtn.disabled = !(hasRoute && hasPolar && hasDep && windTimesLoaded);
-      const hint = document.getElementById('analyse-hint');
-      if (hint) {
-        const m: string[] = [];
-        if (!windTimesLoaded) m.push('loading forecast…');
-        if (!hasRoute) m.push('set route');
-        if (!hasPolar) m.push('load polar');
-        if (!hasDep) m.push('set departure');
-        hint.textContent = m.length > 0 ? `Needs: ${m.join(', ')}` : '';
-      }
-    }
-    const analyseHint = document.createElement('span');
-    analyseHint.id = 'analyse-hint';
-    analyseHint.style.cssText = 'font-size:10px;color:#6c7086;display:block;margin-top:2px';
-    analyseBtn.after(analyseHint);
-    document.getElementById('departure-time')?.addEventListener('change', updateAnalyseButton);
-    document.getElementById('waypoints-route')?.addEventListener('change', () => setTimeout(updateAnalyseButton, 100));
-
-    analyseBtn.addEventListener('click', async () => {
-      const depTime = (document.getElementById('departure-time') as HTMLInputElement).value;
-      if (!depTime) return;
-      const polarCsv = window._polarCsv;
-      if (!polarCsv) return;
-      analyseBtn.disabled = true; analyseBtn.textContent = 'Analysing…';
-      try {
-        const sel = document.getElementById('waypoints-route') as HTMLSelectElement | null;
-        const routeIdx = sel?.value ? parseInt(sel.value) : -1;
-        const routeCoords = routeIdx >= 0 ? waypointRoutes[routeIdx]?.coords : null;
-        let coords: number[][] | null = routeCoords ?? null;
-        if (!coords && startLatLon && endLatLon) {
-          coords = [[startLatLon.lon, startLatLon.lat], [endLatLon.lon, endLatLon.lat]];
-          if (routeWaypoints.length > 0) coords = [coords[0]!, ...routeWaypoints.map((wp) => [wp.lon, wp.lat]), coords[1]!];
-        }
-        if (!coords || coords.length < 2) { analyseBtn.disabled = false; analyseBtn.textContent = 'Analyse Route Weather'; return; }
-        const waypoints = coords.map(([lon, lat]) => ({ lat: lat!, lon: lon! }));
-        const results = await analyseRouteWeather(waypoints, new Date(depTime).getTime(), polarCsv);
-        routeWeatherResults.set(results);
-        if (routeWeatherInstance) unmount(routeWeatherInstance);
-        routeWeatherPanel.style.display = 'block'; routeWeatherPanel.innerHTML = '';
-        routeWeatherInstance = mount(RouteWeatherTable, { target: routeWeatherPanel, props: { data: results } }) as Record<string, unknown>;
-        if (window._routeWeatherMarkers) for (const m of window._routeWeatherMarkers) m.remove();
-        window._routeWeatherMarkers = results.map((r) => {
-          const el = document.createElement('div');
-          el.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#89b4fa;border:1px solid #1e2230';
-          const m = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([r.lon, r.lat]).addTo(map);
-          const tw = _fmt(r.twsKn ?? 0, 'speed');
-          const popup = new maplibregl.Popup({ offset: [0, -10], closeButton: false, closeOnClick: false }).setHTML(`WP${String(r.idx)}<br>${tw.num} ${tw.sym}, ${Math.round(r.twdDeg ?? 0)}°`);
-          m.setPopup(popup);
-          m.getElement().addEventListener('mouseenter', () => popup.addTo(map));
-          m.getElement().addEventListener('mouseleave', () => popup.remove());
-          return m;
-        });
-      } catch (e) { setStatus('error', `Analysis failed: ${String(e)}`); }
-      finally { analyseBtn.disabled = false; analyseBtn.textContent = 'Analyse Route Weather'; }
-    });
-
-    // Poll for forecast loaded
-    const readyPoll = setInterval(() => { updateAnalyseButton(); updateCalcButton(); if (windTimesLoaded) clearInterval(readyPoll); }, 500);
-
-    // ── SK resources ────────────────────────────────────────────────────
-
+    // ── SK resources ────────────────────────────────────────────────────────
     let vesselPositionWs: WebSocket | null = null;
     const skState: import('../sk-resources').SkState = {
       get departureResources() { return departureResources; }, set departureResources(v) { departureResources = v; },
@@ -363,17 +615,15 @@
       get vesselPositionWs() { return vesselPositionWs; }, set vesselPositionWs(v) { vesselPositionWs = v; },
     };
     const skDeps: SkDeps = {
-      skFetch, skWebSocketUrl, map,
-      startMarker, endMarker, startCoords, endCoords,
-      updateCalcButton, updateAnalyseButton,
+      skFetch, skWebSocketUrl, map: m,
+      startMarker: startMarker!,
+      endMarker: endMarker!,
+      setStartCoordsText: (t: string) => { startCoordsText = t; },
+      setEndCoordsText: (t: string) => { endCoordsText = t; },
       state: skState,
     };
-    document.getElementById('waypoints-route')?.addEventListener('change', (e) => handleWaypointRouteChange(skDeps, e));
-    document.getElementById('departure-resource')?.addEventListener('change', (e) => handleDepartureResourceChange(skDeps, e));
-    document.getElementById('btn-vessel-position')?.addEventListener('click', () => handleVesselPositionClick(skDeps));
 
-    // ── Config ──────────────────────────────────────────────────────────
-
+    // ── Config ──────────────────────────────────────────────────────────────
     const configState: ConfigState = {
       get waveOverlayMaxM() { return waveOverlayMaxM; }, set waveOverlayMaxM(v) { waveOverlayMaxM = v; },
       get windSpeedMs() { return windSpeedMs; }, set windSpeedMs(v) { windSpeedMs = v; },
@@ -381,12 +631,15 @@
       get forecastSkillHorizonHours() { return forecastSkillHorizonHours; }, set forecastSkillHorizonHours(v) { forecastSkillHorizonHours = v; },
       get unitPrefs() { return unitPrefs; }, set unitPrefs(v) { unitPrefs = v; },
     };
+    const configCallbacks: ConfigCallbacks = {
+      setBuildVersion: (v: string) => { buildVersion = v; },
+      setWaveLegendMax: (text: string) => { waveLegendMax = text; },
+      setSafetyMarginDist: (_text: string) => { /* safety margin text is hardcoded in RoutingOptions */ },
+    };
 
-    // ── Startup ─────────────────────────────────────────────────────────
+    // ── Startup ─────────────────────────────────────────────────────────────
 
-    // GRIB info (Windy mode — no server-side GRIB files)
-    gribInfo.innerHTML = '<span style="color:#89b4fa">Using Windy ECMWF forecast</span>';
-    document.getElementById('current-info')!.style.display = 'none';
+    gribStatusHtml = '<span style="color:#89b4fa">Using Windy ECMWF forecast</span>';
 
     // Init wind scrubber (load Windy times + first overlay fetch)
     void (async () => {
@@ -409,63 +662,42 @@
       setStatus('done', 'Ready');
     })();
 
-    void _loadConfig(skFetch, configState);
+    void _loadConfig(skFetch, configState, configCallbacks);
 
     // SK-dependent features
     void (async () => {
       try {
         const r = await skFetch('/signalk');
         if (!r.ok) throw new Error(`HTTP ${String(r.status)}`);
-        skConnected.set(true);
+        skConnectedState = true;
         void _loadDepartureResources(skDeps);
         void _loadWaypointRoutes(skDeps);
         if (regionOverlayRef) void regionOverlayRef.reload();
         _connectVesselPositionStream(skDeps);
       } catch {
-        skConnected.set(false);
+        skConnectedState = false;
         setStatus('', 'Ready (no SignalK server)');
       }
     })();
 
-    // ── Map event handlers ──────────────────────────────────────────────
-
-    setupViewportRefresh(map, { fetchWindPointsAt, fetchWavePointsAt, isWindTimesLoaded: () => windTimesLoaded });
-    setupInfoPopupClick(map, () => ({
+    // ── Map event handlers ──────────────────────────────────────────────────
+    setupViewportRefresh(m, {
+      fetchWindPointsAt,
+      fetchWavePointsAt,
+      isWindTimesLoaded: () => windTimesLoaded,
+      isWindVisible: () => windOverlayVisible,
+      isWaveVisible: () => waveOverlayVisible,
+      getScrubberIndex: () => scrubberIndex,
+    });
+    setupInfoPopupClick(m, () => ({
       allWindPoints: forecaster.getWindPoints(),
       allWavePoints: forecaster.getWavePoints(),
       allCurrentPoints: forecaster.getCurrentPoints(),
       windSpeedMs,
+      windVisible: windOverlayVisible,
+      waveVisible: waveOverlayVisible,
+      currentVisible: currentOverlayVisible,
     }));
-
-    // Isochrone toggle
-    document.getElementById('isochrone-toggle')?.addEventListener('change', (e) => {
-      const visible = (e.target as HTMLInputElement).checked;
-      for (const id of isochroneState.layerIds) {
-        if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
-      }
-    });
-
-    // Save route
-    const saveModalContainer = document.createElement('div');
-    document.body.appendChild(saveModalContainer);
-    document.getElementById('save-route-btn')?.addEventListener('click', () => {
-      if (!pendingRouteData) return setStatus('error', 'No route to save');
-      mount(SaveRouteModal, { target: saveModalContainer, props: {
-        visible: true,
-        onSave: async (name: string) => {
-          if (!pendingRouteData) return;
-          const body = { ...pendingRouteData, name };
-          const r = await skFetch('/signalk/v2/api/resources/routes', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-          });
-          if (!r.ok) throw new Error(`HTTP ${String(r.status)}`);
-          saveModalContainer.innerHTML = '';
-        },
-        onCancel: () => { saveModalContainer.innerHTML = ''; },
-      } });
-    });
-
-    // Failure popup
 
     // Dilated land data polling
     const dilatedPoll = setInterval(() => {
@@ -473,17 +705,19 @@
       if (dataLayer.dilatedLandDataReady()) { dilatedIndexReady = true; clearInterval(dilatedPoll); }
     }, 5000);
 
-    // Conditions graph tooltip
-    setupGraphTooltip(
-      document.getElementById('conditions-svg')!,
-      document.getElementById('graph-tooltip')!,
-      () => ({ graphMeta, graphLayout, windSpeedMs }),
-    );
+    // Conditions graph tooltip — deferred until bind:this refs are available
+    const tooltipPoll = setInterval(() => {
+      const svgEl = conditionsPanelRef?.getSvgEl();
+      if (svgEl && graphTooltipEl) {
+        clearInterval(tooltipPoll);
+        setupGraphTooltip(svgEl, graphTooltipEl, () => ({ graphMeta, graphLayout, windSpeedMs }));
+      }
+    }, 200);
   });
 </script>
 
 <!-- Sidebar -->
-<div id="sidebar" class="sidebar">
+<div class="sidebar">
   <h1>&#9973; Weather Routing</h1>
   <a
     href="https://github.com/kristianwiklund/signalk-weather-routing"
@@ -497,106 +731,148 @@
     GitHub — source &amp; issues
   </a>
 
-  <div class="section" id="chart-section">
-    <ChartSelector {skFetch} />
+  <div class="section">
+    <ChartSelector map={mapRef ?? null} skConnected={skConnectedState} {skFetch} />
   </div>
 
   <div class="section">
-    <LayerToggles {regionEnabled} />
+    <LayerToggles
+      {regionEnabled}
+      bind:windVisible={windOverlayVisible}
+      bind:waveVisible={waveOverlayVisible}
+      bind:currentVisible={currentOverlayVisible}
+      bind:landVisible={landOverlayVisible}
+      bind:regionVisible={regionOverlayVisible}
+      bind:isochroneVisible={isochroneVisibleState}
+      regions={regionListData}
+      onToggleRegionAvoid={(id, avoid) => regionOverlayRef?.toggleAvoid(id, avoid)}
+    />
   </div>
 
-  <div class="section" id="routing-options-section">
-    <RoutingOptions />
+  <div class="section">
+    <RoutingOptions bind:this={routingOptionsRef} />
   </div>
 
   <div class="section">
     <div class="section-title">Forecast</div>
-    <div id="grib-info">Loading forecast…</div>
-    <div id="current-info" style="display: none"></div>
+    <div>{@html gribStatusHtml}</div>
   </div>
 
   <div class="section">
     <DepartureSection
+      startCoords={startCoordsText}
       vesselAvailable={vesselPosition !== null}
       resources={departureResources}
-      onSetOnMap={() => {}}
-      onUseVesselPosition={() => {}}
-      onResourceSelect={() => {}}
+      onSetOnMap={() => activatePlacing('start')}
+      onUseVesselPosition={handleUseVesselPosition}
+      onResourceSelect={handleDepartureResourceSelect}
     />
   </div>
 
-  <div class="section" id="waypoints-route-section" style="display: none">
-    <div class="section-title">Route waypoints</div>
-    <select id="waypoints-route">
-      <option value="">— route waypoints —</option>
-    </select>
-  </div>
+  {#if waypointRoutes.length > 0}
+    <div class="section">
+      <div class="section-title">Route waypoints</div>
+      <select class="select-input" onchange={handleWaypointRouteChange}>
+        <option value="">— route waypoints —</option>
+        {#each waypointRoutes as route, i}
+          <option value={String(i)}>{route.label}</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
 
   <div class="section">
     <div class="section-title">Destination</div>
     <div class="coord-row">
-      <button class="marker-btn" id="btn-end">Set on map</button>
-      <span class="coord-value" id="end-coords">&#8212;</span>
+      <button class="marker-btn" onclick={() => activatePlacing('end')}>Set on map</button>
+      <span class="coord-value">{endCoordsText}</span>
     </div>
   </div>
 
   <div class="section">
     <div class="section-title">Departure Time</div>
-    <input type="datetime-local" id="departure-time" />
+    <input type="datetime-local" class="datetime-input" bind:value={departureTime} />
   </div>
 
-  <div class="section" id="polar-section">
-    <PolarInput />
+  <div class="section">
+    <PolarInput onPolarChange={(csv) => { polarCsv = csv; }} />
   </div>
 
   <ActionButtons
-    canCalculate={false}
-    canAnalyse={false}
+    {canCalculate} {canAnalyse} {isCalculating} {isAnalysing}
+    {calcHint} {analyseHint} {calcProgress} {showProgress}
     hasPendingRoute={pendingRouteData !== null}
-    calcHint=""
-    analyseHint=""
-    onCalculate={() => {}}
-    onRunTest={() => {}}
-    onRunHelsinki={() => {}}
-    onRunGothenburg={() => {}}
-    onSaveRoute={() => {}}
-    onAnalyse={() => {}}
+    onCalculate={handleCalculate} onAnalyse={handleAnalyse}
+    onRunTest={handleRunTest} onRunHelsinki={handleRunHelsinki}
+    onRunGothenburg={handleRunGothenburg} onSaveRoute={handleSaveRoute}
   />
 
-  <div class="section" style="margin-top:auto" id="sk-settings-section">
+  {#if analyseResults.length > 0}
+    <RouteWeatherTable data={analyseResults} />
+  {/if}
+
+  <div class="status-box" class:error={statusType === 'error'} class:done={statusType === 'done'} class:loading={statusType === 'loading'}>
+    {statusText}
+  </div>
+
+  <div class="section" style="margin-top:auto">
     <SkServerSettings currentUrl={localStorage.getItem('wr-signalk-url') ?? ''} />
   </div>
-  <div id="build-version" class="build-version"></div>
+  <div class="build-version">{buildVersion}</div>
 </div>
 
 <!-- Overlays (tooltips, legends, modals) -->
-<div id="graph-tooltip" class="graph-tooltip"></div>
-<div id="wave-legend" class="wave-legend">
-  <div id="wave-legend-bar" class="wave-legend-bar"></div>
-  <div id="wave-legend-labels" class="wave-legend-labels">
-    <span id="wave-legend-min">0</span>
-    <span id="wave-legend-max">3 m</span>
-  </div>
-</div>
-
-<div id="confirm-modal-overlay" class="confirm-modal-overlay" style="display:none">
-  <div id="confirm-modal" class="confirm-modal">
-    <h2 id="confirm-modal-title">Confirm</h2>
-    <p id="confirm-modal-msg"></p>
-    <div class="modal-buttons">
-      <button id="confirm-modal-cancel">Cancel</button>
-      <button id="confirm-modal-ok">Archive</button>
-    </div>
+<div bind:this={graphTooltipEl} class="graph-tooltip"></div>
+<div class="wave-legend" class:visible={waveOverlayVisible}>
+  <div class="wave-legend-bar"></div>
+  <div class="wave-legend-labels">
+    <span>0</span>
+    <span>{waveLegendMax}</span>
   </div>
 </div>
 
 <Disclaimer />
 
-<FailurePopup message="" type="error" visible={false} onClose={() => {}} />
+<FailurePopup
+  message={failurePopupMsg}
+  type={failurePopupType}
+  visible={failurePopupVisible}
+  onClose={() => { failurePopupVisible = false; }}
+/>
+
+{#if showSaveModal}
+  <SaveRouteModal
+    visible={true}
+    onSave={handleSaveRouteConfirm}
+    onCancel={() => { showSaveModal = false; }}
+  />
+{/if}
 
 <!-- Right column: map + panels -->
-<div id="right-col" class="right-col">
-  <div id="map" class="map-container"></div>
+<div class="right-col">
+  <!-- svelte-ignore binding_property_non_reactive -->
+  <MapLibre
+    bind:map={mapRef}
+    class="map-container"
+    center={[18, 57]}
+    zoom={6}
+    style={{
+      version: 8,
+      sources: {
+        osm: {
+          type: 'raster',
+          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+          tileSize: 256,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        },
+      },
+      layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+    }}
+    transformRequest={(url) => ({
+      url,
+      referrerPolicy: 'strict-origin-when-cross-origin',
+    })}
+  />
   <!-- SVG defs for region hatch pattern -->
   <svg width="0" height="0" style="position: absolute">
     <defs>
@@ -605,21 +881,45 @@
       </pattern>
     </defs>
   </svg>
-  <TimeScrubber />
-  <ConditionsPanel />
+  <TimeScrubber
+    {windTimes}
+    {scrubberIndex}
+    lockedRange={scrubberLockedToRoute ? routeScrubberRange : null}
+    label={scrubberLabel}
+    {coverageHtml}
+    {nowMarkerLeft}
+    {showRangeToggle}
+    {rangeToggleLabel}
+    {showRightSpacer}
+    visible={scrubberVisible}
+    onIndexChange={handleScrubberChange}
+    onJumpToNow={handleJumpToNow}
+    onToggleRange={handleToggleRange}
+    onUseAsDeparture={handleUseAsDeparture}
+  />
+  <ConditionsPanel
+    bind:this={conditionsPanelRef}
+    visible={conditionsVisible}
+    expanded={conditionsExpanded}
+    fullscreen={conditionsFullscreen}
+    graphHeight={conditionsGraphHeight}
+    svgContent={conditionsSvgContent}
+    svgViewBox={conditionsSvgViewBox}
+    hasWave={conditionsHasWave}
+    onToggle={handleConditionsToggle}
+    onFullscreenToggle={handleConditionsFullscreenToggle}
+  />
   <div id="meteogram-panel">
     <Meteogram data={[]} />
   </div>
 </div>
 
 <!-- Renderless overlay components (manage their own map layers) -->
-<div style="display:none">
-  <WindOverlay />
-  <WaveOverlay />
-  <CurrentOverlay />
-  <LandOverlay {useSafetyMargin} />
-  <RegionOverlay {skFetch} {escapeHtml} bind:this={regionOverlayRef} />
-</div>
+<WindOverlay map={mapRef ?? null} points={windPointsData} visible={windOverlayVisible} />
+<WaveOverlay map={mapRef ?? null} points={wavePointsData} visible={waveOverlayVisible} gridMeta={waveGridMetaData} maxM={waveOverlayMaxM} />
+<CurrentOverlay map={mapRef ?? null} points={currentPointsData} visible={currentOverlayVisible} />
+<LandOverlay map={mapRef ?? null} visible={landOverlayVisible} {useSafetyMargin} />
+<RegionOverlay map={mapRef ?? null} visible={regionOverlayVisible} {skFetch} bind:this={regionOverlayRef} onRegionsChange={(r) => { regionListData = r; }} />
 
 <style>
   .sidebar {
@@ -695,11 +995,26 @@
   }
   .marker-btn:hover { background: #45475a; }
 
-  .analyse-btn {
-    background: #a6e3a1;
-    color: #1e1e2e;
-    margin-top: 4px;
+  .select-input {
+    width: 100%;
+    background: #313244;
+    color: #cdd6f4;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
   }
+
+  .datetime-input {
+    width: 100%;
+    background: #313244;
+    color: #cdd6f4;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+
   .build-version {
     font-size: 10px;
     color: #585b70;
@@ -708,31 +1023,17 @@
     user-select: text;
   }
 
-  /* Keep global IDs working for imperative code */
-  :global(#status-box) {
+  /* Status box */
+  .status-box {
     padding: 8px;
     font-size: 12px;
     text-align: center;
     border-radius: 4px;
     color: #cdd6f4;
   }
-  :global(#status-box.error) { background: #45475a; color: #f38ba8; }
-  :global(#status-box.done) { color: #a6e3a1; }
-  :global(#status-box.loading) { color: #89b4fa; }
-
-  :global(#progress-bar-wrap) {
-    height: 4px;
-    background: #313244;
-    border-radius: 2px;
-    margin: 4px 0;
-    overflow: hidden;
-  }
-  :global(#progress-bar) {
-    height: 100%;
-    background: #89b4fa;
-    width: 0;
-    transition: width 0.3s;
-  }
+  .status-box.error { background: #45475a; color: #f38ba8; }
+  .status-box.done { color: #a6e3a1; }
+  .status-box.loading { color: #89b4fa; }
 
   /* Wave legend */
   .wave-legend {
@@ -748,6 +1049,9 @@
     flex-direction: column;
     gap: 2px;
     z-index: 500;
+  }
+  .wave-legend.visible {
+    display: flex;
   }
   .wave-legend-bar {
     width: 120px;
@@ -774,5 +1078,4 @@
     display: none;
     white-space: nowrap;
   }
-
 </style>

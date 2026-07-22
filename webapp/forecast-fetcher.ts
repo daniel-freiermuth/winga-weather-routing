@@ -1,10 +1,10 @@
 // Forecast data fetching — loads wind, wave, and current overlay data from Windy tiles.
 // Pushes results into stores so overlay components react automatically.
 
-import { get } from 'svelte/store';
-import { windPoints, wavePoints, currentPoints, waveGridMetaStore, mapInstance } from './stores';
+import { windPoints, wavePoints, currentPoints, waveGridMetaStore } from './stores';
 import * as dataLayer from './data-layer';
 import type { WindPoint, WavePoint } from './stores';
+import type { Map as MapLibreMap } from 'maplibre-gl';
 
 /** State tracking for the time axis */
 export interface TimeAxisState {
@@ -22,7 +22,7 @@ export function getWavePoints() { return allWavePoints; }
 export function getCurrentPoints() { return allCurrentPoints; }
 
 export async function fetchWindPoints(
-  timeIdx: number, timeAxis: TimeAxisState, signal?: AbortSignal,
+  timeIdx: number, timeAxis: TimeAxisState, map: MapLibreMap, signal?: AbortSignal,
 ): Promise<void> {
   if (!timeAxis.windTimesLoaded) return;
   const timeStr = timeAxis.windTimes[timeIdx];
@@ -32,7 +32,6 @@ export async function fetchWindPoints(
     return;
   }
   const nativeIdx = timeAxis.windNativeTimes.indexOf(timeStr);
-  const map = get(mapInstance);
   if (!map) return;
   const bounds = map.getBounds();
   const bbox = {
@@ -49,7 +48,7 @@ export async function fetchWindPoints(
 }
 
 export async function fetchWavePoints(
-  timeIdx: number, timeAxis: TimeAxisState, signal?: AbortSignal,
+  timeIdx: number, timeAxis: TimeAxisState, map: MapLibreMap, signal?: AbortSignal,
 ): Promise<void> {
   if (!timeAxis.windTimesLoaded) return;
   const timeStr = timeAxis.windTimes[timeIdx];
@@ -59,7 +58,6 @@ export async function fetchWavePoints(
     return;
   }
   const nativeIdx = timeAxis.windNativeTimes.indexOf(timeStr);
-  const map = get(mapInstance);
   if (!map) return;
   const bounds = map.getBounds();
   const bbox = {
@@ -86,9 +84,8 @@ export async function fetchWavePoints(
 }
 
 export async function fetchCurrentPoints(
-  timeMs: number, signal?: AbortSignal,
+  timeMs: number, map: MapLibreMap, signal?: AbortSignal,
 ): Promise<void> {
-  const map = get(mapInstance);
   if (!map) return;
   const bounds = map.getBounds();
   const bbox = {

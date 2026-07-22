@@ -2,28 +2,32 @@
   // Renderless Svelte component — renders wave height heatmap as an image source + raster layer.
 
   import { onDestroy } from 'svelte';
-  import { get } from 'svelte/store';
   import type { ImageSource } from 'maplibre-gl';
-  import { mapInstance, wavePoints, waveOverlayVisible, waveGridMetaStore, waveOverlayMaxMStore } from '../stores';
+  import type { WavePoint, WaveGridMeta } from '../stores';
 
   const SOURCE_ID = 'wave-overlay';
   const LAYER_ID = 'wave-overlay-layer';
 
-  let map: import('maplibre-gl').Map | null = null;
-
-  function removeOverlay() {
-    if (!map) return;
-    if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
-    if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+  interface Props {
+    map: import('maplibre-gl').Map | null;
+    points: WavePoint[];
+    visible: boolean;
+    gridMeta: WaveGridMeta | null;
+    maxM: number;
   }
 
-  function render() {
-    if (!map) return;
-    removeOverlay();
-    if (!get(waveOverlayVisible)) return;
+  let { map, points, visible, gridMeta, maxM }: Props = $props();
 
-    const allPts = get(wavePoints);
-    const meta = get(waveGridMetaStore);
+  function removeOverlay(m: import('maplibre-gl').Map) {
+    if (m.getLayer(LAYER_ID)) m.removeLayer(LAYER_ID);
+    if (m.getSource(SOURCE_ID)) m.removeSource(SOURCE_ID);
+  }
+
+  function render(m: import('maplibre-gl').Map | null, allPts: WavePoint[], vis: boolean, meta: WaveGridMeta | null, maxH: number) {
+    if (!m) return;
+    removeOverlay(m);
+    if (!vis) return;
+
     if (allPts.length === 0 || !meta) return;
 
     const pts = allPts.filter((p) => p.waveHeight != null);
@@ -46,7 +50,6 @@
     canvas.height = nLat + 1;
     const ctx = canvas.getContext('2d')!;
     const imageData = ctx.createImageData(nLon + 1, nLat + 1);
-    const maxH = get(waveOverlayMaxMStore) || 3.0;
 
     // Canvas rows spaced in Web Mercator Y for correct projection
     const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
@@ -96,15 +99,15 @@
       [lonMin - half_lon, latMin - half_lat],  // bottom-left
     ];
 
-    if (map.getSource(SOURCE_ID)) {
-      (map.getSource(SOURCE_ID) as ImageSource).updateImage({ url, coordinates });
+    if (m.getSource(SOURCE_ID)) {
+      (m.getSource(SOURCE_ID) as ImageSource).updateImage({ url, coordinates });
     } else {
-      map.addSource(SOURCE_ID, {
+      m.addSource(SOURCE_ID, {
         type: 'image',
         url,
         coordinates,
       });
-      map.addLayer({
+      m.addLayer({
         id: LAYER_ID,
         type: 'raster',
         source: SOURCE_ID,
@@ -113,20 +116,11 @@
     }
   }
 
-  const unsubs: (() => void)[] = [];
-  let mapReady = false;
-
-  unsubs.push(mapInstance.subscribe((m) => {
-    if (!m || mapReady) return;
-    mapReady = true;
-    map = m;
-    unsubs.push(wavePoints.subscribe(() => render()));
-    unsubs.push(waveOverlayVisible.subscribe(() => render()));
-    unsubs.push(waveGridMetaStore.subscribe(() => render()));
-  }));
+  $effect(() => {
+    render(map, points, visible, gridMeta, maxM);
+  });
 
   onDestroy(() => {
-    unsubs.forEach(fn => fn());
-    removeOverlay();
+    if (map) removeOverlay(map);
   });
 </script>

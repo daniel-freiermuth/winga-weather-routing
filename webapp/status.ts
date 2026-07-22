@@ -1,20 +1,20 @@
-// Status display helpers: set status bar, show/hide failure popup.
+// Status display helpers: show/hide failure popup.
 
-import { statusMessage } from './stores';
-
-export function setStatus(statusBox: HTMLElement, type: string, msg: string): void {
-  statusBox.className = type === 'error' || type === 'done' ? type : '';
-  statusBox.textContent = msg;
-  statusMessage.set({ type, text: msg });
+export interface FailurePopupCallbacks {
+  show(msg: string, isWarning: boolean): void;
+  hide(): void;
 }
 
-export function showFailurePopup(msg: string, isWarning: boolean): void {
-  const popup = document.getElementById('failure-popup')!;
-  popup.className = isWarning ? 'warning' : 'error';
-  document.getElementById('failure-popup-msg')!.textContent = msg;
-  popup.style.display = 'flex';
+/**
+ * Show the failure popup via callback.
+ */
+export function showFailurePopup(msg: string, isWarning: boolean, cb: FailurePopupCallbacks): void {
+  cb.show(msg, isWarning);
 }
 
-export function hideFailurePopup(): void {
-  document.getElementById('failure-popup')!.style.display = 'none';
+/**
+ * Hide the failure popup via callback.
+ */
+export function hideFailurePopup(cb: FailurePopupCallbacks): void {
+  cb.hide();
 }

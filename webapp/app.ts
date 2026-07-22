@@ -1,21 +1,17 @@
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
-// Detects the SignalK server, creates the MapLibre map, and mounts <App>.
-// All logic lives in App.svelte and its modules.
+// Detects the SignalK server and mounts <App>.
+// The MapLibre map is created declaratively via <MapLibre> in App.svelte.
 
-import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 declare global {
   interface Window {
-    _polarCsv?: string;
     _routeWeatherMarkers?: import('maplibre-gl').Marker[];
   }
 }
 
-import { mapInstance } from './stores';
 import { mount } from 'svelte';
 import App from './components/App.svelte';
-import { escapeHtml } from './utils';
 
 // ── SignalK Server URL ────────────────────────────────────────────────────────
 
@@ -46,41 +42,9 @@ function skWebSocketUrl(path: string): string {
   return `${proto}//${location.host}${path}`;
 }
 
-// ── Mount App first (renders the #map container into the DOM) ─────────────────
+// ── Mount App ─────────────────────────────────────────────────────────────────
 
 mount(App, {
   target: document.getElementById('app')!,
-  props: { skFetch, skWebSocketUrl, escapeHtml },
-});
-
-// ── Create MapLibre map (needs #map div from App template) ────────────────────
-
-const map = new maplibregl.Map({
-  container: 'map',
-  style: {
-    version: 8,
-    sources: {
-      osm: {
-        type: 'raster',
-        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-        tileSize: 256,
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      },
-    },
-    layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-  },
-  center: [18, 57],
-  zoom: 6,
-  // SignalK helmet sets Referrer-Policy: no-referrer — override for tile requests
-  transformRequest: (url: string) => ({
-    url,
-    referrerPolicy: 'strict-origin-when-cross-origin' as ReferrerPolicy,
-  }),
-});
-
-// Only publish the map after the style is fully loaded, so consumers can
-// safely call addSource/addLayer without hitting "Style is not done loading".
-map.on('load', () => {
-  mapInstance.set(map);
+  props: { skFetch, skWebSocketUrl },
 });

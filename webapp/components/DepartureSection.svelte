@@ -1,19 +1,17 @@
 <script lang="ts">
   interface Props {
-    startCoords?: string | undefined;
-    vesselAvailable?: boolean | undefined;
-    resources?: { label: string; lat: number; lon: number }[] | undefined;
-    startCoordsEl?: HTMLSpanElement | undefined;
+    startCoords: string;
+    vesselAvailable: boolean;
+    resources: { label: string; lat: number; lon: number }[];
     onSetOnMap: () => void;
     onUseVesselPosition: () => void;
     onResourceSelect: (index: number) => void;
   }
 
   let {
-    startCoords = '\u2014',
+    startCoords = '—',
     vesselAvailable = false,
     resources = [],
-    startCoordsEl = $bindable(),
     onSetOnMap,
     onUseVesselPosition,
     onResourceSelect,
@@ -30,7 +28,7 @@
 <div class="section-title">Departure</div>
 <div class="coord-row">
   <button class="marker-btn" onclick={onSetOnMap}>Set on map</button>
-  <span class="coord-value" id="start-coords" bind:this={startCoordsEl}>{startCoords}</span>
+  <span class="coord-value">{startCoords}</span>
 </div>
 <button
   class="marker-btn"
@@ -40,17 +38,14 @@
 >
   Use vessel position
 </button>
-<select
-  id="departure-resource"
-  class="departure-select"
-  style:display={resources.length > 0 ? undefined : 'none'}
-  onchange={handleChange}
->
-  <option value="">— set from resources —</option>
-  {#each resources as res, i}
-    <option value={String(i)}>{res.label}</option>
-  {/each}
-</select>
+{#if resources.length > 0}
+  <select class="departure-select" onchange={handleChange}>
+    <option value="">— set from resources —</option>
+    {#each resources as res, i}
+      <option value={String(i)}>{res.label}</option>
+    {/each}
+  </select>
+{/if}
 
 <style>
   .section-title {

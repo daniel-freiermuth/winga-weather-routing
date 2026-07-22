@@ -2,37 +2,39 @@
   // Renderless Svelte component — manages ocean current arrows on the map.
 
   import { onDestroy } from 'svelte';
-  import { get } from 'svelte/store';
   import maplibregl from 'maplibre-gl';
-  import { mapInstance, currentPoints, currentOverlayVisible } from '../stores';
+  import type { CurrentPoint } from '../stores';
+
+  interface Props {
+    map: maplibregl.Map | null;
+    points: CurrentPoint[];
+    visible: boolean;
+  }
+
+  let { map, points, visible }: Props = $props();
 
   let markers: maplibregl.Marker[] = [];
-  let map: maplibregl.Map | null = null;
 
   function clearMarkers() {
     for (const m of markers) m.remove();
     markers = [];
   }
 
-  function render() {
-    if (!map) return;
+  function render(m: maplibregl.Map | null, pts: CurrentPoint[], vis: boolean) {
     clearMarkers();
-    if (!get(currentOverlayVisible)) return;
+    if (!m || !vis || pts.length === 0) return;
 
-    const points = get(currentPoints);
-    if (points.length === 0) return;
-
-    const bounds = map.getBounds();
+    const bounds = m.getBounds();
     const MIN_PX = 40;
     const keptPx: { x: number; y: number }[] = [];
 
-    for (const { lat, lon, u, v } of points) {
+    for (const { lat, lon, u, v } of pts) {
       if (lat < bounds.getSouth() || lat > bounds.getNorth() ||
           lon < bounds.getWest() || lon > bounds.getEast()) continue;
       const spd = Math.sqrt(u * u + v * v) * 1.94384;
       if (spd < 0.05) continue;
 
-      const px = map.project([lon, lat]);
+      const px = m.project([lon, lat]);
       let tooClose = false;
       for (const p of keptPx) {
         const dx = p.x - px.x, dy = p.y - px.y;
@@ -63,24 +65,14 @@
 
       const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
         .setLngLat([lon, lat])
-        .addTo(map);
+        .addTo(m);
       markers.push(marker);
     }
   }
 
-  const unsubs: (() => void)[] = [];
-  let mapReady = false;
-
-  unsubs.push(mapInstance.subscribe((m) => {
-    if (!m || mapReady) return;
-    mapReady = true;
-    map = m;
-    unsubs.push(currentPoints.subscribe(() => render()));
-    unsubs.push(currentOverlayVisible.subscribe(() => render()));
-  }));
-
-  onDestroy(() => {
-    unsubs.forEach(fn => fn());
-    clearMarkers();
+  $effect(() => {
+    render(map, points, visible);
   });
+
+  onDestroy(() => clearMarkers());
 </script>

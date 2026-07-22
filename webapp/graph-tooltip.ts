@@ -10,11 +10,12 @@ export interface GraphTooltipState {
 }
 
 export function setupGraphTooltip(
-  svgEl: HTMLElement,
+  svgEl: Element,
   tooltipEl: HTMLElement,
   getState: () => GraphTooltipState,
 ): void {
-  svgEl.addEventListener('mousemove', (e) => {
+  svgEl.addEventListener('mousemove', (ev) => {
+    const e = ev as MouseEvent;
     const { graphMeta, graphLayout, windSpeedMs } = getState();
     if (!graphMeta || !graphLayout || graphMeta.length < 2) return;
     const rect = svgEl.getBoundingClientRect();

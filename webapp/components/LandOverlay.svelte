@@ -3,8 +3,6 @@
   // as GeoJSON source + fill/line layers on the map.
 
   import { onDestroy } from 'svelte';
-  import { get } from 'svelte/store';
-  import { mapInstance, landOverlayVisible } from '../stores';
   import * as dataLayer from '../data-layer';
 
   const ORIG_SOURCE = 'land-orig';
@@ -15,34 +13,35 @@
   const DILATED_LINE = 'land-dilated-line';
 
   interface Props {
+    map: import('maplibre-gl').Map | null;
+    visible: boolean;
     /** Callback to query whether safety margin is enabled in routing options */
     useSafetyMargin: () => boolean;
   }
 
-  let { useSafetyMargin }: Props = $props();
+  let { map, visible, useSafetyMargin }: Props = $props();
 
-  let map: import('maplibre-gl').Map | null = null;
   let renderToken = 0;
+  let moveendHandler: (() => void) | null = null;
+  let currentMap: import('maplibre-gl').Map | null = null;
 
-  function removeLayers(sourceId: string, fillId: string, lineId: string) {
-    if (!map) return;
-    if (map.getLayer(lineId)) map.removeLayer(lineId);
-    if (map.getLayer(fillId)) map.removeLayer(fillId);
-    if (map.getSource(sourceId)) map.removeSource(sourceId);
+  function removeLayers(m: import('maplibre-gl').Map, sourceId: string, fillId: string, lineId: string) {
+    if (m.getLayer(lineId)) m.removeLayer(lineId);
+    if (m.getLayer(fillId)) m.removeLayer(fillId);
+    if (m.getSource(sourceId)) m.removeSource(sourceId);
   }
 
-  function removeAll() {
-    removeLayers(ORIG_SOURCE, ORIG_FILL, ORIG_LINE);
-    removeLayers(DILATED_SOURCE, DILATED_FILL, DILATED_LINE);
+  function removeAll(m: import('maplibre-gl').Map) {
+    removeLayers(m, ORIG_SOURCE, ORIG_FILL, ORIG_LINE);
+    removeLayers(m, DILATED_SOURCE, DILATED_FILL, DILATED_LINE);
   }
 
-  async function render() {
-    if (!map) return;
+  async function doRender(m: import('maplibre-gl').Map, vis: boolean) {
     const token = ++renderToken;
 
-    removeAll();
+    removeAll(m);
 
-    if (!get(landOverlayVisible)) return;
+    if (!vis) return;
 
     // Load land data on first use
     if (!dataLayer.landDataReady()) {
@@ -55,20 +54,20 @@
     }
     if (token !== renderToken) return;
 
-    const b = map.getBounds();
+    const b = m.getBounds();
     const bbox = { latMin: b.getSouth(), latMax: b.getNorth(), lonMin: b.getWest(), lonMax: b.getEast() };
 
     const data = dataLayer.getLandPolygonsGeoJSON(bbox, false);
-    if (token !== renderToken || !get(landOverlayVisible)) return;
+    if (token !== renderToken) return;
 
-    map.addSource(ORIG_SOURCE, { type: 'geojson', data: data as GeoJSON.GeoJSON });
-    map.addLayer({
+    m.addSource(ORIG_SOURCE, { type: 'geojson', data: data as GeoJSON.GeoJSON });
+    m.addLayer({
       id: ORIG_FILL,
       type: 'fill',
       source: ORIG_SOURCE,
       paint: { 'fill-color': '#45475a', 'fill-opacity': 0.6 },
     });
-    map.addLayer({
+    m.addLayer({
       id: ORIG_LINE,
       type: 'line',
       source: ORIG_SOURCE,
@@ -78,16 +77,16 @@
     const safetyOn = dataLayer.dilatedLandDataReady() && useSafetyMargin();
     if (safetyOn) {
       const data2 = dataLayer.getLandPolygonsGeoJSON(bbox, true);
-      if (token !== renderToken || !get(landOverlayVisible)) return;
+      if (token !== renderToken) return;
 
-      map.addSource(DILATED_SOURCE, { type: 'geojson', data: data2 as GeoJSON.GeoJSON });
-      map.addLayer({
+      m.addSource(DILATED_SOURCE, { type: 'geojson', data: data2 as GeoJSON.GeoJSON });
+      m.addLayer({
         id: DILATED_FILL,
         type: 'fill',
         source: DILATED_SOURCE,
         paint: { 'fill-color': '#585b70', 'fill-opacity': 0.4 },
       });
-      map.addLayer({
+      m.addLayer({
         id: DILATED_LINE,
         type: 'line',
         source: DILATED_SOURCE,
@@ -96,21 +95,32 @@
     }
   }
 
-  const unsubs: (() => void)[] = [];
-  let mapReady = false;
+  function cleanupMoveend() {
+    if (moveendHandler && currentMap) {
+      currentMap.off('moveend', moveendHandler);
+      moveendHandler = null;
+    }
+  }
 
-  unsubs.push(mapInstance.subscribe((m) => {
-    if (!m || mapReady) return;
-    mapReady = true;
-    map = m;
-    unsubs.push(landOverlayVisible.subscribe(() => void render()));
-    const handler = () => { if (get(landOverlayVisible)) void render(); };
-    map.on('moveend', handler);
-    unsubs.push(() => map!.off('moveend', handler));
-  }));
+  $effect(() => {
+    const m = map;
+    const vis = visible;
+
+    // Setup/teardown moveend handler when map changes
+    if (m !== currentMap) {
+      cleanupMoveend();
+      currentMap = m;
+      if (m) {
+        moveendHandler = () => { if (visible) void doRender(m, true); };
+        m.on('moveend', moveendHandler);
+      }
+    }
+
+    if (m) void doRender(m, vis);
+  });
 
   onDestroy(() => {
-    unsubs.forEach(fn => fn());
-    removeAll();
+    cleanupMoveend();
+    if (currentMap) removeAll(currentMap);
   });
 </script>

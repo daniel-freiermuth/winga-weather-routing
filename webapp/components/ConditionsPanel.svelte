@@ -1,44 +1,43 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { conditionsExpanded, conditionsFullscreen, conditionsGraphHeight } from '../stores';
 
-  let expanded = $state(true);
-  let fullscreen = $state(false);
-  let graphHeight = $state(200);
-
-  const unsubExpanded = conditionsExpanded.subscribe((v) => (expanded = v));
-  const unsubFullscreen = conditionsFullscreen.subscribe((v) => (fullscreen = v));
-  const unsubHeight = conditionsGraphHeight.subscribe((v) => (graphHeight = v));
-
-  onDestroy(() => {
-    unsubExpanded();
-    unsubFullscreen();
-    unsubHeight();
-  });
-
-  function enterFullscreen() {
-    conditionsFullscreen.set(true);
+  interface Props {
+    visible: boolean;
+    expanded: boolean;
+    fullscreen: boolean;
+    graphHeight: number;
+    svgContent: string;
+    svgViewBox: string;
+    hasWave: boolean;
+    onToggle: () => void;
+    onFullscreenToggle: () => void;
   }
+  let {
+    visible, expanded, fullscreen, graphHeight,
+    svgContent, svgViewBox, hasWave,
+    onToggle, onFullscreenToggle,
+  }: Props = $props();
 
-  function exitFullscreen() {
-    conditionsFullscreen.set(false);
-  }
+  // Bind refs for graph-tooltip (imperative SVG tooltip is OK)
+  let svgEl = $state<SVGSVGElement | undefined>();
+  let panelEl = $state<HTMLDivElement | undefined>();
+
+  export function getSvgEl(): SVGSVGElement | undefined { return svgEl; }
 
   function handleClick() {
     if (fullscreen) {
-      exitFullscreen();
+      onFullscreenToggle();
       return;
     }
-    conditionsExpanded.set(!expanded);
+    onToggle();
   }
 
   function svgClick() {
-    if (fullscreen) exitFullscreen();
-    else enterFullscreen();
+    onFullscreenToggle();
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && fullscreen) exitFullscreen();
+    if (e.key === 'Escape' && fullscreen) onFullscreenToggle();
   }
 
   onMount(() => {
@@ -51,35 +50,45 @@
   );
 </script>
 
+{#if visible}
 <div
-  id="conditions-panel"
+  bind:this={panelEl}
   class="conditions-panel"
   class:conditions-fullscreen={fullscreen}
   style:height={panelHeight}
+  style:display="flex"
 >
-  <div id="conditions-handle" class="conditions-handle" onclick={handleClick}>
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="conditions-handle" onclick={handleClick}>
     <span>Conditions along route</span>
-    <span id="conditions-toggle" class="conditions-toggle">
-      {expanded ? '▼' : '▶'}
+    <span class="conditions-toggle">
+      {expanded ? '\u25BC' : '\u25B6'}
     </span>
   </div>
-  <div id="conditions-body" class="conditions-body">
-    <div id="conditions-y-left" class="conditions-y-left"></div>
-    <div id="conditions-svg-wrapper" class="conditions-svg-wrapper">
+  <div class="conditions-body">
+    <div class="conditions-y-left"></div>
+    <div class="conditions-svg-wrapper">
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <svg
-        id="conditions-svg"
+        bind:this={svgEl}
         class="conditions-svg"
         preserveAspectRatio="none"
         width="100%"
         height="100%"
+        viewBox={svgViewBox}
         style:display={expanded ? '' : 'none'}
         style:cursor={fullscreen ? 'zoom-out' : 'zoom-in'}
         onclick={svgClick}
-      ></svg>
+      >{@html svgContent}</svg>
     </div>
-    <div id="conditions-y-right" class="conditions-y-right"></div>
+    {#if hasWave}
+      <div class="conditions-y-right"></div>
+    {/if}
   </div>
 </div>
+{/if}
 
 <style>
   .conditions-panel {
@@ -130,7 +139,6 @@
     width: 52px;
     flex-shrink: 0;
     position: relative;
-    display: none;
   }
   .conditions-svg-wrapper {
     flex: 1;

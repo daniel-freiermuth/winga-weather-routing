@@ -1,42 +1,42 @@
 <script lang="ts">
   // Renderless Svelte component — manages wind barb markers on the map.
-  // Subscribes to windPoints + windOverlayVisible stores and re-renders
-  // when data or visibility changes. Data re-fetch on map move is handled
-  // by app.ts (calls fetchWindPoints which updates the windPoints store).
+  // Receives map, points, and visibility as props from App.svelte.
 
   import { onDestroy } from 'svelte';
-  import { get } from 'svelte/store';
   import maplibregl from 'maplibre-gl';
-  import { mapInstance, windPoints, windOverlayVisible } from '../stores';
+  import type { WindPoint } from '../stores';
   import { windBarbSvg } from '../wind-barb';
 
+  interface Props {
+    map: maplibregl.Map | null;
+    points: WindPoint[];
+    visible: boolean;
+  }
+
+  let { map, points, visible }: Props = $props();
+
   let markers: maplibregl.Marker[] = [];
-  let map: maplibregl.Map | null = null;
 
   function clearMarkers() {
     for (const m of markers) m.remove();
     markers = [];
   }
 
-  function render() {
-    if (!map) return;
+  function render(m: maplibregl.Map | null, pts: WindPoint[], vis: boolean) {
     clearMarkers();
-    if (!get(windOverlayVisible)) return;
+    if (!m || !vis || pts.length === 0) return;
 
-    const points = get(windPoints);
-    if (points.length === 0) return;
-
-    const bounds = map.getBounds();
+    const bounds = m.getBounds();
     const MIN_PX = 40;
     const keptPx: { x: number; y: number }[] = [];
 
-    for (const { lat, lon, u, v } of points) {
+    for (const { lat, lon, u, v } of pts) {
       if (lat < bounds.getSouth() || lat > bounds.getNorth() ||
           lon < bounds.getWest() || lon > bounds.getEast()) continue;
       const spd = Math.sqrt(u * u + v * v) * 1.94384;
       if (spd < 0.5) continue;
 
-      const px = map.project([lon, lat]);
+      const px = m.project([lon, lat]);
       let tooClose = false;
       for (const p of keptPx) {
         const dx = p.x - px.x, dy = p.y - px.y;
@@ -57,24 +57,14 @@
 
       const marker = new maplibregl.Marker({ element: el, anchor: 'bottom-left' })
         .setLngLat([lon, lat])
-        .addTo(map);
+        .addTo(m);
       markers.push(marker);
     }
   }
 
-  const unsubs: (() => void)[] = [];
-  let mapReady = false;
-
-  unsubs.push(mapInstance.subscribe((m) => {
-    if (!m || mapReady) return;
-    mapReady = true;
-    map = m;
-    unsubs.push(windPoints.subscribe(() => render()));
-    unsubs.push(windOverlayVisible.subscribe(() => render()));
-  }));
-
-  onDestroy(() => {
-    unsubs.forEach(fn => fn());
-    clearMarkers();
+  $effect(() => {
+    render(map, points, visible);
   });
+
+  onDestroy(() => clearMarkers());
 </script>
