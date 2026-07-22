@@ -100,7 +100,7 @@ export function setupInfoPopupClick(
     const { lat, lng } = e.lngLat;
     const state = getState();
     const lines: string[] = [];
-    if (state.allWindPoints.length > 0 && (document.getElementById('wind-overlay-toggle') as HTMLInputElement).checked) {
+    if (state.allWindPoints.length > 0 && (document.getElementById('wind-overlay-toggle') as HTMLInputElement | null)?.checked) {
       const wp = state.allWindPoints.find((p) => Math.abs(p.lat - lat) < 0.04 && Math.abs(p.lon - lng) < 0.04);
       if (wp) {
         const twsKn = Math.sqrt(wp.u * wp.u + wp.v * wp.v) * 1.94384;
@@ -109,14 +109,14 @@ export function setupInfoPopupClick(
         lines.push(`Wind: ${twsFmt.num} ${twsFmt.sym} from ${String(dir)}°T<br><span style="font-size:10px;color:#a6adc8">${wp.lat.toFixed(4)}°N ${wp.lon.toFixed(4)}°E</span>`);
       }
     }
-    if (state.allWavePoints.length > 0 && (document.getElementById('wave-overlay-toggle') as HTMLInputElement).checked) {
+    if (state.allWavePoints.length > 0 && (document.getElementById('wave-overlay-toggle') as HTMLInputElement | null)?.checked) {
       const wp = state.allWavePoints.find((p) => Math.abs(p.lat - lat) < 0.04 && Math.abs(p.lon - lng) < 0.04 && p.waveHeight != null);
       if (wp) {
         const waveFmt = _fmt(wp.waveHeight, 'depth');
         lines.push(`Wave: ${waveFmt.num} ${waveFmt.sym}`);
       }
     }
-    if (state.allCurrentPoints.length > 0 && (document.getElementById('current-overlay-toggle') as HTMLInputElement).checked) {
+    if (state.allCurrentPoints.length > 0 && (document.getElementById('current-overlay-toggle') as HTMLInputElement | null)?.checked) {
       const cp = state.allCurrentPoints.find((p) => Math.abs(p.lat - lat) < 0.06 && Math.abs(p.lon - lng) < 0.06);
       if (cp) {
         const spdKn = (Math.sqrt(cp.u * cp.u + cp.v * cp.v) * 1.94384).toFixed(1);
@@ -146,12 +146,15 @@ export function setupViewportRefresh(
   cb: ViewportCallbacks,
 ): () => void {
   const handler = () => {
-    if ((document.getElementById('wind-overlay-toggle') as HTMLInputElement).checked && cb.isWindTimesLoaded()) {
-      const idx = parseInt((document.getElementById('time-scrubber') as HTMLInputElement).value) || 0;
+    const windToggle = document.getElementById('wind-overlay-toggle') as HTMLInputElement | null;
+    const waveToggle = document.getElementById('wave-overlay-toggle') as HTMLInputElement | null;
+    const scrubber = document.getElementById('time-scrubber') as HTMLInputElement | null;
+    if (windToggle?.checked && cb.isWindTimesLoaded()) {
+      const idx = parseInt(scrubber?.value ?? '0') || 0;
       cb.fetchWindPointsAt(idx);
     }
-    if ((document.getElementById('wave-overlay-toggle') as HTMLInputElement).checked && cb.isWindTimesLoaded()) {
-      const idx = parseInt((document.getElementById('time-scrubber') as HTMLInputElement).value) || 0;
+    if (waveToggle?.checked && cb.isWindTimesLoaded()) {
+      const idx = parseInt(scrubber?.value ?? '0') || 0;
       cb.fetchWavePointsAt(idx);
     }
   };

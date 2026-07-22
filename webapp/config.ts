@@ -49,15 +49,20 @@ export async function loadConfig(
   } catch { /* offline or not supported */ }
 
   const depthSym = fmt(0, 'depth').sym;
-  document.getElementById('wave-legend-max')!.textContent = `${fmt(state.waveOverlayMaxM, 'depth').num} ${depthSym}`;
-  const smFmt = fmt(0.5, 'distance');
-  document.getElementById('safety-margin-dist')!.textContent = `${smFmt.num} ${smFmt.sym}`;
+  const legendMax = document.getElementById('wave-legend-max');
+  if (legendMax) legendMax.textContent = `${fmt(state.waveOverlayMaxM, 'depth').num} ${depthSym}`;
+  const safetyDist = document.getElementById('safety-margin-dist');
+  if (safetyDist) {
+    const smFmt = fmt(0.5, 'distance');
+    safetyDist.textContent = `${smFmt.num} ${smFmt.sym}`;
+  }
 
   try {
     const bi = await fetch('./buildinfo.json');
     if (bi.ok) {
       const { version } = await bi.json() as { version: string };
-      document.getElementById('build-version')!.textContent = `v${version}`;
+      const el = document.getElementById('build-version');
+      if (el) el.textContent = `v${version}`;
     }
   } catch { /* no buildinfo */ }
 }
