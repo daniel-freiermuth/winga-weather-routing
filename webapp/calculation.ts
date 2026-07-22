@@ -1,15 +1,15 @@
 // Calculation orchestration — wires the routing worker, draws results,
 // and manages scrubber highlighting for the calculated route.
 
+import maplibregl from 'maplibre-gl';
 import type { WaypointMeta, GraphLayout, RouteData, GribFileMeta } from './types';
 import type { ScrubberState } from './scrubber-controller';
 import { fmt as _fmt, toDisplay as _toDisplay } from './units';
 import { drawRoute } from './route-display';
 import { buildConditionsGraph } from './conditions-graph';
-import { buildWorkerPayload, renderIsochrone } from './routing-engine';
+import { buildWorkerPayload, renderIsochrone, clearIsochrones } from './routing-engine';
+import type { IsochroneState } from './routing-engine';
 import * as scrubberCtrl from './scrubber-controller';
-
-declare const L: typeof import('leaflet');
 
 type LatLon = { lat: number; lon: number };
 
@@ -36,12 +36,12 @@ export interface RoutingOptionsLike {
 export interface CalcMutableState {
   routeScrubberRange: { i0: number; iN: number } | null;
   scrubberLockedToRoute: boolean;
-  routeLayer: L.Polyline | null;
-  windBarbLayer: L.LayerGroup | null;
-  legLabelLayer: L.LayerGroup | null;
-  highlightLegLayer: L.Polyline | null;
-  windBarbMarkers: (L.Marker | null)[];
-  routeLegCoords: L.LatLngTuple[][];
+  routeLayer: { sourceId: string; layerId: string } | null;
+  windBarbLayer: maplibregl.Marker[];
+  legLabelLayer: maplibregl.Marker[];
+  highlightLegLayer: { sourceId: string; layerId: string } | null;
+  windBarbMarkers: (maplibregl.Marker | null)[];
+  routeLegCoords: [number, number][][];
   prevHighlightWpIdx: number;
   graphMeta: WaypointMeta[] | null;
   graphLayout: GraphLayout | null;
@@ -51,9 +51,9 @@ export interface CalcMutableState {
 
 /** All dependencies the calculation module needs from the app shell. */
 export interface CalculationContext {
-  map: L.Map;
+  map: maplibregl.Map;
   routingWorker: Worker;
-  isochroneLayerGroup: L.LayerGroup;
+  isochroneState: IsochroneState;
 
   // Fixed DOM refs
   progressWrap: HTMLElement;
@@ -95,6 +95,11 @@ export interface CalculationApi {
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
+
+function removeSourceAndLayer(map: maplibregl.Map, ids: { sourceId: string; layerId: string }) {
+  if (map.getLayer(ids.layerId)) map.removeLayer(ids.layerId);
+  if (map.getSource(ids.sourceId)) map.removeSource(ids.sourceId);
+}
 
 function findScrubberPosition(graphMeta: WaypointMeta[] | null, tMs: number) {
   if (!graphMeta || graphMeta.length < 2) return { wpIdx: -1, legIdx: -1 };
@@ -141,7 +146,8 @@ function drawConditionsGraph(ctx: CalculationContext, meta: WaypointMeta[], inte
  * that close over the provided context.
  */
 export function setupCalculation(ctx: CalculationContext): CalculationApi {
-  const { map, routingWorker, isochroneLayerGroup, state } = ctx;
+  const { map, routingWorker, state } = ctx;
+  const isochroneState = ctx.isochroneState;
 
   function fetchAndDrawRoute() {
     if (state.pendingRouteData) drawRouteFromData(state.pendingRouteData);
@@ -149,10 +155,10 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
 
   function drawRouteFromData(route: RouteData) {
     try {
-      if (state.routeLayer) map.removeLayer(state.routeLayer);
-      if (state.windBarbLayer) map.removeLayer(state.windBarbLayer);
-      if (state.legLabelLayer) map.removeLayer(state.legLabelLayer);
-      if (state.highlightLegLayer) { map.removeLayer(state.highlightLegLayer); state.highlightLegLayer = null; }
+      if (state.routeLayer) removeSourceAndLayer(map, state.routeLayer);
+      for (const m of state.windBarbLayer) m.remove();
+      for (const m of state.legLabelLayer) m.remove();
+      if (state.highlightLegLayer) { removeSourceAndLayer(map, state.highlightLegLayer); state.highlightLegLayer = null; }
       state.windBarbMarkers = [];
       state.routeLegCoords = [];
       state.prevHighlightWpIdx = -1;
@@ -200,16 +206,35 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
     const { wpIdx, legIdx } = findScrubberPosition(state.graphMeta, tMs);
     if (wpIdx === state.prevHighlightWpIdx) return;
     state.prevHighlightWpIdx = wpIdx;
-    if (state.highlightLegLayer) { map.removeLayer(state.highlightLegLayer); state.highlightLegLayer = null; }
+    if (state.highlightLegLayer) { removeSourceAndLayer(map, state.highlightLegLayer); state.highlightLegLayer = null; }
     for (let i = 0; i < state.windBarbMarkers.length; i++) {
       const m = state.windBarbMarkers[i];
       if (!m) continue;
-      m.setOpacity(i === wpIdx ? 1 : 0.4);
+      m.getElement()!.style.opacity = i === wpIdx ? '1' : '0.4';
     }
     if (legIdx >= 0 && state.routeLegCoords[legIdx]) {
-      state.highlightLegLayer = L.polyline(state.routeLegCoords[legIdx]!, {
-        color: '#f5c2e7', weight: 4, opacity: 0.9,
-      }).addTo(map);
+      const legCoords = state.routeLegCoords[legIdx]!;
+      const sourceId = 'highlight-leg';
+      const layerId = 'highlight-leg-line';
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            // routeLegCoords are [lat, lng] — convert to [lng, lat] for GeoJSON
+            coordinates: legCoords.map(([lat, lng]) => [lng, lat]),
+          },
+        },
+      });
+      map.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        paint: { 'line-color': '#f5c2e7', 'line-width': 4, 'line-opacity': 0.9 },
+      });
+      state.highlightLegLayer = { sourceId, layerId };
     }
   }
 
@@ -231,11 +256,13 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
     const depTime = (document.getElementById('departure-time') as HTMLInputElement).value;
     if (!depTime) return ctx.setStatus('error', 'Please set a departure time');
 
-    if (isochroneLayerGroup) isochroneLayerGroup.clearLayers();
-    if (state.routeLayer) { map.removeLayer(state.routeLayer); state.routeLayer = null; }
-    if (state.windBarbLayer) { map.removeLayer(state.windBarbLayer); state.windBarbLayer = null; }
-    if (state.legLabelLayer) { map.removeLayer(state.legLabelLayer); state.legLabelLayer = null; }
-    if (state.highlightLegLayer) { map.removeLayer(state.highlightLegLayer); state.highlightLegLayer = null; }
+    clearIsochrones(isochroneState);
+    if (state.routeLayer) { removeSourceAndLayer(map, state.routeLayer); state.routeLayer = null; }
+    for (const m of state.windBarbLayer) m.remove();
+    state.windBarbLayer = [];
+    for (const m of state.legLabelLayer) m.remove();
+    state.legLabelLayer = [];
+    if (state.highlightLegLayer) { removeSourceAndLayer(map, state.highlightLegLayer); state.highlightLegLayer = null; }
     document.getElementById('conditions-panel')!.style.display = 'none';
     ctx.progressWrap.style.display = '';
     ctx.progressBar.style.width = '0%';
@@ -286,7 +313,7 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
       ctx.progressBar.style.width = `${String(pct)}%`;
       ctx.setStatus('', `Calculating… ${String(pct)}%`);
       if (j.frontier?.length && (document.getElementById('isochrone-toggle') as HTMLInputElement).checked) {
-        renderIsochrone(j.frontier, ctx.getStartLatLon()!, isochroneLayerGroup);
+        renderIsochrone(j.frontier, ctx.getStartLatLon()!, isochroneState);
       }
     } else if (j.type === 'result') {
       ctx.progressWrap.style.display = 'none';

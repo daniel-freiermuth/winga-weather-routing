@@ -1,13 +1,18 @@
 <script lang="ts">
   // Renderless Svelte component — renders land polygons (original + dilated safety margin)
-  // as GeoJSON canvas layers on the map.
+  // as GeoJSON source + fill/line layers on the map.
 
   import { onDestroy, onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { mapInstance, landOverlayVisible } from '../stores';
   import * as dataLayer from '../data-layer';
 
-  const L = globalThis.L as typeof import('leaflet');
+  const ORIG_SOURCE = 'land-orig';
+  const ORIG_FILL = 'land-orig-fill';
+  const ORIG_LINE = 'land-orig-line';
+  const DILATED_SOURCE = 'land-dilated';
+  const DILATED_FILL = 'land-dilated-fill';
+  const DILATED_LINE = 'land-dilated-line';
 
   interface Props {
     /** Callback to query whether safety margin is enabled in routing options */
@@ -16,17 +21,26 @@
 
   let { useSafetyMargin }: Props = $props();
 
-  let layerOrig: L.GeoJSON | null = null;
-  let layerDilated: L.GeoJSON | null = null;
-  let map: L.Map | null = null;
+  let map: import('maplibre-gl').Map | null = null;
   let renderToken = 0;
+
+  function removeLayers(sourceId: string, fillId: string, lineId: string) {
+    if (!map) return;
+    if (map.getLayer(lineId)) map.removeLayer(lineId);
+    if (map.getLayer(fillId)) map.removeLayer(fillId);
+    if (map.getSource(sourceId)) map.removeSource(sourceId);
+  }
+
+  function removeAll() {
+    removeLayers(ORIG_SOURCE, ORIG_FILL, ORIG_LINE);
+    removeLayers(DILATED_SOURCE, DILATED_FILL, DILATED_LINE);
+  }
 
   async function render() {
     if (!map) return;
     const token = ++renderToken;
 
-    if (layerOrig) { map.removeLayer(layerOrig); layerOrig = null; }
-    if (layerDilated) { map.removeLayer(layerDilated); layerDilated = null; }
+    removeAll();
 
     if (!get(landOverlayVisible)) return;
 
@@ -47,21 +61,38 @@
     const data = dataLayer.getLandPolygonsGeoJSON(bbox, false);
     if (token !== renderToken || !get(landOverlayVisible)) return;
 
-    // The GeoJSON data is typed as GeoJSON.FeatureCollection but L.geoJSON accepts a broader type
-    layerOrig = L.geoJSON(data as unknown as GeoJSON.GeoJsonObject, {
-      style: { color: '#6c7086', weight: 0.5, fillColor: '#45475a', fillOpacity: 0.6, pane: 'landPane' },
-      renderer: L.canvas({ pane: 'landPane' }),
-    } as L.GeoJSONOptions).addTo(map);
+    map.addSource(ORIG_SOURCE, { type: 'geojson', data: data as GeoJSON.GeoJSON });
+    map.addLayer({
+      id: ORIG_FILL,
+      type: 'fill',
+      source: ORIG_SOURCE,
+      paint: { 'fill-color': '#45475a', 'fill-opacity': 0.6 },
+    });
+    map.addLayer({
+      id: ORIG_LINE,
+      type: 'line',
+      source: ORIG_SOURCE,
+      paint: { 'line-color': '#6c7086', 'line-width': 0.5 },
+    });
 
     const safetyOn = dataLayer.dilatedLandDataReady() && useSafetyMargin();
     if (safetyOn) {
       const data2 = dataLayer.getLandPolygonsGeoJSON(bbox, true);
       if (token !== renderToken || !get(landOverlayVisible)) return;
 
-      layerDilated = L.geoJSON(data2 as unknown as GeoJSON.GeoJsonObject, {
-        style: { color: '#9399b2', weight: 0.5, fillColor: '#585b70', fillOpacity: 0.4, pane: 'landDilatedPane' },
-        renderer: L.canvas({ pane: 'landDilatedPane' }),
-      } as L.GeoJSONOptions).addTo(map);
+      map.addSource(DILATED_SOURCE, { type: 'geojson', data: data2 as GeoJSON.GeoJSON });
+      map.addLayer({
+        id: DILATED_FILL,
+        type: 'fill',
+        source: DILATED_SOURCE,
+        paint: { 'fill-color': '#585b70', 'fill-opacity': 0.4 },
+      });
+      map.addLayer({
+        id: DILATED_LINE,
+        type: 'line',
+        source: DILATED_SOURCE,
+        paint: { 'line-color': '#9399b2', 'line-width': 0.5 },
+      });
     }
   }
 
@@ -81,7 +112,6 @@
 
   onDestroy(() => {
     unsubs.forEach(fn => fn());
-    if (layerOrig && map) map.removeLayer(layerOrig);
-    if (layerDilated && map) map.removeLayer(layerDilated);
+    removeAll();
   });
 </script>

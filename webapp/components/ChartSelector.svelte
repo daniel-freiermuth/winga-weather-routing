@@ -3,7 +3,8 @@
   import { mapInstance, skConnected } from '../stores';
   import { get } from 'svelte/store';
 
-  const L = globalThis.L as typeof import('leaflet');
+  const CHART_SOURCE = 'chart-tiles';
+  const CHART_LAYER = 'chart-tiles';
 
   interface Chart {
     name: string;
@@ -20,18 +21,44 @@
   let charts = $state<Chart[]>([
     {
       name: 'OpenStreetMap',
-      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     },
   ]);
   let selectedIdx = $state(0);
-  let tileLayer: L.TileLayer | null = null;
+
+  /** Expand Leaflet-style {s} subdomain placeholder to multiple tile URLs */
+  function expandTileUrls(url: string): string[] {
+    if (url.includes('{s}')) {
+      return ['a', 'b', 'c'].map((s) => url.replace('{s}', s));
+    }
+    return [url];
+  }
 
   function applyChart(chart: Chart) {
     const map = get(mapInstance);
     if (!map) return;
-    if (tileLayer) map.removeLayer(tileLayer);
-    tileLayer = L.tileLayer(chart.url, { attribution: chart.attribution, maxZoom: 19 }).addTo(map);
+
+    // Remove existing chart layer + source
+    if (map.getLayer(CHART_LAYER)) map.removeLayer(CHART_LAYER);
+    if (map.getSource(CHART_SOURCE)) map.removeSource(CHART_SOURCE);
+
+    // Also remove the initial 'osm' layer/source from app.ts bootstrap
+    if (map.getLayer('osm')) map.removeLayer('osm');
+    if (map.getSource('osm')) map.removeSource('osm');
+
+    map.addSource(CHART_SOURCE, {
+      type: 'raster',
+      tiles: expandTileUrls(chart.url),
+      tileSize: 256,
+      attribution: chart.attribution,
+    });
+    // Insert at position 0 so chart tiles are behind all other layers
+    const firstLayer = map.getStyle().layers[0];
+    map.addLayer(
+      { id: CHART_LAYER, type: 'raster', source: CHART_SOURCE },
+      firstLayer?.id,
+    );
   }
 
   function handleChange() {

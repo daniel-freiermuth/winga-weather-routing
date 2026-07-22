@@ -1,18 +1,25 @@
 <script lang="ts">
-  // Renderless Svelte component — renders wave height heatmap as a canvas image overlay.
+  // Renderless Svelte component — renders wave height heatmap as an image source + raster layer.
 
   import { onDestroy, onMount } from 'svelte';
   import { get } from 'svelte/store';
+  import type { ImageSource } from 'maplibre-gl';
   import { mapInstance, wavePoints, waveOverlayVisible, waveGridMetaStore, waveOverlayMaxMStore } from '../stores';
 
-  const L = globalThis.L as typeof import('leaflet');
+  const SOURCE_ID = 'wave-overlay';
+  const LAYER_ID = 'wave-overlay-layer';
 
-  let layer: L.ImageOverlay | null = null;
-  let map: L.Map | null = null;
+  let map: import('maplibre-gl').Map | null = null;
+
+  function removeOverlay() {
+    if (!map) return;
+    if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
+    if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+  }
 
   function render() {
     if (!map) return;
-    if (layer) { map.removeLayer(layer); layer = null; }
+    removeOverlay();
     if (!get(waveOverlayVisible)) return;
 
     const allPts = get(wavePoints);
@@ -78,15 +85,32 @@
     }
     ctx.putImageData(imageData, 0, 0);
 
-    const gridBounds = L.latLngBounds(
-      L.latLng(latMin - latStep / 2, lonMin - lonStep / 2),
-      L.latLng(latMax + latStep / 2, lonMax + lonStep / 2),
-    );
+    const half_lat = latStep / 2;
+    const half_lon = lonStep / 2;
+    const url = canvas.toDataURL();
+    // Image source coordinates: [topLeft, topRight, bottomRight, bottomLeft] as [lng, lat]
+    const coordinates: [[number, number], [number, number], [number, number], [number, number]] = [
+      [lonMin - half_lon, latMax + half_lat],  // top-left
+      [lonMax + half_lon, latMax + half_lat],  // top-right
+      [lonMax + half_lon, latMin - half_lat],  // bottom-right
+      [lonMin - half_lon, latMin - half_lat],  // bottom-left
+    ];
 
-    layer = L.imageOverlay(canvas.toDataURL(), gridBounds, {
-      opacity: 1.0,
-      interactive: false,
-    }).addTo(map);
+    if (map.getSource(SOURCE_ID)) {
+      (map.getSource(SOURCE_ID) as ImageSource).updateImage({ url, coordinates });
+    } else {
+      map.addSource(SOURCE_ID, {
+        type: 'image',
+        url,
+        coordinates,
+      });
+      map.addLayer({
+        id: LAYER_ID,
+        type: 'raster',
+        source: SOURCE_ID,
+        paint: { 'raster-opacity': 1.0 },
+      });
+    }
   }
 
   const unsubs: (() => void)[] = [];
@@ -100,6 +124,6 @@
 
   onDestroy(() => {
     unsubs.forEach(fn => fn());
-    if (layer && map) map.removeLayer(layer);
+    removeOverlay();
   });
 </script>

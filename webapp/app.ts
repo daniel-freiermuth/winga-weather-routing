@@ -1,14 +1,14 @@
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
-// Detects the SignalK server, creates the Leaflet map, and mounts <App>.
+// Detects the SignalK server, creates the MapLibre map, and mounts <App>.
 // All logic lives in App.svelte and its modules.
 
-declare const L: typeof import('leaflet');
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 
 declare global {
   interface Window {
-    _map: L.Map;
-    _routeWeatherMarkers?: L.CircleMarker[];
     _polarCsv?: string;
+    _routeWeatherMarkers?: import('maplibre-gl').Marker[];
   }
 }
 
@@ -53,16 +53,29 @@ mount(App, {
   props: { skFetch, skWebSocketUrl, escapeHtml },
 });
 
-// ── Create Leaflet map ────────────────────────────────────────────────────────
+// ── Create MapLibre map ───────────────────────────────────────────────────────
 
-const map = L.map('map').setView([57, 18], 6);
-window._map = map;
+const map = new maplibregl.Map({
+  container: 'map',
+  style: {
+    version: 8,
+    sources: {
+      osm: {
+        type: 'raster',
+        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+        tileSize: 256,
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      },
+    },
+    layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+  },
+  center: [18, 57],
+  zoom: 6,
+  // SignalK helmet sets Referrer-Policy: no-referrer — override for tile requests
+  transformRequest: (url: string) => ({
+    url,
+    referrerPolicy: 'strict-origin-when-cross-origin' as ReferrerPolicy,
+  }),
+});
 mapInstance.set(map);
-
-map.createPane('windBarbPane').style.zIndex = '350';
-map.createPane('waypointMarkerPane').style.zIndex = '345';
-map.createPane('windOverlayPane').style.zIndex = '300';
-map.createPane('currentOverlayPane').style.zIndex = '295';
-map.createPane('landPane').style.zIndex = '250';
-map.createPane('landDilatedPane').style.zIndex = '248';
-map.createPane('regionPane').style.zIndex = '240';

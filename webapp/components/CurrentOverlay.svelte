@@ -3,33 +3,36 @@
 
   import { onDestroy, onMount } from 'svelte';
   import { get } from 'svelte/store';
+  import maplibregl from 'maplibre-gl';
   import { mapInstance, currentPoints, currentOverlayVisible } from '../stores';
 
-  const L = globalThis.L as typeof import('leaflet');
+  let markers: maplibregl.Marker[] = [];
+  let map: maplibregl.Map | null = null;
 
-  let layer: L.LayerGroup | null = null;
-  let map: L.Map | null = null;
+  function clearMarkers() {
+    for (const m of markers) m.remove();
+    markers = [];
+  }
 
   function render() {
     if (!map) return;
-    if (layer) map.removeLayer(layer);
-    layer = null;
+    clearMarkers();
     if (!get(currentOverlayVisible)) return;
 
     const points = get(currentPoints);
     if (points.length === 0) return;
 
-    layer = L.layerGroup();
     const bounds = map.getBounds();
     const MIN_PX = 40;
-    const keptPx: L.Point[] = [];
+    const keptPx: { x: number; y: number }[] = [];
 
     for (const { lat, lon, u, v } of points) {
-      if (!bounds.contains([lat, lon])) continue;
+      if (lat < bounds.getSouth() || lat > bounds.getNorth() ||
+          lon < bounds.getWest() || lon > bounds.getEast()) continue;
       const spd = Math.sqrt(u * u + v * v) * 1.94384;
       if (spd < 0.05) continue;
 
-      const px = map.latLngToContainerPoint([lat, lon]);
+      const px = map.project([lon, lat]);
       let tooClose = false;
       for (const p of keptPx) {
         const dx = p.x - px.x, dy = p.y - px.y;
@@ -50,17 +53,19 @@
         `${(dx - 5 * Math.cos(rad) + 3 * Math.sin(rad)).toFixed(1)},${(dy + 5 * Math.sin(rad) + 3 * Math.cos(rad)).toFixed(1)}" ` +
         `fill="#74c7ec"/>` +
         `</svg>`;
-      L.marker([lat, lon], {
-        icon: L.divIcon({
-          html: `<div style="opacity:0.85;pointer-events:none">${svg}</div>`,
-          iconSize: [40, 40],
-          iconAnchor: [20, 20],
-          className: '',
-        }),
-        pane: 'currentOverlayPane',
-      }).addTo(layer);
+
+      const el = document.createElement('div');
+      el.style.width = '40px';
+      el.style.height = '40px';
+      el.style.opacity = '0.85';
+      el.style.pointerEvents = 'none';
+      el.innerHTML = svg;
+
+      const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+        .setLngLat([lon, lat])
+        .addTo(map);
+      markers.push(marker);
     }
-    layer.addTo(map);
   }
 
   const unsubs: (() => void)[] = [];
@@ -73,6 +78,6 @@
 
   onDestroy(() => {
     unsubs.forEach(fn => fn());
-    if (layer && map) map.removeLayer(layer);
+    clearMarkers();
   });
 </script>

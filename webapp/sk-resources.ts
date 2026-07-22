@@ -1,6 +1,6 @@
 // SignalK resource loading: departure points, waypoint routes, vessel position.
 
-declare const L: typeof import('leaflet');
+import maplibregl from 'maplibre-gl';
 
 import { escapeHtml } from './utils';
 
@@ -11,7 +11,7 @@ export interface SkState {
   departureResources: { label: string; lat: number; lon: number }[];
   waypointRoutes: { label: string; coords: number[][] }[];
   routeWaypoints: LatLon[];
-  routeWaypointMarkers: L.Marker[];
+  routeWaypointMarkers: maplibregl.Marker[];
   startLatLon: LatLon | null;
   endLatLon: LatLon | null;
   vesselPosition: LatLon | null;
@@ -22,9 +22,9 @@ export interface SkState {
 export interface SkDeps {
   skFetch: (path: string, options?: RequestInit) => Promise<Response>;
   skWebSocketUrl: (path: string) => string;
-  map: L.Map;
-  startMarker: L.Marker;
-  endMarker: L.Marker;
+  map: maplibregl.Map;
+  startMarker: maplibregl.Marker;
+  endMarker: maplibregl.Marker;
   startCoords: HTMLElement;
   endCoords: HTMLElement;
   updateCalcButton: () => void;
@@ -116,26 +116,23 @@ export function handleWaypointRouteChange(deps: SkDeps, e: Event): void {
     const first = coords[0]!;
     deps.state.startLatLon = { lat: first[1]!, lon: first[0]! };
     deps.startCoords.textContent = `${first[1]!.toFixed(4)}, ${first[0]!.toFixed(4)}`;
-    deps.startMarker.setLatLng([first[1]!, first[0]!]).addTo(deps.map);
+    deps.startMarker.setLngLat([first[0]!, first[1]!]).addTo(deps.map);
     const last = coords[coords.length - 1]!;
     deps.state.endLatLon = { lat: last[1]!, lon: last[0]! };
     deps.endCoords.textContent = `${last[1]!.toFixed(4)}, ${last[0]!.toFixed(4)}`;
-    deps.endMarker.setLatLng([last[1]!, last[0]!]).addTo(deps.map);
+    deps.endMarker.setLngLat([last[0]!, last[1]!]).addTo(deps.map);
   }
   for (let i = 1; i < coords.length - 1; i++) {
     const wp = { lat: coords[i]![1]!, lon: coords[i]![0]! };
     deps.state.routeWaypoints.push(wp);
+    const el = document.createElement('div');
+    el.innerHTML = '<div style="background:#f5c2e7;width:8px;height:8px;border-radius:50%;border:1px solid #1e2230"></div>';
     deps.state.routeWaypointMarkers.push(
-      L.marker([wp.lat, wp.lon], {
-        icon: L.divIcon({
-          html: `<div style="background:#f5c2e7;width:8px;height:8px;border-radius:50%;border:1px solid #1e2230"></div>`,
-          iconSize: [8, 8], iconAnchor: [4, 4], className: '',
-        }),
-        pane: 'waypointMarkerPane',
-      }).addTo(deps.map),
+      new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([wp.lon, wp.lat]).addTo(deps.map),
     );
   }
-  deps.map.fitBounds(L.latLngBounds(coords.map(([lon, lat]) => [lat!, lon!] as L.LatLngTuple)), { padding: [30, 30] });
+  const bounds = coords.reduce((b, [lon, lat]) => b.extend([lon!, lat!] as [number, number]), new maplibregl.LngLatBounds());
+  deps.map.fitBounds(bounds, { padding: 30 });
   deps.updateCalcButton();
   deps.updateAnalyseButton();
 }
@@ -148,7 +145,7 @@ export function handleDepartureResourceChange(deps: SkDeps, e: Event): void {
   const { lat, lon } = deps.state.departureResources[idx]!;
   deps.state.startLatLon = { lat, lon };
   deps.startCoords.textContent = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-  deps.startMarker.setLatLng([lat, lon]).addTo(deps.map);
+  deps.startMarker.setLngLat([lon, lat]).addTo(deps.map);
   clearRouteWaypoints(deps);
   deps.updateCalcButton();
 }
@@ -192,7 +189,7 @@ export function handleVesselPositionClick(deps: SkDeps): void {
   const { lat, lon } = deps.state.vesselPosition;
   deps.state.startLatLon = { lat, lon };
   deps.startCoords.textContent = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-  deps.startMarker.setLatLng([lat, lon]).addTo(deps.map);
+  deps.startMarker.setLngLat([lon, lat]).addTo(deps.map);
   clearRouteWaypoints(deps);
   deps.updateCalcButton();
 }

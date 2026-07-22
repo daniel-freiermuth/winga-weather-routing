@@ -1,6 +1,6 @@
 <script lang="ts">
   // Root application component — owns layout, state, and all event wiring.
-  // app.ts only creates the Leaflet map and mounts this component.
+  // app.ts creates the MapLibre map and mounts this component.
 
   import { onMount } from 'svelte';
   import { mount, unmount } from 'svelte';
@@ -44,9 +44,7 @@
   import type { SkDeps } from '../sk-resources';
   import { analyseRouteWeather } from '../route-weather';
   import * as dataLayer from '../data-layer';
-
-  // L is a global from leaflet.js loaded in index.html
-  const L = globalThis.L as typeof import('leaflet');
+  import maplibregl from 'maplibre-gl';
 
   interface Props {
     skFetch: (path: string, options?: RequestInit) => Promise<Response>;
@@ -71,7 +69,7 @@
   let endLatLon: { lat: number; lon: number } | null = null;
   let placing: string | null = null;
   let routeWaypoints: { lat: number; lon: number }[] = [];
-  let routeWaypointMarkers: L.Marker[] = [];
+  let routeWaypointMarkers: maplibregl.Marker[] = [];
   let waypointRoutes: { label: string; coords: number[][] }[] = [];
   let currentEnabled = true;
   let windSpeedMs = false;
@@ -93,13 +91,13 @@
   let enabledGribPaths = new Set<string>();
   let timeAxis = createTimeAxis();
 
-  // Leaflet layers
-  let routeLayer: L.Polyline | null = null;
-  let windBarbLayer: L.LayerGroup | null = null;
-  let legLabelLayer: L.LayerGroup | null = null;
-  let windBarbMarkers: (L.Marker | null)[] = [];
-  let routeLegCoords: L.LatLngTuple[][] = [];
-  let highlightLegLayer: L.Polyline | null = null;
+  // MapLibre layers / markers
+  let routeLayer: { sourceId: string; layerId: string } | null = null;
+  let windBarbLayer: maplibregl.Marker[] = [];
+  let legLabelLayer: maplibregl.Marker[] = [];
+  let windBarbMarkers: (maplibregl.Marker | null)[] = [];
+  let routeLegCoords: [number, number][][] = [];
+  let highlightLegLayer: { sourceId: string; layerId: string } | null = null;
   let prevHighlightWpIdx = -1;
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -157,10 +155,10 @@
 
   onMount(() => {
     const map = get(mapInstance)!;
-    const isochroneLayerGroup = L.layerGroup().addTo(map);
+    const isochroneState = { sourceIds: [] as string[], layerIds: [] as string[], count: 0, map };
     const routingWorker = new Worker(new URL('../worker.ts', import.meta.url), { type: 'module' });
-    const startMarker = L.marker([0, 0], { icon: greenIcon() }); // not added until placed
-    const endMarker = L.marker([0, 0], { icon: redIcon() });
+    const startMarker = new maplibregl.Marker({ element: greenIcon(), anchor: 'center' }); // not added until placed
+    const endMarker = new maplibregl.Marker({ element: redIcon(), anchor: 'center' });
 
     // DOM refs
     const startCoords = document.getElementById('start-coords')!;
@@ -208,7 +206,7 @@
     };
 
     const calcApi = setupCalculation({
-      map, routingWorker, isochroneLayerGroup,
+      map, routingWorker, isochroneState,
       progressWrap, progressBar, calcBtn, landToggle,
       setStatus, showFailurePopup,
       fetchWindPointsAt: (idx: number) => fetchWindPointsAt(idx),
@@ -330,9 +328,14 @@
         routeWeatherInstance = mount(RouteWeatherTable, { target: routeWeatherPanel, props: { data: results } }) as Record<string, unknown>;
         if (window._routeWeatherMarkers) for (const m of window._routeWeatherMarkers) m.remove();
         window._routeWeatherMarkers = results.map((r) => {
-          const m = L.circleMarker([r.lat, r.lon], { radius: 4, fillColor: '#89b4fa', fillOpacity: 0.8, color: '#1e2230', weight: 1 }).addTo(map);
+          const el = document.createElement('div');
+          el.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#89b4fa;border:1px solid #1e2230';
+          const m = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([r.lon, r.lat]).addTo(map);
           const tw = _fmt(r.twsKn ?? 0, 'speed');
-          m.bindTooltip(`WP${String(r.idx)}<br>${tw.num} ${tw.sym}, ${Math.round(r.twdDeg ?? 0)}°`, { direction: 'top' });
+          const popup = new maplibregl.Popup({ offset: [0, -10], closeButton: false, closeOnClick: false }).setHTML(`WP${String(r.idx)}<br>${tw.num} ${tw.sym}, ${Math.round(r.twdDeg ?? 0)}°`);
+          m.setPopup(popup);
+          m.getElement().addEventListener('mouseenter', () => popup.addTo(map));
+          m.getElement().addEventListener('mouseleave', () => popup.remove());
           return m;
         });
       } catch (e) { setStatus('error', `Analysis failed: ${String(e)}`); }
@@ -432,8 +435,10 @@
 
     // Isochrone toggle
     document.getElementById('isochrone-toggle')?.addEventListener('change', (e) => {
-      if ((e.target as HTMLInputElement).checked) isochroneLayerGroup.addTo(map);
-      else map.removeLayer(isochroneLayerGroup);
+      const visible = (e.target as HTMLInputElement).checked;
+      for (const id of isochroneState.layerIds) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+      }
     });
 
     // Save route
@@ -603,7 +608,7 @@
   </div>
 </div>
 
-<!-- Renderless overlay components (manage their own Leaflet layers) -->
+<!-- Renderless overlay components (manage their own map layers) -->
 <div style="display:none">
   <WindOverlay />
   <WaveOverlay />

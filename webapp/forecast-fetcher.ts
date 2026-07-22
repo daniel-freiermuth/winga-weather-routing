@@ -6,8 +6,6 @@ import { windPoints, wavePoints, currentPoints, waveGridMetaStore, mapInstance }
 import * as dataLayer from './data-layer';
 import type { WindPoint, WavePoint } from './stores';
 
-declare const L: typeof import('leaflet');
-
 /** State tracking for the time axis */
 export interface TimeAxisState {
   windTimes: string[];

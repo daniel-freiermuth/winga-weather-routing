@@ -1,14 +1,13 @@
 // Route rendering — draws polyline, wind barbs, and leg labels on the map.
 
+import maplibregl from 'maplibre-gl';
 import { windBarbSvg } from './wind-barb';
 import type { WaypointMeta, RouteData } from './types';
-
-declare const L: typeof import('leaflet');
 
 interface FmtResult { num: string; sym: string }
 
 export interface RouteDisplayCtx {
-  map: L.Map;
+  map: maplibregl.Map;
   fmt: (value: number, category: 'speed' | 'depth', forceMs?: boolean) => FmtResult;
   windSpeedMs: boolean;
   getWaypointLabels: () => { labels: boolean; intervalH: number };
@@ -17,11 +16,11 @@ export interface RouteDisplayCtx {
 }
 
 export interface RouteDisplayResult {
-  routeLayer: L.Polyline;
-  windBarbLayer: L.LayerGroup;
-  legLabelLayer: L.LayerGroup;
-  windBarbMarkers: (L.Marker | null)[];
-  routeLegCoords: L.LatLngTuple[][];
+  routeLayer: { sourceId: string; layerId: string };
+  windBarbLayer: maplibregl.Marker[];
+  legLabelLayer: maplibregl.Marker[];
+  windBarbMarkers: (maplibregl.Marker | null)[];
+  routeLegCoords: [number, number][][];
   meta: WaypointMeta[];
   intermediateIdxs: number[];
 }
@@ -33,19 +32,43 @@ export function drawRoute(route: RouteData, ctx: RouteDisplayCtx): RouteDisplayR
     return null;
   }
 
-  const routeLayer = L.polyline(
-    coords.map(([lng, lat]: number[]) => [lat!, lng!] as L.LatLngTuple),
-    { color: '#89b4fa', weight: 3, opacity: 0.9 },
-  ).addTo(ctx.map);
-  ctx.map.fitBounds(routeLayer.getBounds(), { padding: [20, 20] });
+  // Route polyline via source + layer (coords are already GeoJSON [lng, lat])
+  const routeSourceId = 'calculated-route';
+  const routeLayerId = 'calculated-route-line';
+  ctx.map.addSource(routeSourceId, {
+    type: 'geojson',
+    data: {
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'LineString',
+        coordinates: coords.map(([lng, lat]: number[]) => [lng!, lat!]),
+      },
+    },
+  });
+  ctx.map.addLayer({
+    id: routeLayerId,
+    type: 'line',
+    source: routeSourceId,
+    paint: { 'line-color': '#89b4fa', 'line-width': 3, 'line-opacity': 0.9 },
+  });
+  const routeLayer = { sourceId: routeSourceId, layerId: routeLayerId };
+
+  // Fit bounds from coordinates
+  const lngs = coords.map((c: number[]) => c[0]!);
+  const lats = coords.map((c: number[]) => c[1]!);
+  ctx.map.fitBounds(
+    [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+    { padding: 20 },
+  );
 
   const meta = route.feature?.properties?.coordinatesMeta ?? [];
   const { labels: showLabels, intervalH } = ctx.getWaypointLabels();
   const intervalMs = intervalH * 3600000;
   let lastLabeledMs = -Infinity;
 
-  const windBarbLayer = L.layerGroup();
-  const windBarbMarkers: (L.Marker | null)[] = [];
+  const windBarbLayer: maplibregl.Marker[] = [];
+  const windBarbMarkers: (maplibregl.Marker | null)[] = [];
 
   coords.forEach(([lng, lat]: number[], i: number) => {
     const m = meta[i];
@@ -66,31 +89,27 @@ export function drawRoute(route: RouteData, ctx: RouteDisplayCtx): RouteDisplayR
         ? `<div style="color:#cdd6f4;background:#313244cc;font-size:10px;padding:1px 4px;border-radius:3px;white-space:nowrap">${eta}</div>`
         : '') +
       `</div>`;
-    const marker = L.marker([lat!, lng!], {
-      icon: L.divIcon({ html, iconSize: [30, 54], iconAnchor: [15, 33], className: '' }),
-      pane: 'windBarbPane',
-    })
-      .bindTooltip(
-        (() => {
-          const tw = ctx.fmt(m.tws ?? 0, 'speed', ctx.windSpeedMs);
-          const bs = ctx.fmt(m.boatSpeed ?? 0, 'speed');
-          return `${tw.num} ${tw.sym}, ${String(m.windDir ?? 0)}° — boat ${bs.num} ${bs.sym}<br><span style="font-size:10px;color:#a6adc8">${lat!.toFixed(4)}°N ${lng!.toFixed(4)}°E</span>`;
-        })(),
-        { direction: 'top', offset: [0, -10] },
-      )
-      .addTo(windBarbLayer);
+    const el = document.createElement('div');
+    el.innerHTML = html;
+    el.style.width = '30px';
+    el.style.height = '54px';
+    el.style.pointerEvents = 'none';
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([lng!, lat!])
+      .addTo(ctx.map);
+    windBarbLayer.push(marker);
     windBarbMarkers.push(marker);
   });
-  windBarbLayer.addTo(ctx.map);
 
-  const legLabelLayer = L.layerGroup();
-  const routeLegCoords: L.LatLngTuple[][] = [];
+  const legLabelLayer: maplibregl.Marker[] = [];
+  const routeLegCoords: [number, number][][] = [];
 
   for (let i = 0; i < coords.length - 1; i++) {
     const m1 = meta[i], m2 = meta[i + 1];
     if (!m1 || !m2) continue;
     const midLat = (coords[i]![1]! + coords[i + 1]![1]!) / 2;
     const midLng = (coords[i]![0]! + coords[i + 1]![0]!) / 2;
+    // Store as [lat, lng] for internal consumption by calculation.ts
     routeLegCoords.push([
       [coords[i]![1]!, coords[i]![0]!],
       [coords[i + 1]![1]!, coords[i + 1]![0]!],
@@ -104,21 +123,16 @@ export function drawRoute(route: RouteData, ctx: RouteDisplayCtx): RouteDisplayR
       `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none">` +
       windBarbSvg(avgTws, (avgDir + 360) % 360) +
       `</div>`;
-    L.marker([midLat, midLng], {
-      icon: L.divIcon({ html, iconSize: [30, 48], iconAnchor: [15, 28], className: '' }),
-      pane: 'windBarbPane',
-    })
-      .bindTooltip(
-        (() => {
-          const tw = ctx.fmt(avgTws, 'speed', ctx.windSpeedMs);
-          const bs = ctx.fmt(avgBoatSpeed, 'speed');
-          return `${tw.num} ${tw.sym}, ${Math.round((avgDir + 360) % 360)}° — boat ${bs.num} ${bs.sym}<br><span style="font-size:10px;color:#a6adc8">${midLat.toFixed(4)}°N ${midLng.toFixed(4)}°E</span>`;
-        })(),
-        { direction: 'top', offset: [0, -10] },
-      )
-      .addTo(legLabelLayer);
+    const el = document.createElement('div');
+    el.innerHTML = html;
+    el.style.width = '30px';
+    el.style.height = '48px';
+    el.style.pointerEvents = 'none';
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([midLng, midLat])
+      .addTo(ctx.map);
+    legLabelLayer.push(marker);
   }
-  legLabelLayer.addTo(ctx.map);
 
   // Find which route coords correspond to intermediate waypoints
   const intermediateIdxs = ctx.routeWaypoints

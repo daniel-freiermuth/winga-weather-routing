@@ -1,8 +1,14 @@
 // Routing engine — dispatches calculation to the Web Worker and processes results.
 
+import maplibregl from 'maplibre-gl';
 import { sortByBearing, splitByAngularGap } from './utils';
 
-declare const L: typeof import('leaflet');
+export interface IsochroneState {
+  sourceIds: string[];
+  layerIds: string[];
+  count: number;
+  map: maplibregl.Map;
+}
 
 export interface RoutingRequest {
   start: { lat: number; lon: number };
@@ -31,27 +37,62 @@ const ISOCHRONE_GAP_THRESHOLD_DEG = 10;
 const ISOCHRONE_COLOURS = ['#000000', '#4477ff', '#8833cc', '#cc3333'];
 
 /**
+ * Remove all tracked isochrone sources and layers from the map.
+ */
+export function clearIsochrones(state: IsochroneState): void {
+  for (const layerId of state.layerIds) {
+    if (state.map.getLayer(layerId)) state.map.removeLayer(layerId);
+  }
+  for (const sourceId of state.sourceIds) {
+    if (state.map.getSource(sourceId)) state.map.removeSource(sourceId);
+  }
+  state.layerIds = [];
+  state.sourceIds = [];
+  state.count = 0;
+}
+
+/**
  * Render isochrone frontier segments on the map.
  */
 export function renderIsochrone(
   frontier: number[][],
   origin: { lat: number; lon: number },
-  isochroneGroup: L.LayerGroup,
+  isochroneState: IsochroneState,
 ): void {
   const pts = sortByBearing(
     frontier.map((pt) => [pt[0]!, pt[1]!]),
     origin,
   );
   const segments = splitByAngularGap(pts, origin, ISOCHRONE_GAP_THRESHOLD_DEG);
-  const color = ISOCHRONE_COLOURS[isochroneGroup.getLayers().length % ISOCHRONE_COLOURS.length]!;
-  for (const seg of segments) {
+  const color = ISOCHRONE_COLOURS[isochroneState.count % ISOCHRONE_COLOURS.length]!;
+  const isoIdx = isochroneState.count;
+  for (let segIdx = 0; segIdx < segments.length; segIdx++) {
+    const seg = segments[segIdx]!;
     if (seg.length >= 2) {
-      L.polyline(
-        seg.map(([lat, lon]) => [lat!, lon!] as L.LatLngTuple),
-        { color, weight: 1, opacity: 0.5 },
-      ).addTo(isochroneGroup);
+      const sourceId = `isochrone-${isoIdx}-${segIdx}`;
+      const layerId = `isochrone-${isoIdx}-${segIdx}-line`;
+      isochroneState.map.addSource(sourceId, {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: seg.map(([lat, lon]) => [lon!, lat!]),
+          },
+        },
+      });
+      isochroneState.map.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        paint: { 'line-color': color, 'line-width': 1, 'line-opacity': 0.5 },
+      });
+      isochroneState.sourceIds.push(sourceId);
+      isochroneState.layerIds.push(layerId);
     }
   }
+  isochroneState.count++;
 }
 
 /**

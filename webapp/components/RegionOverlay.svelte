@@ -1,13 +1,16 @@
 <script lang="ts">
   // Renderless Svelte component — manages SignalK region polygons on the map.
-  // Shows avoidance regions as hatched overlays and regular regions as dashed outlines.
+  // Shows avoidance regions as semi-transparent red overlays and regular regions as dashed outlines.
   // The region list sidebar is managed here via direct DOM for now.
 
   import { onDestroy, onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { mapInstance, regionOverlayVisible } from '../stores';
 
-  const L = globalThis.L as typeof import('leaflet');
+  const SOURCE_ID = 'regions';
+  const FILL_LAYER = 'regions-fill';
+  const LINE_AVOIDED = 'regions-line-avoided';
+  const LINE_NORMAL = 'regions-line-normal';
 
   interface RegionEntry {
     id: string;
@@ -23,8 +26,7 @@
 
   let { skFetch, escapeHtml }: Props = $props();
 
-  let map: L.Map | null = null;
-  let regionLayer: L.GeoJSON | null = null;
+  let map: import('maplibre-gl').Map | null = null;
   let regionList: RegionEntry[] = [];
   let regionAvoidIds: string[] = [];
 
@@ -97,38 +99,81 @@
     localStorage.setItem('wr-avoid-regions', JSON.stringify(regionAvoidIds));
   }
 
+  function removeOverlay() {
+    if (!map) return;
+    if (map.getLayer(LINE_NORMAL)) map.removeLayer(LINE_NORMAL);
+    if (map.getLayer(LINE_AVOIDED)) map.removeLayer(LINE_AVOIDED);
+    if (map.getLayer(FILL_LAYER)) map.removeLayer(FILL_LAYER);
+    if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+  }
+
   function renderOverlay() {
     if (!map) return;
-    if (regionLayer) { map.removeLayer(regionLayer); regionLayer = null; }
+    removeOverlay();
     if (!get(regionOverlayVisible) || regionList.length === 0) return;
 
-    const features: GeoJSON.Feature[] = [];
+    const avoidedFeatures: GeoJSON.Feature[] = [];
+    const normalFeatures: GeoJSON.Feature[] = [];
     for (const reg of regionList) {
       if (!reg.geometry) continue;
       const id = reg.id ?? '';
       const isAvoided = regionAvoidIds.includes(id);
-      features.push({
+      const feature: GeoJSON.Feature = {
         type: 'Feature',
         id,
         properties: { name: reg.name ?? '', avoided: isAvoided },
         geometry: reg.geometry,
-      });
+      };
+      if (isAvoided) avoidedFeatures.push(feature);
+      else normalFeatures.push(feature);
     }
+    const features = [...avoidedFeatures, ...normalFeatures];
     if (features.length === 0) return;
 
-    regionLayer = L.geoJSON(
-      { type: 'FeatureCollection', features } as GeoJSON.FeatureCollection,
-      {
-        pane: 'regionPane',
-        renderer: L.svg({ pane: 'regionPane' }),
-        style: (feature) => {
-          if (feature?.properties?.['avoided']) {
-            return { color: '#f38ba8', weight: 2, fillColor: 'url(#hatch-avoid)', fillOpacity: 1 };
-          }
-          return { color: '#6c7086', weight: 1, dashArray: '4 4', fillColor: 'rgba(148,148,148,0.15)', fillOpacity: 1 };
-        },
-      } as L.GeoJSONOptions,
-    ).addTo(map);
+    map.addSource(SOURCE_ID, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features } as GeoJSON.FeatureCollection,
+    });
+
+    // Fill layer with data-driven color based on "avoided" property
+    map.addLayer({
+      id: FILL_LAYER,
+      type: 'fill',
+      source: SOURCE_ID,
+      paint: {
+        'fill-color': [
+          'case',
+          ['==', ['get', 'avoided'], true],
+          'rgba(243,139,168,0.3)',
+          'rgba(148,148,148,0.15)',
+        ],
+        'fill-opacity': 1,
+      },
+    });
+    // Avoided regions: solid line, weight 2
+    map.addLayer({
+      id: LINE_AVOIDED,
+      type: 'line',
+      source: SOURCE_ID,
+      filter: ['==', ['get', 'avoided'], true],
+      paint: {
+        'line-color': '#f38ba8',
+        'line-width': 2,
+      },
+    });
+
+    // Normal regions: dashed line, weight 1
+    map.addLayer({
+      id: LINE_NORMAL,
+      type: 'line',
+      source: SOURCE_ID,
+      filter: ['!=', ['get', 'avoided'], true],
+      paint: {
+        'line-color': '#6c7086',
+        'line-width': 1,
+        'line-dasharray': [4, 4],
+      },
+    });
   }
 
   /** Called from app.ts to get the list of avoided region IDs for routing */
@@ -153,6 +198,6 @@
 
   onDestroy(() => {
     unsubs.forEach(fn => fn());
-    if (regionLayer && map) map.removeLayer(regionLayer);
+    removeOverlay();
   });
 </script>

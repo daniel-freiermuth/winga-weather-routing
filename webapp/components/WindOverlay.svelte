@@ -1,39 +1,42 @@
 <script lang="ts">
-  // Renderless Svelte component — manages a Leaflet LayerGroup on the map.
+  // Renderless Svelte component — manages wind barb markers on the map.
   // Subscribes to windPoints + windOverlayVisible stores and re-renders
   // when data or visibility changes. Data re-fetch on map move is handled
   // by app.ts (calls fetchWindPoints which updates the windPoints store).
 
   import { onDestroy, onMount } from 'svelte';
   import { get } from 'svelte/store';
+  import maplibregl from 'maplibre-gl';
   import { mapInstance, windPoints, windOverlayVisible } from '../stores';
   import { windBarbSvg } from '../wind-barb';
 
-  const L = globalThis.L as typeof import('leaflet');
+  let markers: maplibregl.Marker[] = [];
+  let map: maplibregl.Map | null = null;
 
-  let layer: L.LayerGroup | null = null;
-  let map: L.Map | null = null;
+  function clearMarkers() {
+    for (const m of markers) m.remove();
+    markers = [];
+  }
 
   function render() {
     if (!map) return;
-    if (layer) map.removeLayer(layer);
-    layer = null;
+    clearMarkers();
     if (!get(windOverlayVisible)) return;
 
     const points = get(windPoints);
     if (points.length === 0) return;
 
-    layer = L.layerGroup();
     const bounds = map.getBounds();
     const MIN_PX = 40;
-    const keptPx: L.Point[] = [];
+    const keptPx: { x: number; y: number }[] = [];
 
     for (const { lat, lon, u, v } of points) {
-      if (!bounds.contains([lat, lon])) continue;
+      if (lat < bounds.getSouth() || lat > bounds.getNorth() ||
+          lon < bounds.getWest() || lon > bounds.getEast()) continue;
       const spd = Math.sqrt(u * u + v * v) * 1.94384;
       if (spd < 0.5) continue;
 
-      const px = map.latLngToContainerPoint([lat, lon]);
+      const px = map.project([lon, lat]);
       let tooClose = false;
       for (const p of keptPx) {
         const dx = p.x - px.x, dy = p.y - px.y;
@@ -43,17 +46,20 @@
 
       keptPx.push(px);
       const dir = ((Math.atan2(-u, -v) * 180) / Math.PI + 360) % 360;
-      L.marker([lat, lon], {
-        icon: L.divIcon({
-          html: `<div style="opacity:0.85;pointer-events:none;filter:drop-shadow(0 0 2px rgba(0,0,0,0.9))">${windBarbSvg(spd, dir, '#ffffff')}</div>`,
-          iconSize: [30, 36],
-          iconAnchor: [0, 22],
-          className: '',
-        }),
-        pane: 'windOverlayPane',
-      }).addTo(layer);
+
+      const el = document.createElement('div');
+      el.style.width = '30px';
+      el.style.height = '36px';
+      el.style.opacity = '0.85';
+      el.style.pointerEvents = 'none';
+      el.style.filter = 'drop-shadow(0 0 2px rgba(0,0,0,0.9))';
+      el.innerHTML = windBarbSvg(spd, dir, '#ffffff');
+
+      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom-left' })
+        .setLngLat([lon, lat])
+        .addTo(map);
+      markers.push(marker);
     }
-    layer.addTo(map);
   }
 
   const unsubs: (() => void)[] = [];
@@ -66,6 +72,6 @@
 
   onDestroy(() => {
     unsubs.forEach(fn => fn());
-    if (layer && map) map.removeLayer(layer);
+    clearMarkers();
   });
 </script>

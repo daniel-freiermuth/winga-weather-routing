@@ -4,7 +4,7 @@ import { writable } from 'svelte/store';
 import type { WaypointWeather } from './route-weather';
 import type { WaypointMeta, GraphLayout, RouteData, GribFileMeta } from './types';
 
-declare const L: typeof import('leaflet');
+import type { Map as MapLibreMap } from 'maplibre-gl';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -21,7 +21,7 @@ export interface WaveGridMeta {
 
 // ── Map ───────────────────────────────────────────────────────────────────────
 
-export const mapInstance = writable<L.Map | null>(null);
+export const mapInstance = writable<MapLibreMap | null>(null);
 
 // ── Navigation / placement ────────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 // Map interaction handlers — placement clicks, info popups, viewport-change re-fetches,
 // test routes, and marker icon factories.
 
-declare const L: typeof import('leaflet');
+import maplibregl from 'maplibre-gl';
 
 import type { WindPoint, WavePoint, CurrentPoint } from './stores';
 import { fmt as _fmt } from './units';
@@ -10,18 +10,16 @@ export type LatLon = { lat: number; lon: number };
 
 // ── Marker icons ──────────────────────────────────────────────────────────────
 
-export function greenIcon() {
-  return L.divIcon({
-    html: '<div style="background:#a6e3a1;width:12px;height:12px;border-radius:50%;border:2px solid #1e2230"></div>',
-    iconSize: [12, 12], iconAnchor: [6, 6],
-  });
+export function greenIcon(): HTMLDivElement {
+  const el = document.createElement('div');
+  el.innerHTML = '<div style="background:#a6e3a1;width:12px;height:12px;border-radius:50%;border:2px solid #1e2230"></div>';
+  return el;
 }
 
-export function redIcon() {
-  return L.divIcon({
-    html: '<div style="background:#f38ba8;width:12px;height:12px;border-radius:50%;border:2px solid #1e2230"></div>',
-    iconSize: [12, 12], iconAnchor: [6, 6],
-  });
+export function redIcon(): HTMLDivElement {
+  const el = document.createElement('div');
+  el.innerHTML = '<div style="background:#f38ba8;width:12px;height:12px;border-radius:50%;border:2px solid #1e2230"></div>';
+  return el;
 }
 
 // ── Placement mode ────────────────────────────────────────────────────────────
@@ -40,42 +38,42 @@ export interface PlacementCallbacks {
  * Set the map cursor to crosshair and record which endpoint is being placed.
  */
 export function activatePlacing(
-  map: L.Map,
+  map: maplibregl.Map,
   which: string,
   cb: Pick<PlacementCallbacks, 'setStatus' | 'setPlacing'>,
 ) {
   cb.setPlacing(which);
   cb.setStatus('', `Click on the map to set ${which} point`);
-  map.getContainer().style.cursor = 'crosshair';
+  map.getCanvas().style.cursor = 'crosshair';
 }
 
 /**
  * Register the click-to-place handler. Returns a cleanup function.
  */
 export function setupPlacementClick(
-  map: L.Map,
-  startMarker: L.Marker,
-  endMarker: L.Marker,
+  map: maplibregl.Map,
+  startMarker: maplibregl.Marker,
+  endMarker: maplibregl.Marker,
   startCoords: HTMLElement,
   endCoords: HTMLElement,
   cb: PlacementCallbacks,
 ): () => void {
-  const handler = (e: L.LeafletMouseEvent) => {
+  const handler = (e: maplibregl.MapMouseEvent) => {
     const placing = cb.getPlacing();
     if (!placing) return;
-    const { lat, lng } = e.latlng;
+    const { lat, lng } = e.lngLat;
     if (placing === 'start') {
       cb.setStartLatLon({ lat, lon: lng });
       startCoords.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-      startMarker.setLatLng([lat, lng]).addTo(map);
+      startMarker.setLngLat([lng, lat]).addTo(map);
       cb.clearRouteWaypoints();
     } else if (placing === 'end') {
       cb.setEndLatLon({ lat, lon: lng });
       endCoords.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-      endMarker.setLatLng([lat, lng]).addTo(map);
+      endMarker.setLngLat([lng, lat]).addTo(map);
     }
     cb.setPlacing(null);
-    map.getContainer().style.cursor = '';
+    map.getCanvas().style.cursor = '';
     cb.updateCalcButton();
   };
   map.on('click', handler);
@@ -95,11 +93,11 @@ export interface InfoPopupState {
  * Register the info-popup click handler. Returns a cleanup function.
  */
 export function setupInfoPopupClick(
-  map: L.Map,
+  map: maplibregl.Map,
   getState: () => InfoPopupState,
 ): () => void {
-  const handler = (e: L.LeafletMouseEvent) => {
-    const { lat, lng } = e.latlng;
+  const handler = (e: maplibregl.MapMouseEvent) => {
+    const { lat, lng } = e.lngLat;
     const state = getState();
     const lines: string[] = [];
     if (state.allWindPoints.length > 0 && (document.getElementById('wind-overlay-toggle') as HTMLInputElement).checked) {
@@ -126,7 +124,7 @@ export function setupInfoPopupClick(
         lines.push(`Current: ${spdKn} kn → ${String(dir)}°T`);
       }
     }
-    if (lines.length > 0) L.popup().setLatLng([lat, lng]).setContent(lines.join('<br>')).openOn(map);
+    if (lines.length > 0) new maplibregl.Popup({ closeOnClick: true }).setLngLat([lng, lat]).setHTML(lines.join('<br>')).addTo(map);
   };
   map.on('click', handler);
   return () => map.off('click', handler);
@@ -144,7 +142,7 @@ export interface ViewportCallbacks {
  * Re-fetch overlay data when the viewport changes. Returns a cleanup function.
  */
 export function setupViewportRefresh(
-  map: L.Map,
+  map: maplibregl.Map,
   cb: ViewportCallbacks,
 ): () => void {
   const handler = () => {
@@ -157,8 +155,8 @@ export function setupViewportRefresh(
       cb.fetchWavePointsAt(idx);
     }
   };
-  map.on('zoomend moveend', handler);
-  return () => map.off('zoomend moveend', handler);
+  map.on('moveend', handler);
+  return () => { map.off('moveend', handler); };
 }
 
 // ── Test routes ───────────────────────────────────────────────────────────────
@@ -173,9 +171,9 @@ export interface TestRouteCallbacks {
 const OREGRUND: LatLon = { lat: 60.3996, lon: 18.3403 };
 
 export function setTestRoute(
-  map: L.Map,
-  startMarker: L.Marker,
-  endMarker: L.Marker,
+  map: maplibregl.Map,
+  startMarker: maplibregl.Marker,
+  endMarker: maplibregl.Marker,
   startCoords: HTMLElement,
   endCoords: HTMLElement,
   s: LatLon,
@@ -187,29 +185,29 @@ export function setTestRoute(
   cb.setEndLatLon(e);
   startCoords.textContent = `${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}`;
   endCoords.textContent = `${e.lat.toFixed(4)}, ${e.lon.toFixed(4)}`;
-  startMarker.setLatLng([s.lat, s.lon]).addTo(map);
-  endMarker.setLatLng([e.lat, e.lon]).addTo(map);
+  startMarker.setLngLat([s.lon, s.lat]).addTo(map);
+  endMarker.setLngLat([e.lon, e.lat]).addTo(map);
   (document.getElementById('departure-time') as HTMLInputElement).value = departureValue;
   cb.clearRouteWaypoints();
   cb.updateCalcButton();
 }
 
 export function runTest(
-  map: L.Map, startMarker: L.Marker, endMarker: L.Marker,
+  map: maplibregl.Map, startMarker: maplibregl.Marker, endMarker: maplibregl.Marker,
   startCoords: HTMLElement, endCoords: HTMLElement, cb: TestRouteCallbacks,
 ) {
   setTestRoute(map, startMarker, endMarker, startCoords, endCoords, OREGRUND, { lat: 58.5052, lon: 17.3474 }, '2026-05-24T08:00', cb);
 }
 
 export function runHelsinkiTest(
-  map: L.Map, startMarker: L.Marker, endMarker: L.Marker,
+  map: maplibregl.Map, startMarker: maplibregl.Marker, endMarker: maplibregl.Marker,
   startCoords: HTMLElement, endCoords: HTMLElement, cb: TestRouteCallbacks,
 ) {
   setTestRoute(map, startMarker, endMarker, startCoords, endCoords, OREGRUND, { lat: 60.0881, lon: 24.953 }, '2026-06-06T02:00', cb);
 }
 
 export function runGothenburgTest(
-  map: L.Map, startMarker: L.Marker, endMarker: L.Marker,
+  map: maplibregl.Map, startMarker: maplibregl.Marker, endMarker: maplibregl.Marker,
   startCoords: HTMLElement, endCoords: HTMLElement, cb: TestRouteCallbacks,
 ) {
   setTestRoute(map, startMarker, endMarker, startCoords, endCoords, OREGRUND, { lat: 57.6138, lon: 11.598 }, '2026-06-06T02:00', cb);
