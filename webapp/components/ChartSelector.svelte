@@ -26,7 +26,7 @@
     },
   ]);
   let selectedIdx = $state(0);
-  let initialized = false;
+  let applied = false;
 
   function expandTileUrls(url: string): string[] {
     if (url.includes('{s}')) {
@@ -37,8 +37,10 @@
 
   function applyChart(chart: Chart) {
     if (!map) return;
+    // Remove previous chart layer + source
     if (map.getLayer(CHART_LAYER)) map.removeLayer(CHART_LAYER);
     if (map.getSource(CHART_SOURCE)) map.removeSource(CHART_SOURCE);
+    // Remove bootstrap OSM layer/source from <MapLibre> style
     if (map.getLayer('osm')) map.removeLayer('osm');
     if (map.getSource('osm')) map.removeSource('osm');
 
@@ -53,40 +55,55 @@
       { id: CHART_LAYER, type: 'raster', source: CHART_SOURCE },
       firstLayer?.id,
     );
+    applied = true;
   }
 
   function handleChange() {
+    if (!map?.isStyleLoaded()) return;
     const chart = charts[selectedIdx];
     if (chart) applyChart(chart);
   }
 
+  // Load SK charts once when map + skConnected become available
+  let chartsLoaded = false;
   $effect(() => {
-    if (!map || initialized) return;
-    initialized = true;
-
-    // Load additional charts from SignalK
-    if (skConnected) {
-      void (async () => {
-        try {
-          const r = await skFetch('/signalk/v2/api/resources/charts');
-          if (r.ok) {
-            const data: Record<string, { name?: string; url?: string; serverType?: string }> = await r.json();
-            for (const [id, chart] of Object.entries(data)) {
-              if (chart.serverType !== 'tilelayer') continue;
-              if (chart.url?.includes('.mvt')) continue;
-              charts = [...charts, {
-                name: chart.name ?? id,
-                url: (chart.url ?? '').replace(/\$z/g, '{z}').replace(/\$x/g, '{x}').replace(/\$y/g, '{y}'),
-                attribution: chart.name ?? id,
-              }];
-            }
+    if (!map || !skConnected || chartsLoaded) return;
+    chartsLoaded = true;
+    void (async () => {
+      try {
+        const r = await skFetch('/signalk/v2/api/resources/charts');
+        if (r.ok) {
+          const data: Record<string, { name?: string; url?: string; serverType?: string }> = await r.json();
+          for (const [id, chart] of Object.entries(data)) {
+            if (chart.serverType !== 'tilelayer') continue;
+            if (chart.url?.includes('.mvt')) continue;
+            charts = [...charts, {
+              name: chart.name ?? id,
+              url: (chart.url ?? '').replace(/\$z/g, '{z}').replace(/\$x/g, '{x}').replace(/\$y/g, '{y}'),
+              attribution: chart.name ?? id,
+            }];
           }
-        } catch {
-          /* fall back to OSM only */
         }
-      })();
-    }
+      } catch {
+        /* fall back to OSM only */
+      }
+    })();
+  });
 
+  // Apply the default chart once the map style is ready.
+  // The <MapLibre> style already includes 'osm' tiles as a fallback,
+  // so there's no rush — we replace them when ready.
+  $effect(() => {
+    if (!map || applied) return;
+    if (!map.isStyleLoaded()) {
+      // Style not ready yet — wait for it
+      const handler = () => {
+        const first = charts[0];
+        if (first) applyChart(first);
+      };
+      map.once('styledata', handler);
+      return () => { map!.off('styledata', handler); };
+    }
     const first = charts[0];
     if (first) applyChart(first);
   });

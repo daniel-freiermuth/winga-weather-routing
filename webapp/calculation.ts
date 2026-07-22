@@ -260,11 +260,16 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
     state.pendingRouteData = null;
     const opts = ctx.getRoutingOptions()?.getOptions();
 
+    // Unwrap Svelte $state proxies — structured cloning (postMessage) can't handle Proxy objects
+    const plainStart = startLatLon ? { lat: startLatLon.lat, lon: startLatLon.lon } : startLatLon;
+    const plainEnd = endLatLon ? { lat: endLatLon.lat, lon: endLatLon.lon } : endLatLon;
+    const plainWaypoints = ctx.getRouteWaypoints().map(wp => ({ lat: wp.lat, lon: wp.lon }));
+
     routingWorker.postMessage(buildWorkerPayload({
-      start: startLatLon,
-      end: endLatLon,
+      start: plainStart,
+      end: plainEnd,
       departureTime: new Date(depTime).toISOString(),
-      waypoints: ctx.getRouteWaypoints().length > 0 ? ctx.getRouteWaypoints() : undefined,
+      waypoints: plainWaypoints.length > 0 ? plainWaypoints : undefined,
       polarCsv,
       useLandAvoidance: opts?.useLandAvoidance ?? true,
       useSafetyMargin: opts?.useSafetyMargin ?? false,
@@ -282,7 +287,7 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
 
   // Wire worker message handler
   routingWorker.addEventListener('message', (e) => {
-    const j = e.data as { type: string; pct?: number; progress?: number; frontier?: number[][]; route?: RouteData; error?: string };
+    const j = e.data as { type: string; pct?: number; progress?: number; frontier?: number[][]; route?: { lat: number; lon: number; time: string; heading: number; twa: number; tws: number; boatSpeed?: number; windDir: number; waveHeight?: number; gribFilePath?: string }[]; warning?: string; error?: string };
     if (j.type === 'progress') {
       const pct = Math.round(j.pct ?? j.progress ?? 0);
       ctx.setProgress(pct);
@@ -293,8 +298,34 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
     } else if (j.type === 'result') {
       ctx.setShowProgress(false);
       ctx.setCalculating(false);
-      if (j.route) {
-        state.pendingRouteData = j.route;
+      if (j.route && j.route.length >= 2) {
+        // Convert RoutePoint[] to GeoJSON RouteData
+        const routeData: RouteData = {
+          feature: {
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: j.route.map(p => [p.lon, p.lat]),
+            },
+            properties: {
+              coordinatesMeta: j.route.map(p => {
+                const meta: WaypointMeta = {
+                  name: '',
+                  time: typeof p.time === 'string' ? p.time : new Date(p.time as unknown as number).toISOString(),
+                  windDir: p.windDir,
+                  heading: p.heading,
+                  twa: p.twa,
+                  tws: p.tws,
+                };
+                if (p.boatSpeed != null) meta.boatSpeed = p.boatSpeed;
+                if (p.waveHeight != null) meta.waveHeight = p.waveHeight;
+                if (p.gribFilePath != null) meta.gribFile = p.gribFilePath;
+                return meta;
+              }),
+            },
+          },
+        };
+        state.pendingRouteData = routeData;
         ctx.setStatus('done', 'Route calculated');
         fetchAndDrawRoute();
       } else if (j.error) {

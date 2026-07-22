@@ -853,7 +853,7 @@
   <!-- svelte-ignore binding_property_non_reactive -->
   <MapLibre
     bind:map={mapRef}
-    class="map-container"
+    inlineStyle="flex:1;min-height:200px"
     center={[18, 57]}
     zoom={6}
     style={{
