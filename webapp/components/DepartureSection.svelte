@@ -30,7 +30,7 @@
 <div class="section-title">Departure</div>
 <div class="coord-row">
   <button class="marker-btn" onclick={onSetOnMap}>Set on map</button>
-  <span class="coord-value" bind:this={startCoordsEl}>{startCoords}</span>
+  <span class="coord-value" id="start-coords" bind:this={startCoordsEl}>{startCoords}</span>
 </div>
 <button
   class="marker-btn"

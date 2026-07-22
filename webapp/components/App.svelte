@@ -579,7 +579,7 @@
   </div>
 </div>
 
-<div id="confirm-modal-overlay" class="confirm-modal-overlay">
+<div id="confirm-modal-overlay" class="confirm-modal-overlay" style="display:none">
   <div id="confirm-modal" class="confirm-modal">
     <h2 id="confirm-modal-title">Confirm</h2>
     <p id="confirm-modal-msg"></p>
