@@ -126,7 +126,7 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
     try {
       if (calcState.routeLayer) removeSourceAndLayer(map, calcState.routeLayer);
       for (const m of calcState.windBarbLayer) m.remove();
-      for (const m of calcState.legLabelLayer) m.remove();
+      if (calcState.legLabelLayer) removeSourceAndLayer(map, calcState.legLabelLayer);
       if (calcState.highlightLegLayer) { removeSourceAndLayer(map, calcState.highlightLegLayer); calcState.highlightLegLayer = null; }
       calcState.windBarbMarkers = [];
       calcState.routeLegCoords = [];
@@ -222,10 +222,8 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
     if (calcState.routeLayer) { removeSourceAndLayer(map, calcState.routeLayer); calcState.routeLayer = null; }
     for (const m of calcState.windBarbLayer) m.remove();
     calcState.windBarbLayer = [];
-    for (const m of calcState.legLabelLayer) m.remove();
-    calcState.legLabelLayer = [];
+    if (calcState.legLabelLayer) { removeSourceAndLayer(map, calcState.legLabelLayer); calcState.legLabelLayer = null; }
     if (calcState.highlightLegLayer) { removeSourceAndLayer(map, calcState.highlightLegLayer); calcState.highlightLegLayer = null; }
-    ctx.setConditionsVisible(false);
     ctx.setShowProgress(true);
     ctx.setProgress(0);
     ctx.setCalculating(true);

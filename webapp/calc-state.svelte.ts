@@ -9,7 +9,7 @@ export const calcState = $state({
   scrubberLockedToRoute: false,
   routeLayer: null as { sourceId: string; layerId: string } | null,
   windBarbLayer: [] as maplibregl.Marker[],
-  legLabelLayer: [] as maplibregl.Marker[],
+  legLabelLayer: null as { sourceId: string; layerId: string } | null,
   highlightLegLayer: null as { sourceId: string; layerId: string } | null,
   windBarbMarkers: [] as (maplibregl.Marker | null)[],
   routeLegCoords: [] as [number, number][][],
