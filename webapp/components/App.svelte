@@ -23,12 +23,15 @@
   import FailurePopup from './FailurePopup.svelte';
 
   import type { WaypointMeta, GraphLayout, RouteData, UnitPref, GribFileMeta } from '../types';
-  import type { CalcMutableState, CalculationApi } from '../calculation';
+  import type { CalculationApi } from '../calculation';
   import type { SkDeps } from '../sk-resources';
-  import type { ConfigState, ConfigCallbacks } from '../config';
+  import type { ConfigCallbacks } from '../config';
   import type { WaypointWeather } from '../route-weather';
   import type { WindPoint, WavePoint, CurrentPoint, WaveGridMeta } from '../stores';
   import { forecastLoaded, windPoints as windPointsStore, wavePoints as wavePointsStore, currentPoints as currentPointsStore, waveGridMetaStore as waveGridMetaStoreRef } from '../stores';
+  import { calcState } from '../calc-state.svelte';
+  import { skState } from '../sk-state.svelte';
+  import { configState } from '../config-state.svelte';
   import { fmt as _fmt } from '../units';
   import { toLocalDateTimeInput } from '../utils';
   import * as forecaster from '../forecast-fetcher';
@@ -74,15 +77,8 @@
   let showProgress = $state(false);
 
   // Navigation / placement state
-  let vesselPosition = $state<{ lat: number; lon: number } | null>(null);
-  let departureResources = $state<{ label: string; lat: number; lon: number }[]>([]);
-  let pendingRouteData = $state<RouteData | null>(null);
   let regionEnabled = $state(false);
-  let startLatLon = $state<{ lat: number; lon: number } | null>(null);
-  let endLatLon = $state<{ lat: number; lon: number } | null>(null);
   let placing = $state<string | null>(null);
-  let routeWaypoints = $state<{ lat: number; lon: number }[]>([]);
-  let waypointRoutes = $state<{ label: string; coords: number[][] }[]>([]);
   let windTimesLoaded = $state(false);
   let skConnectedState = $state(false);
 
@@ -114,7 +110,7 @@
   // ── Derived State ──────────────────────────────────────────────────────────
 
   const hasRoute = $derived(
-    (!!startLatLon && !!endLatLon) || routeWaypoints.length > 0
+    (!!skState.startLatLon && !!skState.endLatLon) || skState.routeWaypoints.length > 0
   );
   const canCalculate = $derived(hasRoute && windTimesLoaded && !isCalculating);
   const canAnalyse = $derived(
@@ -141,23 +137,13 @@
 
   let regionOverlayRef: { getAvoidIds: () => string[]; reload: () => Promise<void>; toggleAvoid: (id: string, avoid: boolean) => void } | undefined;
   let regionListData = $state<{ id: string; name: string; avoided: boolean }[]>([]);
-  let routeWaypointMarkers: maplibregl.Marker[] = [];
   let currentEnabled = true;
-  let windSpeedMs = false;
-  let waveOverlayMaxM = $state(3.0);
-  let conditionsGraphHeight = $state(200);
   let windTimes: string[] = [];
   let windTimesCount = 0;
-  let routeScrubberRange: { i0: number; iN: number } | null = null;
-  let scrubberLockedToRoute = false;
   let windNativeTimes: string[] = [];
   let currentFileTimes: string[] = [];
   let gribInfoFiles: GribFileMeta[] = [];
   let dilatedIndexReady = false;
-  let graphMeta: WaypointMeta[] | null = null;
-  let graphLayout: GraphLayout | null = null;
-  let unitPrefs: Record<string, UnitPref> | null = null;
-  let forecastSkillHorizonHours = 96;
   let enabledGribPaths = new Set<string>();
   let timeAxis = createTimeAxis();
 
@@ -190,13 +176,6 @@
   waveGridMetaStoreRef.subscribe(v => { waveGridMetaData = v; });
 
   // MapLibre layers / markers
-  let routeLayer: { sourceId: string; layerId: string } | null = null;
-  let windBarbLayer: maplibregl.Marker[] = [];
-  let legLabelLayer: maplibregl.Marker[] = [];
-  let windBarbMarkers: (maplibregl.Marker | null)[] = [];
-  let routeLegCoords: [number, number][][] = [];
-  let highlightLegLayer: { sourceId: string; layerId: string } | null = null;
-  let prevHighlightWpIdx = -1;
 
   // Map refs at component level
   let mapRef = $state<maplibregl.Map>(undefined as unknown as maplibregl.Map);
@@ -250,13 +229,13 @@
   }
 
   function scrubberState(): ScrubberState {
-    return { windTimes, scrubberLockedToRoute, routeScrubberRange, graphMeta, gribInfoFiles, enabledGribPaths, currentEnabled, currentFileTimes };
+    return { windTimes, scrubberLockedToRoute: calcState.scrubberLockedToRoute, routeScrubberRange: calcState.routeScrubberRange, graphMeta: calcState.graphMeta, gribInfoFiles, enabledGribPaths, currentEnabled, currentFileTimes };
   }
 
   /** Update all scrubber-derived reactive state from current windTimes / range. */
   function updateScrubberView() {
-    const rangeStart = scrubberLockedToRoute && routeScrubberRange ? routeScrubberRange.i0 : 0;
-    const rangeEnd = scrubberLockedToRoute && routeScrubberRange ? routeScrubberRange.iN : Math.max(0, windTimes.length - 1);
+    const rangeStart = calcState.scrubberLockedToRoute && calcState.routeScrubberRange ? calcState.routeScrubberRange.i0 : 0;
+    const rangeEnd = calcState.scrubberLockedToRoute && calcState.routeScrubberRange ? calcState.routeScrubberRange.iN : Math.max(0, windTimes.length - 1);
     coverageHtml = computeCoverageHtml(rangeStart, rangeEnd, scrubberState());
     nowMarkerLeft = computeNowMarkerLeft(rangeStart, rangeEnd, windTimes);
     scrubberLabel = computeLabel(scrubberIndex, windTimes);
@@ -315,11 +294,11 @@
   }
 
   function handleToggleRange() {
-    if (!routeScrubberRange) return;
-    scrubberLockedToRoute = !scrubberLockedToRoute;
-    rangeToggleLabel = scrubberLockedToRoute ? 'Full range' : 'Route only';
-    if (scrubberLockedToRoute) {
-      scrubberIndex = Math.max(routeScrubberRange.i0, Math.min(routeScrubberRange.iN, scrubberIndex));
+    if (!calcState.routeScrubberRange) return;
+    calcState.scrubberLockedToRoute = !calcState.scrubberLockedToRoute;
+    rangeToggleLabel = calcState.scrubberLockedToRoute ? 'Full range' : 'Route only';
+    if (calcState.scrubberLockedToRoute) {
+      scrubberIndex = Math.max(calcState.routeScrubberRange.i0, Math.min(calcState.routeScrubberRange.iN, scrubberIndex));
     }
     updateScrubberView();
   }
@@ -357,10 +336,10 @@
     void (async () => {
       try {
         let coords: number[][] | null = null;
-        if (startLatLon && endLatLon) {
-          coords = [[startLatLon.lon, startLatLon.lat], [endLatLon.lon, endLatLon.lat]];
-          if (routeWaypoints.length > 0) {
-            coords = [coords[0]!, ...routeWaypoints.map((wp) => [wp.lon, wp.lat]), coords[1]!];
+        if (skState.startLatLon && skState.endLatLon) {
+          coords = [[skState.startLatLon.lon, skState.startLatLon.lat], [skState.endLatLon.lon, skState.endLatLon.lat]];
+          if (skState.routeWaypoints.length > 0) {
+            coords = [coords[0]!, ...skState.routeWaypoints.map((wp: { lat: number; lon: number }) => [wp.lon, wp.lat]), coords[1]!];
           }
         }
         if (!coords || coords.length < 2) {
@@ -396,16 +375,16 @@
   const OREGRUND = { lat: 60.3996, lon: 18.3403 };
 
   function setTestRoute(s: { lat: number; lon: number }, e: { lat: number; lon: number }, departure: string) {
-    startLatLon = s;
-    endLatLon = e;
+    skState.startLatLon = s;
+    skState.endLatLon = e;
     startCoordsText = `${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}`;
     endCoordsText = `${e.lat.toFixed(4)}, ${e.lon.toFixed(4)}`;
     departureTime = departure;
     startMarker?.setLngLat([s.lon, s.lat]).addTo(mapRef!);
     endMarker?.setLngLat([e.lon, e.lat]).addTo(mapRef!);
-    routeWaypoints = [];
-    for (const m of routeWaypointMarkers) m.remove();
-    routeWaypointMarkers = [];
+    skState.routeWaypoints = [];
+    for (const m of skState.routeWaypointMarkers) m.remove();
+    skState.routeWaypointMarkers = [];
   }
 
   function handleRunTest() {
@@ -421,7 +400,7 @@
   }
 
   function handleSaveRoute() {
-    if (!pendingRouteData) {
+    if (!calcState.pendingRouteData) {
       setStatus('error', 'No route to save');
       return;
     }
@@ -429,8 +408,8 @@
   }
 
   async function handleSaveRouteConfirm(name: string) {
-    if (!pendingRouteData) return;
-    const body = { ...pendingRouteData, name };
+    if (!calcState.pendingRouteData) return;
+    const body = { ...calcState.pendingRouteData, name };
     const r = await skFetch('/signalk/v2/api/resources/routes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -441,46 +420,46 @@
   }
 
   function handleUseVesselPosition() {
-    if (!vesselPosition) return;
-    const { lat, lon } = vesselPosition;
-    startLatLon = { lat, lon };
+    if (!skState.vesselPosition) return;
+    const { lat, lon } = skState.vesselPosition;
+    skState.startLatLon = { lat, lon };
     startCoordsText = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
     startMarker?.setLngLat([lon, lat]).addTo(mapRef!);
-    routeWaypoints = [];
-    for (const m of routeWaypointMarkers) m.remove();
-    routeWaypointMarkers = [];
+    skState.routeWaypoints = [];
+    for (const m of skState.routeWaypointMarkers) m.remove();
+    skState.routeWaypointMarkers = [];
   }
 
   function handleDepartureResourceSelect(index: number) {
-    const res = departureResources[index];
+    const res = skState.departureResources[index];
     if (!res) return;
     const { lat, lon } = res;
-    startLatLon = { lat, lon };
+    skState.startLatLon = { lat, lon };
     startCoordsText = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
     startMarker?.setLngLat([lon, lat]).addTo(mapRef!);
-    routeWaypoints = [];
-    for (const m of routeWaypointMarkers) m.remove();
-    routeWaypointMarkers = [];
+    skState.routeWaypoints = [];
+    for (const m of skState.routeWaypointMarkers) m.remove();
+    skState.routeWaypointMarkers = [];
   }
 
   function handleWaypointRouteChange(e: Event) {
     const idx = parseInt((e.target as HTMLSelectElement).value);
     // Clear existing waypoints
-    for (const m of routeWaypointMarkers) m.remove();
-    routeWaypointMarkers = [];
-    routeWaypoints = [];
+    for (const m of skState.routeWaypointMarkers) m.remove();
+    skState.routeWaypointMarkers = [];
+    skState.routeWaypoints = [];
 
-    if (isNaN(idx) || !waypointRoutes[idx]) return;
-    const route = waypointRoutes[idx]!;
+    if (isNaN(idx) || !skState.waypointRoutes[idx]) return;
+    const route = skState.waypointRoutes[idx]!;
     const coords = route.coords;
     if (coords.length >= 2) {
       const first = coords[0]!;
-      startLatLon = { lat: first[1]!, lon: first[0]! };
+      skState.startLatLon = { lat: first[1]!, lon: first[0]! };
       startCoordsText = `${first[1]!.toFixed(4)}, ${first[0]!.toFixed(4)}`;
       startMarker?.setLngLat([first[0]!, first[1]!]).addTo(mapRef!);
 
       const last = coords[coords.length - 1]!;
-      endLatLon = { lat: last[1]!, lon: last[0]! };
+      skState.endLatLon = { lat: last[1]!, lon: last[0]! };
       endCoordsText = `${last[1]!.toFixed(4)}, ${last[0]!.toFixed(4)}`;
       endMarker?.setLngLat([last[0]!, last[1]!]).addTo(mapRef!);
     }
@@ -496,8 +475,8 @@
         new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([wp.lon, wp.lat]).addTo(mapRef!),
       );
     }
-    routeWaypoints = newWaypoints;
-    routeWaypointMarkers = newMarkers;
+    skState.routeWaypoints = newWaypoints;
+    skState.routeWaypointMarkers = newMarkers;
 
     // Fit map to route bounds
     const bounds = coords.reduce(
@@ -525,14 +504,14 @@
       if (!placing) return;
       const { lat, lng } = e.lngLat;
       if (placing === 'start') {
-        startLatLon = { lat, lon: lng };
+        skState.startLatLon = { lat, lon: lng };
         startCoordsText = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
         startMarker?.setLngLat([lng, lat]).addTo(mapRef!);
-        routeWaypoints = [];
-        for (const mk of routeWaypointMarkers) mk.remove();
-        routeWaypointMarkers = [];
+        skState.routeWaypoints = [];
+        for (const mk of skState.routeWaypointMarkers) mk.remove();
+        skState.routeWaypointMarkers = [];
       } else if (placing === 'end') {
-        endLatLon = { lat, lon: lng };
+        skState.endLatLon = { lat, lon: lng };
         endCoordsText = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
         endMarker?.setLngLat([lng, lat]).addTo(mapRef!);
       }
@@ -541,22 +520,7 @@
     });
 
     // ── Calculation module ──────────────────────────────────────────────────
-    let calcStream: { close(): void } | null = null;
-    const calcState: CalcMutableState = {
-      get routeScrubberRange() { return routeScrubberRange; }, set routeScrubberRange(v) { routeScrubberRange = v; },
-      get scrubberLockedToRoute() { return scrubberLockedToRoute; }, set scrubberLockedToRoute(v) { scrubberLockedToRoute = v; },
-      get routeLayer() { return routeLayer; }, set routeLayer(v) { routeLayer = v; },
-      get windBarbLayer() { return windBarbLayer; }, set windBarbLayer(v) { windBarbLayer = v; },
-      get legLabelLayer() { return legLabelLayer; }, set legLabelLayer(v) { legLabelLayer = v; },
-      get highlightLegLayer() { return highlightLegLayer; }, set highlightLegLayer(v) { highlightLegLayer = v; },
-      get windBarbMarkers() { return windBarbMarkers; }, set windBarbMarkers(v) { windBarbMarkers = v; },
-      get routeLegCoords() { return routeLegCoords; }, set routeLegCoords(v) { routeLegCoords = v; },
-      get prevHighlightWpIdx() { return prevHighlightWpIdx; }, set prevHighlightWpIdx(v) { prevHighlightWpIdx = v; },
-      get graphMeta() { return graphMeta; }, set graphMeta(v) { graphMeta = v; },
-      get graphLayout() { return graphLayout; }, set graphLayout(v) { graphLayout = v; },
-      get calcStream() { return calcStream; }, set calcStream(v) { calcStream = v; },
-      get pendingRouteData() { return pendingRouteData; }, set pendingRouteData(v) { pendingRouteData = v; },
-    };
+    // calcState imported from calc-state.svelte.ts — no bridge needed
 
     calcApi = setupCalculation({
       map: m, routingWorker: routingWorker!, isochroneState: isochroneState!,
@@ -570,15 +534,15 @@
       fetchWindPointsAt: (idx: number) => fetchWindPointsAt(idx),
       fetchWavePointsAt: (idx: number) => fetchWavePointsAt(idx),
       scrubberState,
-      getStartLatLon: () => startLatLon,
-      getEndLatLon: () => endLatLon,
-      getRouteWaypoints: () => routeWaypoints,
+      getStartLatLon: () => skState.startLatLon,
+      getEndLatLon: () => skState.endLatLon,
+      getRouteWaypoints: () => skState.routeWaypoints,
       getRoutingOptions: () => routingOptionsRef ?? null,
-      getWindSpeedMs: () => windSpeedMs,
+      getWindSpeedMs: () => configState.windSpeedMs,
       getWindTimes: () => windTimes,
       getWindTimesLoaded: () => windTimesLoaded,
       getGribInfoFiles: () => gribInfoFiles,
-      getForecastSkillHorizonHours: () => forecastSkillHorizonHours,
+      getForecastSkillHorizonHours: () => configState.forecastSkillHorizonHours,
       getPolarCsv: () => polarCsv ?? undefined,
       setConditionsGraph: (data) => {
         if (data) {
@@ -586,51 +550,34 @@
           conditionsSvgViewBox = data.viewBox;
           conditionsHasWave = data.hasWave;
           showRightSpacer = data.hasWave;
-          graphLayout = data.layout;
+          calcState.graphLayout = data.layout;
         }
       },
       setConditionsVisible: (v) => { conditionsVisible = v; },
       lockScrubberToRoute: (i0, iN) => {
-        routeScrubberRange = { i0, iN };
-        scrubberLockedToRoute = true;
+        calcState.routeScrubberRange = { i0, iN };
+        calcState.scrubberLockedToRoute = true;
         scrubberIndex = i0;
         showRangeToggle = true;
         rangeToggleLabel = 'Full range';
         updateScrubberView();
       },
       setShowRangeToggle: (v) => { showRangeToggle = v; },
-      state: calcState,
     });
 
     // ── SK resources ────────────────────────────────────────────────────────
+    // skState imported from sk-state.svelte.ts — no bridge needed
     let vesselPositionWs: WebSocket | null = null;
-    const skState: import('../sk-resources').SkState = {
-      get departureResources() { return departureResources; }, set departureResources(v) { departureResources = v; },
-      get waypointRoutes() { return waypointRoutes; }, set waypointRoutes(v) { waypointRoutes = v; },
-      get routeWaypoints() { return routeWaypoints; }, set routeWaypoints(v) { routeWaypoints = v; },
-      get routeWaypointMarkers() { return routeWaypointMarkers; }, set routeWaypointMarkers(v) { routeWaypointMarkers = v; },
-      get startLatLon() { return startLatLon; }, set startLatLon(v) { startLatLon = v; },
-      get endLatLon() { return endLatLon; }, set endLatLon(v) { endLatLon = v; },
-      get vesselPosition() { return vesselPosition; }, set vesselPosition(v) { vesselPosition = v; },
-      get vesselPositionWs() { return vesselPositionWs; }, set vesselPositionWs(v) { vesselPositionWs = v; },
-    };
     const skDeps: SkDeps = {
       skFetch, skWebSocketUrl, map: m,
       startMarker: startMarker!,
       endMarker: endMarker!,
       setStartCoordsText: (t: string) => { startCoordsText = t; },
       setEndCoordsText: (t: string) => { endCoordsText = t; },
-      state: skState,
     };
 
     // ── Config ──────────────────────────────────────────────────────────────
-    const configState: ConfigState = {
-      get waveOverlayMaxM() { return waveOverlayMaxM; }, set waveOverlayMaxM(v) { waveOverlayMaxM = v; },
-      get windSpeedMs() { return windSpeedMs; }, set windSpeedMs(v) { windSpeedMs = v; },
-      get conditionsGraphHeight() { return conditionsGraphHeight; }, set conditionsGraphHeight(v) { conditionsGraphHeight = v; },
-      get forecastSkillHorizonHours() { return forecastSkillHorizonHours; }, set forecastSkillHorizonHours(v) { forecastSkillHorizonHours = v; },
-      get unitPrefs() { return unitPrefs; }, set unitPrefs(v) { unitPrefs = v; },
-    };
+    // configState imported from config-state.svelte.ts — no bridge needed
     const configCallbacks: ConfigCallbacks = {
       setBuildVersion: (v: string) => { buildVersion = v; },
       setWaveLegendMax: (text: string) => { waveLegendMax = text; },
@@ -662,7 +609,7 @@
       setStatus('done', 'Ready');
     })();
 
-    void _loadConfig(skFetch, configState, configCallbacks);
+    void _loadConfig(skFetch, configCallbacks);
 
     // SK-dependent features
     void (async () => {
@@ -693,7 +640,7 @@
       allWindPoints: forecaster.getWindPoints(),
       allWavePoints: forecaster.getWavePoints(),
       allCurrentPoints: forecaster.getCurrentPoints(),
-      windSpeedMs,
+      windSpeedMs: configState.windSpeedMs,
       windVisible: windOverlayVisible,
       waveVisible: waveOverlayVisible,
       currentVisible: currentOverlayVisible,
@@ -710,7 +657,7 @@
       const svgEl = conditionsPanelRef?.getSvgEl();
       if (svgEl && graphTooltipEl) {
         clearInterval(tooltipPoll);
-        setupGraphTooltip(svgEl, graphTooltipEl, () => ({ graphMeta, graphLayout, windSpeedMs }));
+        setupGraphTooltip(svgEl, graphTooltipEl, () => ({ graphMeta: calcState.graphMeta, graphLayout: calcState.graphLayout, windSpeedMs: configState.windSpeedMs }));
       }
     }, 200);
   });
@@ -761,20 +708,20 @@
   <div class="section">
     <DepartureSection
       startCoords={startCoordsText}
-      vesselAvailable={vesselPosition !== null}
-      resources={departureResources}
+      vesselAvailable={skState.vesselPosition !== null}
+      resources={skState.departureResources}
       onSetOnMap={() => activatePlacing('start')}
       onUseVesselPosition={handleUseVesselPosition}
       onResourceSelect={handleDepartureResourceSelect}
     />
   </div>
 
-  {#if waypointRoutes.length > 0}
+  {#if skState.waypointRoutes.length > 0}
     <div class="section">
       <div class="section-title">Route waypoints</div>
       <select class="select-input" onchange={handleWaypointRouteChange}>
         <option value="">— route waypoints —</option>
-        {#each waypointRoutes as route, i}
+        {#each skState.waypointRoutes as route, i}
           <option value={String(i)}>{route.label}</option>
         {/each}
       </select>
@@ -801,7 +748,7 @@
   <ActionButtons
     {canCalculate} {canAnalyse} {isCalculating} {isAnalysing}
     {calcHint} {analyseHint} {calcProgress} {showProgress}
-    hasPendingRoute={pendingRouteData !== null}
+    hasPendingRoute={calcState.pendingRouteData !== null}
     onCalculate={handleCalculate} onAnalyse={handleAnalyse}
     onRunTest={handleRunTest} onRunHelsinki={handleRunHelsinki}
     onRunGothenburg={handleRunGothenburg} onSaveRoute={handleSaveRoute}
@@ -884,7 +831,7 @@
   <TimeScrubber
     {windTimes}
     {scrubberIndex}
-    lockedRange={scrubberLockedToRoute ? routeScrubberRange : null}
+    lockedRange={calcState.scrubberLockedToRoute ? calcState.routeScrubberRange : null}
     label={scrubberLabel}
     {coverageHtml}
     {nowMarkerLeft}
@@ -902,7 +849,7 @@
     visible={conditionsVisible}
     expanded={conditionsExpanded}
     fullscreen={conditionsFullscreen}
-    graphHeight={conditionsGraphHeight}
+    graphHeight={configState.conditionsGraphHeight}
     svgContent={conditionsSvgContent}
     svgViewBox={conditionsSvgViewBox}
     hasWave={conditionsHasWave}
@@ -916,7 +863,7 @@
 
 <!-- Renderless overlay components (manage their own map layers) -->
 <WindOverlay map={mapRef ?? null} points={windPointsData} visible={windOverlayVisible} />
-<WaveOverlay map={mapRef ?? null} points={wavePointsData} visible={waveOverlayVisible} gridMeta={waveGridMetaData} maxM={waveOverlayMaxM} />
+<WaveOverlay map={mapRef ?? null} points={wavePointsData} visible={waveOverlayVisible} gridMeta={waveGridMetaData} maxM={configState.waveOverlayMaxM} />
 <CurrentOverlay map={mapRef ?? null} points={currentPointsData} visible={currentOverlayVisible} />
 <LandOverlay map={mapRef ?? null} visible={landOverlayVisible} {useSafetyMargin} />
 <RegionOverlay map={mapRef ?? null} visible={regionOverlayVisible} {skFetch} bind:this={regionOverlayRef} onRegionsChange={(r) => { regionListData = r; }} />

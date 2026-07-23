@@ -2,6 +2,7 @@
 // and manages scrubber highlighting for the calculated route.
 
 import maplibregl from 'maplibre-gl';
+import { calcState } from './calc-state.svelte';
 import type { WaypointMeta, GraphLayout, RouteData, GribFileMeta } from './types';
 import type { ScrubberState } from './scrubber-controller';
 import { fmt as _fmt, toDisplay as _toDisplay } from './units';
@@ -31,22 +32,6 @@ export interface RoutingOptionsLike {
   };
 }
 
-/** Mutable state that app.ts owns but the calculation module reads/writes. */
-export interface CalcMutableState {
-  routeScrubberRange: { i0: number; iN: number } | null;
-  scrubberLockedToRoute: boolean;
-  routeLayer: { sourceId: string; layerId: string } | null;
-  windBarbLayer: maplibregl.Marker[];
-  legLabelLayer: maplibregl.Marker[];
-  highlightLegLayer: { sourceId: string; layerId: string } | null;
-  windBarbMarkers: (maplibregl.Marker | null)[];
-  routeLegCoords: [number, number][][];
-  prevHighlightWpIdx: number;
-  graphMeta: WaypointMeta[] | null;
-  graphLayout: GraphLayout | null;
-  calcStream: { close(): void } | null;
-  pendingRouteData: RouteData | null;
-}
 
 /** All dependencies the calculation module needs from the app shell. */
 export interface CalculationContext {
@@ -84,8 +69,6 @@ export interface CalculationContext {
   getForecastSkillHorizonHours(): number;
   getPolarCsv(): string | undefined;
 
-  /** Shared mutable state — App.svelte creates and proxies to its own lets. */
-  state: CalcMutableState;
 }
 
 export interface CalculationApi {
@@ -119,8 +102,8 @@ function drawConditionsGraph(ctx: CalculationContext, meta: WaypointMeta[], inte
     toDisplay: _toDisplay, fmt: _fmt,
   });
   if (!result) { ctx.setConditionsVisible(false); return; }
-  ctx.state.graphMeta = meta;
-  ctx.state.graphLayout = result.layout;
+  calcState.graphMeta = meta;
+  calcState.graphLayout = result.layout;
   ctx.setConditionsGraph({ svgContent: result.svgContent, viewBox: result.viewBox, hasWave: result.hasWave, layout: result.layout });
   ctx.setConditionsVisible(true);
 }
@@ -132,22 +115,22 @@ function drawConditionsGraph(ctx: CalculationContext, meta: WaypointMeta[], inte
  * that close over the provided context.
  */
 export function setupCalculation(ctx: CalculationContext): CalculationApi {
-  const { map, routingWorker, state } = ctx;
+  const { map, routingWorker } = ctx;
   const isochroneState = ctx.isochroneState;
 
   function fetchAndDrawRoute() {
-    if (state.pendingRouteData) drawRouteFromData(state.pendingRouteData);
+    if (calcState.pendingRouteData) drawRouteFromData(calcState.pendingRouteData);
   }
 
   function drawRouteFromData(route: RouteData) {
     try {
-      if (state.routeLayer) removeSourceAndLayer(map, state.routeLayer);
-      for (const m of state.windBarbLayer) m.remove();
-      for (const m of state.legLabelLayer) m.remove();
-      if (state.highlightLegLayer) { removeSourceAndLayer(map, state.highlightLegLayer); state.highlightLegLayer = null; }
-      state.windBarbMarkers = [];
-      state.routeLegCoords = [];
-      state.prevHighlightWpIdx = -1;
+      if (calcState.routeLayer) removeSourceAndLayer(map, calcState.routeLayer);
+      for (const m of calcState.windBarbLayer) m.remove();
+      for (const m of calcState.legLabelLayer) m.remove();
+      if (calcState.highlightLegLayer) { removeSourceAndLayer(map, calcState.highlightLegLayer); calcState.highlightLegLayer = null; }
+      calcState.windBarbMarkers = [];
+      calcState.routeLegCoords = [];
+      calcState.prevHighlightWpIdx = -1;
       const routingOptions = ctx.getRoutingOptions();
       const result = drawRoute(route, {
         map, fmt: _fmt, windSpeedMs: ctx.getWindSpeedMs(),
@@ -158,11 +141,11 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
         routeWaypoints: ctx.getRouteWaypoints(), setStatus: ctx.setStatus,
       });
       if (!result) return;
-      state.routeLayer = result.routeLayer;
-      state.windBarbLayer = result.windBarbLayer;
-      state.legLabelLayer = result.legLabelLayer;
-      state.windBarbMarkers = result.windBarbMarkers;
-      state.routeLegCoords = result.routeLegCoords;
+      calcState.routeLayer = result.routeLayer;
+      calcState.windBarbLayer = result.windBarbLayer;
+      calcState.legLabelLayer = result.legLabelLayer;
+      calcState.windBarbMarkers = result.windBarbMarkers;
+      calcState.routeLegCoords = result.routeLegCoords;
       drawConditionsGraph(ctx, result.meta, result.intermediateIdxs);
       const windTimes = ctx.getWindTimes();
       if (ctx.getWindTimesLoaded() && result.meta.length > 0) {
@@ -173,8 +156,8 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
         if (i0 < 0) i0 = 0;
         if (iN < 0) iN = windTimes.length - 1;
         ctx.lockScrubberToRoute(i0, iN);
-        state.routeScrubberRange = { i0, iN };
-        state.scrubberLockedToRoute = true;
+        calcState.routeScrubberRange = { i0, iN };
+        calcState.scrubberLockedToRoute = true;
         ctx.fetchWindPointsAt(i0);
         ctx.fetchWavePointsAt(i0);
       }
@@ -184,22 +167,22 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
   }
 
   function updateScrubberHighlight(windTimeIdx: number) {
-    if (!state.graphMeta || state.graphMeta.length < 2 || !state.graphLayout) return;
+    if (!calcState.graphMeta || calcState.graphMeta.length < 2 || !calcState.graphLayout) return;
     const windTimes = ctx.getWindTimes();
     const t = windTimes[windTimeIdx];
     if (!t) return;
     const tMs = new Date(t).getTime();
-    const { wpIdx, legIdx } = findScrubberPosition(state.graphMeta, tMs);
-    if (wpIdx === state.prevHighlightWpIdx) return;
-    state.prevHighlightWpIdx = wpIdx;
-    if (state.highlightLegLayer) { removeSourceAndLayer(map, state.highlightLegLayer); state.highlightLegLayer = null; }
-    for (let i = 0; i < state.windBarbMarkers.length; i++) {
-      const m = state.windBarbMarkers[i];
+    const { wpIdx, legIdx } = findScrubberPosition(calcState.graphMeta, tMs);
+    if (wpIdx === calcState.prevHighlightWpIdx) return;
+    calcState.prevHighlightWpIdx = wpIdx;
+    if (calcState.highlightLegLayer) { removeSourceAndLayer(map, calcState.highlightLegLayer); calcState.highlightLegLayer = null; }
+    for (let i = 0; i < calcState.windBarbMarkers.length; i++) {
+      const m = calcState.windBarbMarkers[i];
       if (!m) continue;
       m.getElement()!.style.opacity = i === wpIdx ? '1' : '0.4';
     }
-    if (legIdx >= 0 && state.routeLegCoords[legIdx]) {
-      const legCoords = state.routeLegCoords[legIdx]!;
+    if (legIdx >= 0 && calcState.routeLegCoords[legIdx]) {
+      const legCoords = calcState.routeLegCoords[legIdx]!;
       const sourceId = 'highlight-leg';
       const layerId = 'highlight-leg-line';
       map.addSource(sourceId, {
@@ -220,7 +203,7 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
         source: sourceId,
         paint: { 'line-color': '#f5c2e7', 'line-width': 4, 'line-opacity': 0.9 },
       });
-      state.highlightLegLayer = { sourceId, layerId };
+      calcState.highlightLegLayer = { sourceId, layerId };
     }
   }
 
@@ -228,25 +211,25 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
     const startLatLon = ctx.getStartLatLon();
     const endLatLon = ctx.getEndLatLon();
     if (!startLatLon || !endLatLon) return;
-    state.routeScrubberRange = null;
-    state.scrubberLockedToRoute = false;
+    calcState.routeScrubberRange = null;
+    calcState.scrubberLockedToRoute = false;
     ctx.setShowRangeToggle(false);
 
     const depTime = ctx.getDepartureTime();
     if (!depTime) return ctx.setStatus('error', 'Please set a departure time');
 
     clearIsochrones(isochroneState);
-    if (state.routeLayer) { removeSourceAndLayer(map, state.routeLayer); state.routeLayer = null; }
-    for (const m of state.windBarbLayer) m.remove();
-    state.windBarbLayer = [];
-    for (const m of state.legLabelLayer) m.remove();
-    state.legLabelLayer = [];
-    if (state.highlightLegLayer) { removeSourceAndLayer(map, state.highlightLegLayer); state.highlightLegLayer = null; }
+    if (calcState.routeLayer) { removeSourceAndLayer(map, calcState.routeLayer); calcState.routeLayer = null; }
+    for (const m of calcState.windBarbLayer) m.remove();
+    calcState.windBarbLayer = [];
+    for (const m of calcState.legLabelLayer) m.remove();
+    calcState.legLabelLayer = [];
+    if (calcState.highlightLegLayer) { removeSourceAndLayer(map, calcState.highlightLegLayer); calcState.highlightLegLayer = null; }
     ctx.setConditionsVisible(false);
     ctx.setShowProgress(true);
     ctx.setProgress(0);
     ctx.setCalculating(true);
-    if (state.calcStream) { state.calcStream.close(); state.calcStream = null; }
+    if (calcState.calcStream) { calcState.calcStream.close(); calcState.calcStream = null; }
 
     ctx.setStatus('', 'Starting calculation…');
 
@@ -257,7 +240,7 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
       return;
     }
 
-    state.pendingRouteData = null;
+    calcState.pendingRouteData = null;
     const opts = ctx.getRoutingOptions()?.getOptions();
 
     // Unwrap Svelte $state proxies — structured cloning (postMessage) can't handle Proxy objects
@@ -325,7 +308,7 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
             },
           },
         };
-        state.pendingRouteData = routeData;
+        calcState.pendingRouteData = routeData;
         ctx.setStatus('done', 'Route calculated');
         fetchAndDrawRoute();
       } else if (j.error) {

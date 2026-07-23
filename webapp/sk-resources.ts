@@ -1,20 +1,7 @@
 // SignalK resource loading: departure points, waypoint routes, vessel position.
 
 import maplibregl from 'maplibre-gl';
-
-type LatLon = { lat: number; lon: number };
-
-/** Mutable state shared between sk-resources functions and app.ts. */
-export interface SkState {
-  departureResources: { label: string; lat: number; lon: number }[];
-  waypointRoutes: { label: string; coords: number[][] }[];
-  routeWaypoints: LatLon[];
-  routeWaypointMarkers: maplibregl.Marker[];
-  startLatLon: LatLon | null;
-  endLatLon: LatLon | null;
-  vesselPosition: LatLon | null;
-  vesselPositionWs: WebSocket | null;
-}
+import { skState } from './sk-state.svelte';
 
 /** External dependencies injected from app.ts. */
 export interface SkDeps {
@@ -25,7 +12,6 @@ export interface SkDeps {
   endMarker: maplibregl.Marker;
   setStartCoordsText: (text: string) => void;
   setEndCoordsText: (text: string) => void;
-  state: SkState;
 }
 
 // ── Departure resources ──────────────────────────────────────────────────────
@@ -61,15 +47,15 @@ export async function loadDepartureResources(deps: SkDeps): Promise<void> {
       entries.push({ label: `\u{1F4CD} ${(wp['name'] as string | undefined) ?? 'Unnamed waypoint'}`, lat, lon });
     }
   }
-  deps.state.departureResources = entries;
+  skState.departureResources = entries;
 }
 
 // ── Waypoint routes ──────────────────────────────────────────────────────────
 
 export function clearRouteWaypoints(deps: SkDeps): void {
-  for (const m of deps.state.routeWaypointMarkers) m.remove();
-  deps.state.routeWaypointMarkers = [];
-  deps.state.routeWaypoints = [];
+  for (const m of skState.routeWaypointMarkers) m.remove();
+  skState.routeWaypointMarkers = [];
+  skState.routeWaypoints = [];
 }
 
 export async function loadWaypointRoutes(deps: SkDeps): Promise<void> {
@@ -85,32 +71,32 @@ export async function loadWaypointRoutes(deps: SkDeps): Promise<void> {
       if (!Array.isArray(coords) || coords.length < 2) continue;
       routes.push({ label: (v['name'] as string | undefined) ?? 'Unnamed', coords });
     }
-    deps.state.waypointRoutes = routes;
+    skState.waypointRoutes = routes;
   } catch { /* offline */ }
 }
 
 export function handleWaypointRouteChange(deps: SkDeps, e: Event): void {
   const idx = parseInt((e.target as HTMLSelectElement).value);
   clearRouteWaypoints(deps);
-  if (isNaN(idx) || !deps.state.waypointRoutes[idx]) return;
-  const route = deps.state.waypointRoutes[idx]!;
+  if (isNaN(idx) || !skState.waypointRoutes[idx]) return;
+  const route = skState.waypointRoutes[idx]!;
   const coords = route.coords;
   if (coords.length >= 2) {
     const first = coords[0]!;
-    deps.state.startLatLon = { lat: first[1]!, lon: first[0]! };
+    skState.startLatLon = { lat: first[1]!, lon: first[0]! };
     deps.setStartCoordsText(`${first[1]!.toFixed(4)}, ${first[0]!.toFixed(4)}`);
     deps.startMarker.setLngLat([first[0]!, first[1]!]).addTo(deps.map);
     const last = coords[coords.length - 1]!;
-    deps.state.endLatLon = { lat: last[1]!, lon: last[0]! };
+    skState.endLatLon = { lat: last[1]!, lon: last[0]! };
     deps.setEndCoordsText(`${last[1]!.toFixed(4)}, ${last[0]!.toFixed(4)}`);
     deps.endMarker.setLngLat([last[0]!, last[1]!]).addTo(deps.map);
   }
   for (let i = 1; i < coords.length - 1; i++) {
     const wp = { lat: coords[i]![1]!, lon: coords[i]![0]! };
-    deps.state.routeWaypoints.push(wp);
+    skState.routeWaypoints.push(wp);
     const el = document.createElement('div');
     el.innerHTML = '<div style="background:#f5c2e7;width:8px;height:8px;border-radius:50%;border:1px solid #1e2230"></div>';
-    deps.state.routeWaypointMarkers.push(
+    skState.routeWaypointMarkers.push(
       new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([wp.lon, wp.lat]).addTo(deps.map),
     );
   }
@@ -122,9 +108,9 @@ export function handleWaypointRouteChange(deps: SkDeps, e: Event): void {
 
 export function handleDepartureResourceChange(deps: SkDeps, e: Event): void {
   const idx = parseInt((e.target as HTMLSelectElement).value);
-  if (isNaN(idx) || !deps.state.departureResources[idx]) return;
-  const { lat, lon } = deps.state.departureResources[idx]!;
-  deps.state.startLatLon = { lat, lon };
+  if (isNaN(idx) || !skState.departureResources[idx]) return;
+  const { lat, lon } = skState.departureResources[idx]!;
+  skState.startLatLon = { lat, lon };
   deps.setStartCoordsText(`${lat.toFixed(4)}, ${lon.toFixed(4)}`);
   deps.startMarker.setLngLat([lon, lat]).addTo(deps.map);
   clearRouteWaypoints(deps);
@@ -134,7 +120,7 @@ export function handleDepartureResourceChange(deps: SkDeps, e: Event): void {
 
 export function connectVesselPositionStream(deps: SkDeps): void {
   const ws = new WebSocket(deps.skWebSocketUrl('/signalk/v1/stream?subscribe=none'));
-  deps.state.vesselPositionWs = ws;
+  skState.vesselPositionWs = ws;
   ws.onopen = () => {
     ws.send(JSON.stringify({
       context: 'vessels.self',
@@ -147,23 +133,23 @@ export function connectVesselPositionStream(deps: SkDeps): void {
       for (const update of delta.updates ?? []) {
         for (const v of update.values ?? []) {
           if (v.path === 'navigation.position' && v.value) {
-            deps.state.vesselPosition = { lat: v.value.latitude, lon: v.value.longitude };
+            skState.vesselPosition = { lat: v.value.latitude, lon: v.value.longitude };
           }
         }
       }
     } catch { /* ignore parse errors */ }
   };
   ws.onclose = () => {
-    deps.state.vesselPosition = null;
-    deps.state.vesselPositionWs = null;
+    skState.vesselPosition = null;
+    skState.vesselPositionWs = null;
     setTimeout(() => connectVesselPositionStream(deps), 5000);
   };
 }
 
 export function handleVesselPositionClick(deps: SkDeps): void {
-  if (!deps.state.vesselPosition) return;
-  const { lat, lon } = deps.state.vesselPosition;
-  deps.state.startLatLon = { lat, lon };
+  if (!skState.vesselPosition) return;
+  const { lat, lon } = skState.vesselPosition;
+  skState.startLatLon = { lat, lon };
   deps.setStartCoordsText(`${lat.toFixed(4)}, ${lon.toFixed(4)}`);
   deps.startMarker.setLngLat([lon, lat]).addTo(deps.map);
   clearRouteWaypoints(deps);
