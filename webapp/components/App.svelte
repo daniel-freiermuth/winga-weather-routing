@@ -2,14 +2,13 @@
   // Root application component — owns layout, state, and all event wiring.
   // app.ts creates the MapLibre map and mounts this component.
 
-  import ChartSelector from './ChartSelector.svelte';
-  import LayerToggles from './LayerToggles.svelte';
-  import RoutingOptions from './RoutingOptions.svelte';
-  import PolarInput from './PolarInput.svelte';
-  import SkServerSettings from './SkServerSettings.svelte';
+  import SetupPanel from './SetupPanel.svelte';
+  import RouteSummary from './RouteSummary.svelte';
+  import SettingsModal from './SettingsModal.svelte';
+  import MapLayerControl from './MapLayerControl.svelte';
+  import Toast from './Toast.svelte';
   import TimeScrubber from './TimeScrubber.svelte';
   import ConditionsPanel from './ConditionsPanel.svelte';
-  import Meteogram from './Meteogram.svelte';
   import WindOverlay from './WindOverlay.svelte';
   import WaveOverlay from './WaveOverlay.svelte';
   import CurrentOverlay from './CurrentOverlay.svelte';
@@ -17,10 +16,8 @@
   import RegionOverlay from './RegionOverlay.svelte';
   import RouteWeatherTable from './RouteWeatherTable.svelte';
   import SaveRouteModal from './SaveRouteModal.svelte';
-  import DepartureSection from './DepartureSection.svelte';
-  import ActionButtons from './ActionButtons.svelte';
   import Disclaimer from './Disclaimer.svelte';
-  import FailurePopup from './FailurePopup.svelte';
+  import MapContextMenu from './MapContextMenu.svelte';
 
   import type { WaypointMeta, GraphLayout, RouteData, UnitPref, GribFileMeta } from '../types';
   import type { CalculationApi } from '../calculation';
@@ -47,6 +44,7 @@
   import { loadConfig as _loadConfig } from '../config';
   import maplibregl from 'maplibre-gl';
   import { MapLibre } from 'svelte-maplibre-gl';
+  import { haversineNM, bearingTo } from '../../src/lib/geo';
 
   // ── Props ──────────────────────────────────────────────────────────────────
   interface Props {
@@ -58,12 +56,9 @@
 
   // ── Reactive State ─────────────────────────────────────────────────────────
 
-  // UI text
-  let startCoordsText = $state('—');
-  let endCoordsText = $state('—');
+  // UI text (startCoordsText/endCoordsText are now $derived below)
   let statusType = $state('');
   let statusText = $state('Ready');
-  let gribStatusHtml = $state('<span style="color:#89b4fa">Loading…</span>');
   let departureTime = $state(defaultDepartureTime());
   let buildVersion = $state('');
   let waveLegendMax = $state('3 m');
@@ -76,9 +71,23 @@
   let calcProgress = $state(0);
   let showProgress = $state(false);
 
-  // Navigation / placement state
+  // Waypoint list state
+  interface UIWaypoint {
+    id: string;
+    label: string;
+    value: { lat: number; lon: number } | null;
+  }
+
+  let waypoints = $state<UIWaypoint[]>([
+    { id: crypto.randomUUID(), label: 'Start', value: null },
+    { id: crypto.randomUUID(), label: 'End', value: null },
+  ]);
+
+  // Context menu
+  let contextMenu = $state({ visible: false, x: 0, y: 0, lat: 0, lng: 0 });
+
+  // Navigation state
   let regionEnabled = $state(false);
-  let placing = $state<string | null>(null);
   let windTimesLoaded = $state(false);
   let skConnectedState = $state(false);
 
@@ -88,12 +97,15 @@
   // Save modal
   let showSaveModal = $state(false);
 
-  // Failure popup
-  let failurePopupMsg = $state('');
-  let failurePopupType = $state<'error' | 'warning'>('error');
-  let failurePopupVisible = $state(false);
+  // New UX state
+  let sidebarView = $state<'setup' | 'summary'>('setup');
+  let routeMode = $state<'route' | 'evaluate'>('route');
+  let showSettings = $state(false);
+  let toastMessage = $state('');
+  let toastType = $state<'error' | 'warning' | 'info'>('info');
+  let toastVisible = $state(false);
 
-  // Overlay visibility (bound to LayerToggles via $bindable)
+  // Overlay visibility
   let windOverlayVisible = $state(true);
   let waveOverlayVisible = $state(false);
   let currentOverlayVisible = $state(false);
@@ -106,6 +118,28 @@
   let wavePointsData = $state<WavePoint[]>([]);
   let currentPointsData = $state<CurrentPoint[]>([]);
   let waveGridMetaData = $state<WaveGridMeta | null>(null);
+
+  // ── Derived from waypoints ──────────────────────────────────────────────────
+
+  const startCoordsText = $derived(
+    waypoints[0]?.value
+      ? `${waypoints[0].value.lat.toFixed(4)}, ${waypoints[0].value.lon.toFixed(4)}`
+      : '\u2014'
+  );
+  const endCoordsText = $derived(
+    waypoints.length > 0 && waypoints[waypoints.length - 1]?.value
+      ? `${waypoints[waypoints.length - 1]!.value!.lat.toFixed(4)}, ${waypoints[waypoints.length - 1]!.value!.lon.toFixed(4)}`
+      : '\u2014'
+  );
+
+  // Sync waypoints → skState
+  $effect(() => {
+    skState.startLatLon = waypoints[0]?.value ?? null;
+    skState.endLatLon = waypoints.length > 0 ? (waypoints[waypoints.length - 1]?.value ?? null) : null;
+    skState.routeWaypoints = waypoints.slice(1, -1)
+      .filter((wp): wp is UIWaypoint & { value: NonNullable<UIWaypoint['value']> } => wp.value !== null)
+      .map(wp => wp.value);
+  });
 
   // ── Derived State ──────────────────────────────────────────────────────────
 
@@ -131,6 +165,43 @@
     if (!polarLoaded) m.push('load polar');
     if (!departureTime) m.push('set departure');
     return m.length ? 'Needs: ' + m.join(', ') : '';
+  });
+
+  const routeSummaryWaypoints = $derived.by(() => {
+    const rd = calcState.pendingRouteData;
+    if (!rd?.feature?.geometry?.coordinates) return [];
+    const coords = rd.feature.geometry.coordinates;
+    const meta = rd.feature.properties?.coordinatesMeta ?? [];
+    return coords.map(([lng, lat]: number[], i: number) => {
+      let bearing = 0;
+      let distanceNm = 0;
+      if (i > 0) {
+        const prev = coords[i - 1]!;
+        bearing = Math.round(bearingTo(prev[1]!, prev[0]!, lat!, lng!));
+        distanceNm = Math.round(haversineNM(prev[1]!, prev[0]!, lat!, lng!) * 10) / 10;
+      }
+      const m = meta[i];
+      return {
+        lat: lat!,
+        lon: lng!,
+        bearing,
+        distanceNm,
+        eta: m?.time ?? '',
+      };
+    });
+  });
+
+  const routeTotalDistanceNm = $derived(
+    routeSummaryWaypoints.reduce((sum, wp) => sum + wp.distanceNm, 0)
+  );
+
+  const routeTotalDurationH = $derived.by(() => {
+    const wps = routeSummaryWaypoints;
+    if (wps.length < 2) return 0;
+    const first = wps[0];
+    const last = wps[wps.length - 1];
+    if (!first?.eta || !last?.eta) return 0;
+    return Math.round((new Date(last.eta).getTime() - new Date(first.eta).getTime()) / 3600000 * 10) / 10;
   });
 
   // ── Internal (non-reactive) State ──────────────────────────────────────────
@@ -186,16 +257,8 @@
   let calcApi: CalculationApi | null = null;
   let routeWeatherMarkers: maplibregl.Marker[] = [];
 
-  // RoutingOptions component ref
-  interface RoutingOptionsApi {
-    getOptions: () => {
-      useLandAvoidance: boolean; useSafetyMargin: boolean;
-      motorBelowKn: number | undefined; motorSpeedKn: number | undefined;
-      waitForWind: boolean | undefined; maxWindKn: number | undefined; maxWaveM: number | undefined;
-      waypointLabels: boolean; waypointLabelInterval: number;
-    };
-  }
-  let routingOptionsRef: RoutingOptionsApi | undefined;
+  // SettingsModal component ref (replaces RoutingOptions)
+  let settingsModalRef: { getOptions: () => { useLandAvoidance: boolean; useSafetyMargin: boolean; motorBelowKn: number | undefined; motorSpeedKn: number | undefined; waitForWind: boolean | undefined; maxWindKn: number | undefined; maxWaveM: number | undefined; waypointLabels: boolean; waypointLabelInterval: number } } | undefined;
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -210,9 +273,9 @@
   }
 
   function handleShowFailurePopup(msg: string, isWarning: boolean) {
-    failurePopupMsg = msg;
-    failurePopupType = isWarning ? 'warning' : 'error';
-    failurePopupVisible = true;
+    toastMessage = msg;
+    toastType = isWarning ? 'warning' : 'error';
+    toastVisible = true;
   }
 
   function timeAxisState() { return { windTimes, windNativeTimes, windTimesLoaded }; }
@@ -259,7 +322,7 @@
   }
 
   function useSafetyMargin(): boolean {
-    return routingOptionsRef?.getOptions().useSafetyMargin ?? false;
+    return settingsModalRef?.getOptions().useSafetyMargin ?? false;
   }
 
   // ── Scrubber Event Handlers ────────────────────────────────────────────────
@@ -315,13 +378,132 @@
     conditionsFullscreen = !conditionsFullscreen;
   }
 
-  // ── Event Handlers ─────────────────────────────────────────────────────────
+  // ── Waypoint Handlers ─────────────────────────────────────────────────────
 
-  function activatePlacing(which: 'start' | 'end') {
-    placing = which;
-    setStatus('', `Click on the map to set ${which} point`);
-    if (mapRef) mapRef.getCanvas().style.cursor = 'crosshair';
+  function handleWaypointChange(index: number, point: { lat: number; lon: number } | null) {
+    waypoints = waypoints.map((wp, i) => i === index ? { ...wp, value: point } : wp);
+    // Update map markers
+    if (index === 0 && point) {
+      startMarker?.setLngLat([point.lon, point.lat]).addTo(mapRef!);
+    } else if (index === 0 && !point) {
+      startMarker?.remove();
+    } else if (index === waypoints.length - 1 && point) {
+      endMarker?.setLngLat([point.lon, point.lat]).addTo(mapRef!);
+    } else if (index === waypoints.length - 1 && !point) {
+      endMarker?.remove();
+    }
+    // Intermediate markers
+    updateIntermediateMarkers();
   }
+
+  function handleWaypointAdd() {
+    const newWp: UIWaypoint = { id: crypto.randomUUID(), label: '', value: null };
+    waypoints = [...waypoints.slice(0, -1), newWp, waypoints[waypoints.length - 1]!];
+    relabelWaypoints();
+  }
+
+  function handleWaypointRemove(index: number) {
+    if (index === 0 || index === waypoints.length - 1) return;
+    waypoints = waypoints.filter((_, i) => i !== index);
+    relabelWaypoints();
+    updateIntermediateMarkers();
+  }
+
+  function handleWaypointReorder(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex) return;
+    if (fromIndex < 0 || fromIndex >= waypoints.length) return;
+    if (toIndex < 0 || toIndex >= waypoints.length) return;
+    const newList = [...waypoints];
+    const [item] = newList.splice(fromIndex, 1);
+    newList.splice(toIndex, 0, item!);
+    waypoints = newList;
+    relabelWaypoints();
+    updateIntermediateMarkers();
+    // Update start/end markers on map
+    if (waypoints[0]?.value) startMarker?.setLngLat([waypoints[0].value.lon, waypoints[0].value.lat]).addTo(mapRef!);
+    else startMarker?.remove();
+    const last = waypoints[waypoints.length - 1];
+    if (last?.value) endMarker?.setLngLat([last.value.lon, last.value.lat]).addTo(mapRef!);
+    else endMarker?.remove();
+  }
+
+  function relabelWaypoints() {
+    let wpNum = 1;
+    waypoints = waypoints.map((wp, i) => ({
+      ...wp,
+      label: i === 0 ? 'Start' : i === waypoints.length - 1 ? 'End' : `Waypoint ${wpNum++}`,
+    }));
+  }
+
+  function updateIntermediateMarkers() {
+    // Remove old intermediate markers
+    for (const m of skState.routeWaypointMarkers) m.remove();
+    // Create new ones for intermediates with values
+    const newMarkers: maplibregl.Marker[] = [];
+    for (let i = 1; i < waypoints.length - 1; i++) {
+      const wp = waypoints[i];
+      if (!wp?.value) continue;
+      const el = document.createElement('div');
+      el.innerHTML = '<div style="background:#f5c2e7;width:8px;height:8px;border-radius:50%;border:1px solid #1e2230"></div>';
+      newMarkers.push(
+        new maplibregl.Marker({ element: el, anchor: 'center' })
+          .setLngLat([wp.value.lon, wp.value.lat])
+          .addTo(mapRef!)
+      );
+    }
+    skState.routeWaypointMarkers = newMarkers;
+  }
+
+  function handleLoadRoute(routeIndex: number) {
+    const route = skState.waypointRoutes[routeIndex];
+    if (!route) return;
+    const coords = route.coords;
+    if (coords.length < 2) return;
+    // Remove old markers
+    for (const m of skState.routeWaypointMarkers) m.remove();
+    startMarker?.remove();
+    endMarker?.remove();
+
+    waypoints = coords.map((coord, i) => ({
+      id: crypto.randomUUID(),
+      label: i === 0 ? 'Start' : i === coords.length - 1 ? 'End' : `Waypoint ${i}`,
+      value: { lat: coord[1]!, lon: coord[0]! },
+    }));
+
+    // Place markers
+    const first = coords[0]!;
+    startMarker?.setLngLat([first[0]!, first[1]!]).addTo(mapRef!);
+    const last = coords[coords.length - 1]!;
+    endMarker?.setLngLat([last[0]!, last[1]!]).addTo(mapRef!);
+    updateIntermediateMarkers();
+
+    // Fit bounds
+    const bounds = coords.reduce(
+      (b, [lon, lat]) => b.extend([lon!, lat!] as [number, number]),
+      new maplibregl.LngLatBounds(),
+    );
+    mapRef?.fitBounds(bounds, { padding: 30 });
+  }
+
+  // ── Context Menu Handlers ─────────────────────────────────────────────────
+
+  function handleContextSetStart() {
+    handleWaypointChange(0, { lat: contextMenu.lat, lon: contextMenu.lng });
+    contextMenu = { ...contextMenu, visible: false };
+  }
+
+  function handleContextSetEnd() {
+    handleWaypointChange(waypoints.length - 1, { lat: contextMenu.lat, lon: contextMenu.lng });
+    contextMenu = { ...contextMenu, visible: false };
+  }
+
+  function handleContextAddWaypoint() {
+    handleWaypointAdd();
+    handleWaypointChange(waypoints.length - 2, { lat: contextMenu.lat, lon: contextMenu.lng });
+    contextMenu = { ...contextMenu, visible: false };
+  }
+
+  // ── Event Handlers ─────────────────────────────────────────────────────────
 
   function handleCalculate() {
     void calcApi?.startCalculation();
@@ -346,8 +528,8 @@
           setStatus('error', 'Need at least 2 route points for analysis');
           return;
         }
-        const waypoints = coords.map(([lon, lat]) => ({ lat: lat!, lon: lon! }));
-        const results = await analyseRouteWeather(waypoints, new Date(departureTime).getTime(), csv);
+        const analyseWaypoints = coords.map(([lon, lat]) => ({ lat: lat!, lon: lon! }));
+        const results = await analyseRouteWeather(analyseWaypoints, new Date(departureTime).getTime(), csv);
         analyseResults = results;
 
         // Add route weather markers on map
@@ -372,33 +554,6 @@
     })();
   }
 
-  const OREGRUND = { lat: 60.3996, lon: 18.3403 };
-
-  function setTestRoute(s: { lat: number; lon: number }, e: { lat: number; lon: number }, departure: string) {
-    skState.startLatLon = s;
-    skState.endLatLon = e;
-    startCoordsText = `${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}`;
-    endCoordsText = `${e.lat.toFixed(4)}, ${e.lon.toFixed(4)}`;
-    departureTime = departure;
-    startMarker?.setLngLat([s.lon, s.lat]).addTo(mapRef!);
-    endMarker?.setLngLat([e.lon, e.lat]).addTo(mapRef!);
-    skState.routeWaypoints = [];
-    for (const m of skState.routeWaypointMarkers) m.remove();
-    skState.routeWaypointMarkers = [];
-  }
-
-  function handleRunTest() {
-    setTestRoute(OREGRUND, { lat: 58.5052, lon: 17.3474 }, '2026-05-24T08:00');
-  }
-
-  function handleRunHelsinki() {
-    setTestRoute(OREGRUND, { lat: 60.0881, lon: 24.953 }, '2026-06-06T02:00');
-  }
-
-  function handleRunGothenburg() {
-    setTestRoute(OREGRUND, { lat: 57.6138, lon: 11.598 }, '2026-06-06T02:00');
-  }
-
   function handleSaveRoute() {
     if (!calcState.pendingRouteData) {
       setStatus('error', 'No route to save');
@@ -418,74 +573,6 @@
     if (!r.ok) throw new Error(`HTTP ${String(r.status)}`);
     showSaveModal = false;
   }
-
-  function handleUseVesselPosition() {
-    if (!skState.vesselPosition) return;
-    const { lat, lon } = skState.vesselPosition;
-    skState.startLatLon = { lat, lon };
-    startCoordsText = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-    startMarker?.setLngLat([lon, lat]).addTo(mapRef!);
-    skState.routeWaypoints = [];
-    for (const m of skState.routeWaypointMarkers) m.remove();
-    skState.routeWaypointMarkers = [];
-  }
-
-  function handleDepartureResourceSelect(index: number) {
-    const res = skState.departureResources[index];
-    if (!res) return;
-    const { lat, lon } = res;
-    skState.startLatLon = { lat, lon };
-    startCoordsText = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-    startMarker?.setLngLat([lon, lat]).addTo(mapRef!);
-    skState.routeWaypoints = [];
-    for (const m of skState.routeWaypointMarkers) m.remove();
-    skState.routeWaypointMarkers = [];
-  }
-
-  function handleWaypointRouteChange(e: Event) {
-    const idx = parseInt((e.target as HTMLSelectElement).value);
-    // Clear existing waypoints
-    for (const m of skState.routeWaypointMarkers) m.remove();
-    skState.routeWaypointMarkers = [];
-    skState.routeWaypoints = [];
-
-    if (isNaN(idx) || !skState.waypointRoutes[idx]) return;
-    const route = skState.waypointRoutes[idx]!;
-    const coords = route.coords;
-    if (coords.length >= 2) {
-      const first = coords[0]!;
-      skState.startLatLon = { lat: first[1]!, lon: first[0]! };
-      startCoordsText = `${first[1]!.toFixed(4)}, ${first[0]!.toFixed(4)}`;
-      startMarker?.setLngLat([first[0]!, first[1]!]).addTo(mapRef!);
-
-      const last = coords[coords.length - 1]!;
-      skState.endLatLon = { lat: last[1]!, lon: last[0]! };
-      endCoordsText = `${last[1]!.toFixed(4)}, ${last[0]!.toFixed(4)}`;
-      endMarker?.setLngLat([last[0]!, last[1]!]).addTo(mapRef!);
-    }
-    // Add intermediate waypoint markers
-    const newWaypoints: { lat: number; lon: number }[] = [];
-    const newMarkers: maplibregl.Marker[] = [];
-    for (let i = 1; i < coords.length - 1; i++) {
-      const wp = { lat: coords[i]![1]!, lon: coords[i]![0]! };
-      newWaypoints.push(wp);
-      const el = document.createElement('div');
-      el.innerHTML = '<div style="background:#f5c2e7;width:8px;height:8px;border-radius:50%;border:1px solid #1e2230"></div>';
-      newMarkers.push(
-        new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([wp.lon, wp.lat]).addTo(mapRef!),
-      );
-    }
-    skState.routeWaypoints = newWaypoints;
-    skState.routeWaypointMarkers = newMarkers;
-
-    // Fit map to route bounds
-    const bounds = coords.reduce(
-      (b, [lon, lat]) => b.extend([lon!, lat!] as [number, number]),
-      new maplibregl.LngLatBounds(),
-    );
-    mapRef?.fitBounds(bounds, { padding: 30 });
-  }
-
   // ── Map Initialization ($effect — runs once when map becomes available) ────
 
   let mapInitialized = false;
@@ -499,24 +586,17 @@
     isochroneState = { sourceIds: [], layerIds: [], count: 0, map: m };
     routingWorker = new Worker(new URL('../worker.ts', import.meta.url), { type: 'module' });
 
-    // ── Map click handler (placement) ──────────────────────────────────────
-    m.on('click', (e: maplibregl.MapMouseEvent) => {
-      if (!placing) return;
-      const { lat, lng } = e.lngLat;
-      if (placing === 'start') {
-        skState.startLatLon = { lat, lon: lng };
-        startCoordsText = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-        startMarker?.setLngLat([lng, lat]).addTo(mapRef!);
-        skState.routeWaypoints = [];
-        for (const mk of skState.routeWaypointMarkers) mk.remove();
-        skState.routeWaypointMarkers = [];
-      } else if (placing === 'end') {
-        skState.endLatLon = { lat, lon: lng };
-        endCoordsText = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-        endMarker?.setLngLat([lng, lat]).addTo(mapRef!);
-      }
-      placing = null;
-      if (mapRef) mapRef.getCanvas().style.cursor = '';
+    // ── Map context menu handler ──────────────────────────────────────────
+    m.on('contextmenu', (e: maplibregl.MapMouseEvent) => {
+      e.preventDefault();
+      const container = m.getContainer().getBoundingClientRect();
+      contextMenu = {
+        visible: true,
+        x: e.point.x + container.left,
+        y: e.point.y + container.top,
+        lat: e.lngLat.lat,
+        lng: e.lngLat.lng,
+      };
     });
 
     // ── Calculation module ──────────────────────────────────────────────────
@@ -537,7 +617,7 @@
       getStartLatLon: () => skState.startLatLon,
       getEndLatLon: () => skState.endLatLon,
       getRouteWaypoints: () => skState.routeWaypoints,
-      getRoutingOptions: () => routingOptionsRef ?? null,
+      getRoutingOptions: () => settingsModalRef ?? null,
       getWindSpeedMs: () => configState.windSpeedMs,
       getWindTimes: () => windTimes,
       getWindTimesLoaded: () => windTimesLoaded,
@@ -567,13 +647,10 @@
 
     // ── SK resources ────────────────────────────────────────────────────────
     // skState imported from sk-state.svelte.ts — no bridge needed
-    let vesselPositionWs: WebSocket | null = null;
     const skDeps: SkDeps = {
       skFetch, skWebSocketUrl, map: m,
       startMarker: startMarker!,
       endMarker: endMarker!,
-      setStartCoordsText: (t: string) => { startCoordsText = t; },
-      setEndCoordsText: (t: string) => { endCoordsText = t; },
     };
 
     // ── Config ──────────────────────────────────────────────────────────────
@@ -581,12 +658,11 @@
     const configCallbacks: ConfigCallbacks = {
       setBuildVersion: (v: string) => { buildVersion = v; },
       setWaveLegendMax: (text: string) => { waveLegendMax = text; },
-      setSafetyMarginDist: (_text: string) => { /* safety margin text is hardcoded in RoutingOptions */ },
+      setSafetyMarginDist: (_text: string) => { /* handled by SettingsModal */ },
     };
 
     // ── Startup ─────────────────────────────────────────────────────────────
 
-    gribStatusHtml = '<span style="color:#89b4fa">Using Windy ECMWF forecast</span>';
 
     // Init wind scrubber (load Windy times + first overlay fetch)
     void (async () => {
@@ -661,173 +737,128 @@
       }
     }, 200);
   });
+
+  $effect(() => {
+    if (calcState.pendingRouteData && routeSummaryWaypoints.length > 0) {
+      sidebarView = 'summary';
+    }
+  });
 </script>
 
 <!-- Sidebar -->
 <div class="sidebar">
-  <h1>&#9973; Weather Routing</h1>
-  <a
-    href="https://github.com/kristianwiklund/signalk-weather-routing"
-    target="_blank"
-    rel="noopener"
-    class="github-link"
-  >
-    <svg height="12" viewBox="0 0 16 16" width="12" fill="currentColor" aria-hidden="true">
-      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-    </svg>
-    GitHub — source &amp; issues
-  </a>
-
-  <div class="section">
-    <ChartSelector map={mapRef ?? null} skConnected={skConnectedState} {skFetch} />
+  <div class="sidebar-header">
+    <h1>&#9973; Weather Routing</h1>
+    <button class="gear-btn" onclick={() => showSettings = true} title="Settings">&#9881;</button>
   </div>
 
-  <div class="section">
-    <LayerToggles
-      {regionEnabled}
+  {#if sidebarView === 'setup'}
+    <SetupPanel
+      mode={routeMode}
+      onModeChange={(m) => { routeMode = m; }}
+      {waypoints}
+      skWaypoints={skState.departureResources}
+      vesselPosition={skState.vesselPosition}
+      waypointRoutes={skState.waypointRoutes}
+      bind:departureTime={departureTime}
+      {canCalculate}
+      {calcHint}
+      {isCalculating}
+      {calcProgress}
+      {showProgress}
+      {canAnalyse}
+      analyseHint={analyseHint}
+      {isAnalysing}
+      {statusText}
+      {statusType}
+      onWaypointChange={handleWaypointChange}
+      onWaypointAdd={handleWaypointAdd}
+      onWaypointRemove={handleWaypointRemove}
+      onWaypointReorder={handleWaypointReorder}
+      onLoadRoute={handleLoadRoute}
+      onWaypointRouteChange={(e) => {
+        const idx = parseInt((e.target as HTMLSelectElement).value);
+        if (!isNaN(idx)) handleLoadRoute(idx);
+      }}
+      onCalculate={handleCalculate}
+      onAnalyse={handleAnalyse}
+    />
+  {:else}
+    <RouteSummary
+      waypoints={routeSummaryWaypoints}
+      totalDistanceNm={routeTotalDistanceNm}
+      totalDurationH={routeTotalDurationH}
+      departureTime={departureTime}
+      {statusText}
+      {statusType}
+      canSave={calcState.pendingRouteData !== null}
+      onEdit={() => { sidebarView = 'setup'; }}
+      onSave={handleSaveRoute}
+    />
+  {/if}
+</div>
+
+<!-- Right column: map + panels -->
+<div class="right-col">
+  <div class="map-wrap">
+    <!-- svelte-ignore binding_property_non_reactive -->
+    <MapLibre
+      bind:map={mapRef}
+      inlineStyle="flex:1;min-height:200px"
+      center={[18, 57]}
+      zoom={6}
+      style={{
+        version: 8,
+        sources: {
+          osm: {
+            type: 'raster',
+            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          },
+        },
+        layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+      }}
+      transformRequest={(url) => ({
+        url,
+        referrerPolicy: 'strict-origin-when-cross-origin',
+      })}
+    />
+    <MapLayerControl
       bind:windVisible={windOverlayVisible}
       bind:waveVisible={waveOverlayVisible}
       bind:currentVisible={currentOverlayVisible}
       bind:landVisible={landOverlayVisible}
-      bind:regionVisible={regionOverlayVisible}
       bind:isochroneVisible={isochroneVisibleState}
+      bind:regionVisible={regionOverlayVisible}
+      {regionEnabled}
       regions={regionListData}
       onToggleRegionAvoid={(id, avoid) => regionOverlayRef?.toggleAvoid(id, avoid)}
     />
-  </div>
-
-  <div class="section">
-    <RoutingOptions bind:this={routingOptionsRef} />
-  </div>
-
-  <div class="section">
-    <div class="section-title">Forecast</div>
-    <div>{@html gribStatusHtml}</div>
-  </div>
-
-  <div class="section">
-    <DepartureSection
-      startCoords={startCoordsText}
-      vesselAvailable={skState.vesselPosition !== null}
-      resources={skState.departureResources}
-      onSetOnMap={() => activatePlacing('start')}
-      onUseVesselPosition={handleUseVesselPosition}
-      onResourceSelect={handleDepartureResourceSelect}
+    <Toast
+      message={toastMessage}
+      type={toastType}
+      visible={toastVisible}
+      onDismiss={() => { toastVisible = false; }}
+    />
+    <div class="wave-legend" class:visible={waveOverlayVisible}>
+      <div class="wave-legend-bar"></div>
+      <div class="wave-legend-labels">
+        <span>0</span>
+        <span>{waveLegendMax}</span>
+      </div>
+    </div>
+    <MapContextMenu
+      visible={contextMenu.visible}
+      x={contextMenu.x}
+      y={contextMenu.y}
+      onSetStart={handleContextSetStart}
+      onSetEnd={handleContextSetEnd}
+      onAddWaypoint={handleContextAddWaypoint}
+      onClose={() => { contextMenu = { ...contextMenu, visible: false }; }}
     />
   </div>
 
-  {#if skState.waypointRoutes.length > 0}
-    <div class="section">
-      <div class="section-title">Route waypoints</div>
-      <select class="select-input" onchange={handleWaypointRouteChange}>
-        <option value="">— route waypoints —</option>
-        {#each skState.waypointRoutes as route, i}
-          <option value={String(i)}>{route.label}</option>
-        {/each}
-      </select>
-    </div>
-  {/if}
-
-  <div class="section">
-    <div class="section-title">Destination</div>
-    <div class="coord-row">
-      <button class="marker-btn" onclick={() => activatePlacing('end')}>Set on map</button>
-      <span class="coord-value">{endCoordsText}</span>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">Departure Time</div>
-    <input type="datetime-local" class="datetime-input" bind:value={departureTime} />
-  </div>
-
-  <div class="section">
-    <PolarInput onPolarChange={(csv) => { polarCsv = csv; }} />
-  </div>
-
-  <ActionButtons
-    {canCalculate} {canAnalyse} {isCalculating} {isAnalysing}
-    {calcHint} {analyseHint} {calcProgress} {showProgress}
-    hasPendingRoute={calcState.pendingRouteData !== null}
-    onCalculate={handleCalculate} onAnalyse={handleAnalyse}
-    onRunTest={handleRunTest} onRunHelsinki={handleRunHelsinki}
-    onRunGothenburg={handleRunGothenburg} onSaveRoute={handleSaveRoute}
-  />
-
-  {#if analyseResults.length > 0}
-    <RouteWeatherTable data={analyseResults} />
-  {/if}
-
-  <div class="status-box" class:error={statusType === 'error'} class:done={statusType === 'done'} class:loading={statusType === 'loading'}>
-    {statusText}
-  </div>
-
-  <div class="section" style="margin-top:auto">
-    <SkServerSettings currentUrl={localStorage.getItem('wr-signalk-url') ?? ''} />
-  </div>
-  <div class="build-version">{buildVersion}</div>
-</div>
-
-<!-- Overlays (tooltips, legends, modals) -->
-<div bind:this={graphTooltipEl} class="graph-tooltip"></div>
-<div class="wave-legend" class:visible={waveOverlayVisible}>
-  <div class="wave-legend-bar"></div>
-  <div class="wave-legend-labels">
-    <span>0</span>
-    <span>{waveLegendMax}</span>
-  </div>
-</div>
-
-<Disclaimer />
-
-<FailurePopup
-  message={failurePopupMsg}
-  type={failurePopupType}
-  visible={failurePopupVisible}
-  onClose={() => { failurePopupVisible = false; }}
-/>
-
-{#if showSaveModal}
-  <SaveRouteModal
-    visible={true}
-    onSave={handleSaveRouteConfirm}
-    onCancel={() => { showSaveModal = false; }}
-  />
-{/if}
-
-<!-- Right column: map + panels -->
-<div class="right-col">
-  <!-- svelte-ignore binding_property_non_reactive -->
-  <MapLibre
-    bind:map={mapRef}
-    inlineStyle="flex:1;min-height:200px"
-    center={[18, 57]}
-    zoom={6}
-    style={{
-      version: 8,
-      sources: {
-        osm: {
-          type: 'raster',
-          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-          tileSize: 256,
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        },
-      },
-      layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-    }}
-    transformRequest={(url) => ({
-      url,
-      referrerPolicy: 'strict-origin-when-cross-origin',
-    })}
-  />
-  <!-- SVG defs for region hatch pattern -->
-  <svg width="0" height="0" style="position: absolute">
-    <defs>
-      <pattern id="hatch-avoid" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
-        <line x1="0" y1="0" x2="0" y2="8" stroke="#f38ba8" stroke-width="1.5" opacity="0.6" />
-      </pattern>
-    </defs>
-  </svg>
   <TimeScrubber
     {windTimes}
     {scrubberIndex}
@@ -837,15 +868,15 @@
     {nowMarkerLeft}
     {showRangeToggle}
     {rangeToggleLabel}
-    {showRightSpacer}
+    showRightSpacer={showRightSpacer}
     visible={scrubberVisible}
     onIndexChange={handleScrubberChange}
     onJumpToNow={handleJumpToNow}
     onToggleRange={handleToggleRange}
     onUseAsDeparture={handleUseAsDeparture}
   />
+
   <ConditionsPanel
-    bind:this={conditionsPanelRef}
     visible={conditionsVisible}
     expanded={conditionsExpanded}
     fullscreen={conditionsFullscreen}
@@ -855,18 +886,50 @@
     hasWave={conditionsHasWave}
     onToggle={handleConditionsToggle}
     onFullscreenToggle={handleConditionsFullscreenToggle}
+    bind:this={conditionsPanelRef}
   />
-  <div id="meteogram-panel">
-    <Meteogram data={[]} />
-  </div>
+
+  {#if analyseResults.length > 0}
+    <div class="results-table-panel">
+      <RouteWeatherTable data={analyseResults} />
+    </div>
+  {/if}
 </div>
 
-<!-- Renderless overlay components (manage their own map layers) -->
+<div bind:this={graphTooltipEl} class="graph-tooltip"></div>
+
+<!-- Renderless overlay components -->
 <WindOverlay map={mapRef ?? null} points={windPointsData} visible={windOverlayVisible} />
 <WaveOverlay map={mapRef ?? null} points={wavePointsData} visible={waveOverlayVisible} gridMeta={waveGridMetaData} maxM={configState.waveOverlayMaxM} />
 <CurrentOverlay map={mapRef ?? null} points={currentPointsData} visible={currentOverlayVisible} />
 <LandOverlay map={mapRef ?? null} visible={landOverlayVisible} {useSafetyMargin} />
 <RegionOverlay map={mapRef ?? null} visible={regionOverlayVisible} {skFetch} bind:this={regionOverlayRef} onRegionsChange={(r) => { regionListData = r; }} />
+
+<!-- Modals -->
+{#if showSettings}
+  <SettingsModal
+    visible={showSettings}
+    onPolarChange={(csv) => { polarCsv = csv; }}
+    {polarLoaded}
+    map={mapRef ?? null}
+    skConnected={skConnectedState}
+    {skFetch}
+    currentSkUrl={localStorage.getItem('wr-signalk-url') ?? ''}
+    {buildVersion}
+    onClose={() => { showSettings = false; }}
+    bind:this={settingsModalRef}
+  />
+{/if}
+
+{#if showSaveModal}
+  <SaveRouteModal
+    visible={true}
+    onSave={handleSaveRouteConfirm}
+    onCancel={() => { showSaveModal = false; }}
+  />
+{/if}
+
+<Disclaimer />
 
 <style>
   .sidebar {
@@ -878,24 +941,28 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 4px;
     border-right: 2px solid #313244;
   }
   .sidebar h1 {
     font-size: 16px;
-    margin-bottom: 2px;
+    margin: 0;
     color: #cdd6f4;
   }
-  .github-link {
-    display: inline-flex;
+  .sidebar-header {
+    display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 4px;
-    color: #a6adc8;
-    font-size: 11px;
-    text-decoration: none;
     margin-bottom: 8px;
   }
-  .github-link:hover { color: #cdd6f4; }
+  .gear-btn {
+    background: none;
+    border: none;
+    color: #a6adc8;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px;
+  }
+  .gear-btn:hover { color: #cdd6f4; }
 
   .right-col {
     flex: 1;
@@ -904,89 +971,27 @@
     min-width: 0;
     background: #1e2230;
   }
-  .map-container {
+  .map-wrap {
+    position: relative;
     flex: 1;
     min-height: 200px;
-  }
-
-  .section {
-    background: #2a2f45;
-    border-radius: 6px;
-    padding: 8px;
-    margin-bottom: 4px;
-  }
-  .section-title {
-    font-size: 11px;
-    color: #6c7086;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 4px;
-  }
-  .coord-row {
     display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .coord-value {
-    font-size: 12px;
-    color: #a6adc8;
-  }
-  .marker-btn {
-    font-size: 11px;
-    padding: 3px 8px;
-    background: #313244;
-    color: #cdd6f4;
-    border: 1px solid #45475a;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .marker-btn:hover { background: #45475a; }
-
-  .select-input {
-    width: 100%;
-    background: #313244;
-    color: #cdd6f4;
-    border: 1px solid #45475a;
-    border-radius: 4px;
-    padding: 4px 6px;
-    font-size: 12px;
+    flex-direction: column;
   }
 
-  .datetime-input {
-    width: 100%;
-    background: #313244;
-    color: #cdd6f4;
-    border: 1px solid #45475a;
-    border-radius: 4px;
-    padding: 4px 6px;
-    font-size: 12px;
-  }
-
-  .build-version {
-    font-size: 10px;
-    color: #585b70;
-    text-align: center;
-    padding: 8px 0 4px;
-    user-select: text;
-  }
-
-  /* Status box */
-  .status-box {
+  .results-table-panel {
+    background: #1e2230;
+    border-top: 1px solid #313244;
     padding: 8px;
-    font-size: 12px;
-    text-align: center;
-    border-radius: 4px;
-    color: #cdd6f4;
+    max-height: 250px;
+    overflow-y: auto;
   }
-  .status-box.error { background: #45475a; color: #f38ba8; }
-  .status-box.done { color: #a6e3a1; }
-  .status-box.loading { color: #89b4fa; }
 
   /* Wave legend */
   .wave-legend {
     position: absolute;
     bottom: 30px;
-    left: 340px;
+    left: 10px;
     background: rgba(30, 34, 48, 0.9);
     padding: 4px 8px;
     border-radius: 4px;
