@@ -8,10 +8,116 @@ import type {
   CalculationRequest,
   LandPolygon,
   CurrentProvider,
+  WindProvider,
   WindVector,
 } from '../../types';
-import { MultiFileWindProvider } from '../windprovider';
 import { buildLandEdgeIndex } from '../landmask';
+
+// ── Inline test wind provider (replaces deleted MultiFileWindProvider) ────────
+
+type GridParams = Pick<GribData, 'latMin' | 'latStep' | 'lonMin' | 'lonStep' | 'nLat' | 'nLon'>;
+function bilinear(grid: Float32Array, grib: GridParams, lat: number, lon: number): number {
+  const latF = (lat - grib.latMin) / grib.latStep;
+  const lonF = (lon - grib.lonMin) / grib.lonStep;
+  const latI = Math.max(0, Math.min(grib.nLat - 2, Math.floor(latF)));
+  const lonI = Math.max(0, Math.min(grib.nLon - 2, Math.floor(lonF)));
+  const tLat = latF - latI;
+  const tLon = lonF - lonI;
+  const i00 = latI * grib.nLon + lonI;
+  const i10 = (latI + 1) * grib.nLon + lonI;
+  const i01 = latI * grib.nLon + (lonI + 1);
+  const i11 = (latI + 1) * grib.nLon + (lonI + 1);
+  return (
+    (1 - tLat) * (1 - tLon) * (grid[i00] ?? 0) +
+    tLat * (1 - tLon) * (grid[i10] ?? 0) +
+    (1 - tLat) * tLon * (grid[i01] ?? 0) +
+    tLat * tLon * (grid[i11] ?? 0)
+  );
+}
+
+function nearestTimeIndex(grib: GribData, t: Date): number {
+  const ms = t.getTime();
+  let best = 0;
+  let bestDiff = Math.abs((grib.times[0]?.getTime() ?? 0) - ms);
+  for (let i = 1; i < grib.times.length; i++) {
+    const diff = Math.abs((grib.times[i]?.getTime() ?? 0) - ms);
+    if (diff < bestDiff) { bestDiff = diff; best = i; }
+  }
+  return best;
+}
+
+class TestWindProvider implements WindProvider {
+  readonly times: Date[];
+  private readonly files: GribFileEntry[];
+
+  constructor(files: GribFileEntry[]) {
+    this.files = files;
+    const msSet = new Set<number>();
+    for (const f of files) {
+      if (f.data) for (const t of f.data.times) msSet.add(t.getTime());
+    }
+    this.times = Array.from(msSet).sort((a, b) => a - b).map((ms) => new Date(ms));
+  }
+
+  private selectFile(lat: number, lon: number, timeIdx: number): GribFileEntry | undefined {
+    const t = this.times[timeIdx];
+    if (!t) return undefined;
+    const tMs = t.getTime();
+    return this.files.find((e) => {
+      const m = e.meta;
+      return lat >= m.latMin && lat <= m.latMax && lon >= m.lonMin && lon <= m.lonMax &&
+        m.timeStart.getTime() <= tMs && m.timeEnd.getTime() >= tMs;
+    });
+  }
+
+  getWind(lat: number, lon: number, timeIdx: number): WindVector {
+    const f = this.selectFile(lat, lon, timeIdx);
+    if (!f?.data) return { u: 0, v: 0 };
+    const t = this.times[timeIdx];
+    if (!t) return { u: 0, v: 0 };
+    const ti = nearestTimeIndex(f.data, t);
+    const u10Grid = f.data.u10[ti];
+    const v10Grid = f.data.v10[ti];
+    if (u10Grid === undefined || v10Grid === undefined) return { u: 0, v: 0 };
+    return { u: bilinear(u10Grid, f.data, lat, lon), v: bilinear(v10Grid, f.data, lat, lon) };
+  }
+
+  getWave(lat: number, lon: number, t: Date): number | undefined {
+    const tMs = t.getTime();
+    for (const f of this.files) {
+      const swh = f.data?.swhByTime;
+      if (swh === undefined || swh.size === 0) continue;
+      const m = f.meta;
+      if (lat < m.latMin || lat > m.latMax || lon < m.lonMin || lon > m.lonMax) continue;
+      if (m.timeStart.getTime() > tMs || m.timeEnd.getTime() < tMs) continue;
+      let bestKey = 0;
+      let bestDiff = Infinity;
+      for (const key of swh.keys()) {
+        const diff = Math.abs(key - tMs);
+        if (diff < bestDiff) { bestDiff = diff; bestKey = key; }
+      }
+      const grid = swh.get(bestKey);
+      if (grid === undefined) return undefined;
+      return bilinear(grid, f.data?.swhGrid ?? f.data ?? { latMin: 0, latStep: 1, lonMin: 0, lonStep: 1, nLat: 1, nLon: 1 }, lat, lon);
+    }
+    return undefined;
+  }
+
+  coversPoint(lat: number, lon: number): boolean {
+    return this.files.some((e) => {
+      const m = e.meta;
+      return lat >= m.latMin && lat <= m.latMax && lon >= m.lonMin && lon <= m.lonMax;
+    });
+  }
+
+  coversPointAtTime(lat: number, lon: number, timeIdx: number): boolean {
+    return this.selectFile(lat, lon, timeIdx) !== undefined;
+  }
+
+  getFilePathForPoint(lat: number, lon: number, timeIdx: number): string {
+    return this.selectFile(lat, lon, timeIdx)?.meta.path ?? '';
+  }
+}
 
 // Build a tiny synthetic GRIB: 3×3 grid, 2 time steps, constant 5 m/s southerly wind
 function makeGrib(times?: Date[]): GribData {
@@ -64,8 +170,8 @@ function makeEntry(grib: GribData): GribFileEntry {
   };
 }
 
-function makeWind(grib: GribData): MultiFileWindProvider {
-  return new MultiFileWindProvider([makeEntry(grib)]);
+function makeWind(grib: GribData): TestWindProvider {
+  return new TestWindProvider([makeEntry(grib)]);
 }
 
 // Simple polar: 5 kt at all TWA>0, 0 on the nose
@@ -572,7 +678,7 @@ void test('calculate: REQ-72 frontier collapse after step 1 returns partial rout
     },
     data: grib,
   };
-  const wind = new MultiFileWindProvider([entry]);
+  const wind = new TestWindProvider([entry]);
   const polar = makePolar();
   const req: CalculationRequest = {
     start: { lat: 41, lon: 11 },
@@ -692,7 +798,7 @@ void test('calculate: REQ-83 wait-for-wind keeps frontier alive across calm step
     },
     data: grib,
   };
-  const wind = new MultiFileWindProvider([entry]);
+  const wind = new TestWindProvider([entry]);
   const polar = makePolar();
   const req: CalculationRequest = {
     start: { lat: 41, lon: 11 },

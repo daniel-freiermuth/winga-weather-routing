@@ -207,3 +207,15 @@ export interface RegionRing {
 export interface RegionIndex {
   regions: Map<string, RegionRing>;
 }
+
+/** Minimal GeoJSON geometry union covering the polygon types used by region avoidance. */
+export type GeoJsonGeometry =
+  | { type: 'Polygon'; coordinates: number[][][] }
+  | { type: 'MultiPolygon'; coordinates: number[][][][] };
+
+export interface SignalKResourceEntry {
+  id?: string;
+  name?: string;
+  feature?: { geometry?: GeoJsonGeometry };
+  [key: string]: unknown;
+}

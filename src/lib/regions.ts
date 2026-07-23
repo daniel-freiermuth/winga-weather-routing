@@ -1,7 +1,6 @@
 // SignalK region avoidance: loads regions from resources/regions and checks segment/point against them.
 
-import type { RegionRing, RegionIndex } from '../types';
-import type { SignalKResourceEntry, GeoJsonGeometry } from './signalk-app';
+import type { RegionRing, RegionIndex, SignalKResourceEntry, GeoJsonGeometry } from '../types';
 import { pointInRing, segmentCrossesRing } from './landmask';
 
 // Builds a RegionIndex from SignalK resource data.
