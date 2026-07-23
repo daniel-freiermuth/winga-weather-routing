@@ -111,7 +111,6 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     const headingStep = Number(options?.['headingStep'] ?? DEFAULT_HEADING_STEP);
     const sectorSize = Number(options?.['sectorSize'] ?? DEFAULT_SECTOR_SIZE);
     const minBoatSpeed = Number(options?.['minBoatSpeed'] ?? DEFAULT_MIN_BOAT_SPEED);
-    const arrivalRadiusNm = Number(options?.['arrivalRadiusNm'] ?? DEFAULT_ARRIVAL_RADIUS_NM);
     const maxWindKn = Number(options?.['maxWindKn'] ?? 0); // 0 = no limit
     const maxWaveM = Number(options?.['maxWaveM'] ?? 0); // 0 = no limit
     const motorSpeedKn = Number(options?.['motorSpeedKn'] ?? 0); // 0 = no motor
@@ -123,12 +122,30 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
     const { start, end } = request;
     const departureTime = new Date(request.departureTime);
-    const startTimeIdx = nearestIdx(wind.times, departureTime);
-    const seedTime = wind.times[startTimeIdx];
-    if (seedTime === undefined) throw new Error('BUG: startTimeIdx out of times bounds');
-    const nSteps = wind.times.length - startTimeIdx - 1;
 
-    if (nSteps <= 0) throw new Error('Departure time is at or after the end of the forecast data');
+    // ── Validate forecast availability ──────────────────────────────────────
+    const forecastEnd = wind.times[wind.times.length - 1];
+    if (wind.times.length < 2 || forecastEnd === undefined) throw new Error('Departure time is at or after the end of the forecast data');
+    const forecastEndMs = forecastEnd.getTime();
+    const departureMs = departureTime.getTime();
+    if (departureMs >= forecastEndMs) throw new Error('Departure time is at or after the end of the forecast data');
+
+    // ── Adaptive timestep ───────────────────────────────────────────────────
+    const directDistNm = haversineNM(start.lat, start.lon, end.lat, end.lon);
+    const estimatedSpeedKn = 5; // reasonable sailing average
+    const forecastDurationH = (forecastEndMs - departureMs) / 3_600_000;
+    const estimatedDurationH = Math.min(directDistNm / estimatedSpeedKn, forecastDurationH);
+    const targetSteps = 100;
+    const stepDurationH = Math.max(0.25, estimatedDurationH / targetSteps); // at least 15 min
+    const stepDurationMs = stepDurationH * 3_600_000;
+    const estimatedTotalSteps = Math.ceil(estimatedDurationH / stepDurationH);
+
+    // ── Dynamic arrival radius ──────────────────────────────────────────────
+    const configuredArrivalRadius = options?.['arrivalRadiusNm'];
+    const dynamicRadius = Math.max(0.1, Math.min(directDistNm / 100, DEFAULT_ARRIVAL_RADIUS_NM));
+    const arrivalRadiusNm = configuredArrivalRadius != null && Number(configuredArrivalRadius) > 0
+      ? Number(configuredArrivalRadius)
+      : dynamicRadius;
 
     const avoidIds = new Set(request.avoidRegionIds ?? []);
 
@@ -140,12 +157,12 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         throw new Error('Destination is inside an avoided region — move it to open water or unmark that region');
     }
 
-    const seedVec = wind.getWind(start.lat, start.lon, startTimeIdx);
+    const seedVec = wind.getWindAtTime(start.lat, start.lon, departureMs);
     let isochrone: IsochronePoint[] = [
       {
         lat: start.lat,
         lon: start.lon,
-        time: seedTime,
+        time: departureTime,
         heading: 0,
         twa: 0,
         tws: windSpeedKnots(seedVec.u, seedVec.v),
@@ -161,12 +178,22 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     let lastFrontier: IsochronePoint[] | null = null;
     const lastRejected = { byLand: 0, byPolar: 0, byGrib: 0 };
 
-    for (let step = startTimeIdx; step < wind.times.length - 1; step++) {
+    let currentTimeMs = departureMs;
+
+    for (let step = 0; step < 500; step++) { // hard cap at 500 steps
+      const nextTimeMs = currentTimeMs + stepDurationMs;
+      if (nextTimeMs > forecastEndMs) break; // past forecast
+
+      // On-demand tile fetch for this time step (and neighbor for interpolation)
+      if (wind.prefetchForTime) await wind.prefetchForTime(currentTimeMs);
+
+      const nextTime = new Date(nextTimeMs);
+      const dtHours = stepDurationH;
+
+      // Compute nearest time index for backward-compat APIs (getFilePathForPoint, coversPointAtTime)
+      const nearestTimeIdx = nearestIdx(wind.times, new Date(currentTimeMs));
+
       const stepStart = performance.now();
-      const nextTime = wind.times[step + 1];
-      const currTime = wind.times[step];
-      if (currTime === undefined || nextTime === undefined) throw new Error('BUG: step index out of times bounds');
-      const dtHours = (nextTime.getTime() - currTime.getTime()) / 3_600_000;
       const candidates: IsochronePoint[] = [];
 
       let windLookupMs = 0;
@@ -190,8 +217,8 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         const pointToDestBearing = bearingTo(point.lat, point.lon, end.lat, end.lon);
 
         const t0wind = performance.now();
-        const windVec = wind.getWind(point.lat, point.lon, step);
-        const gribFilePath = wind.getFilePathForPoint(point.lat, point.lon, step);
+        const windVec = wind.getWindAtTime(point.lat, point.lon, currentTimeMs);
+        const gribFilePath = wind.getFilePathForPoint(point.lat, point.lon, nearestTimeIdx);
         windLookupMs += performance.now() - t0wind;
 
         const tws = windSpeedKnots(windVec.u, windVec.v);
@@ -202,7 +229,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           continue;
         }
         if (maxWaveM > 0) {
-          const wh = wind.getWave(point.lat, point.lon, currTime);
+          const wh = wind.getWave(point.lat, point.lon, new Date(currentTimeMs));
           if (wh != null && wh > maxWaveM) continue;
         }
 
@@ -280,10 +307,14 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
             newLon += (cur.u * dtS) / (1852 * 60 * Math.cos(point.lat * DEG_TO_RAD));
           }
 
-          if (!wind.coversPointAtTime(newLat, newLon, step)) {
+          // Domain check: prefer ms-based check, fall back to index-based
+          const covered = wind.coversPointAtTimeMs
+            ? wind.coversPointAtTimeMs(newLat, newLon, nextTimeMs)
+            : wind.coversPointAtTime(newLat, newLon, nearestTimeIdx);
+          if (!covered) {
             rejectedByGrib++;
             continue;
-          } // discard candidates outside spatiotemporal GRIB domain (BUG-37, BUG-75)
+          }
 
           if (edgeIndex) {
             landChecksPerformed++;
@@ -374,7 +405,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           };
         }
         throw new RoutingError(
-          `No reachable positions at step ${String(step - startTimeIdx + 1)} — ${reasonText(reason)}${reason === 'wind' ? ' to make progress' : ''} ${counts}`,
+          `No reachable positions at step ${String(step + 1)} — ${reasonText(reason)}${reason === 'wind' ? ' to make progress' : ''} ${counts}`,
           reason,
         );
       }
@@ -396,7 +427,9 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
       const frontier: [number, number][] = isochrone.map((p) => [p.lat, p.lon]);
       stepsCompleted++;
-      onProgress(Math.round(((step - startTimeIdx + 1) / nSteps) * 100), frontier);
+      const progressPct = Math.min(Math.round(((stepsCompleted + 1) / estimatedTotalSteps) * 100), 99);
+      onProgress(progressPct, frontier);
+      currentTimeMs = nextTimeMs;
       await new Promise<void>((resolve) => { setTimeout(resolve, 0); }); // yield event loop for progress updates
     }
 

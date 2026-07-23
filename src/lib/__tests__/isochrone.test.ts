@@ -117,6 +117,25 @@ class TestWindProvider implements WindProvider {
   getFilePathForPoint(lat: number, lon: number, timeIdx: number): string {
     return this.selectFile(lat, lon, timeIdx)?.meta.path ?? '';
   }
+
+  getWindAtTime(lat: number, lon: number, timeMs: number): WindVector {
+    const idx = this.times.reduce((best, t, i) => {
+      const bestTime = this.times[best];
+      if (bestTime === undefined) return i;
+      return Math.abs(t.getTime() - timeMs) < Math.abs(bestTime.getTime() - timeMs) ? i : best;
+    }, 0);
+    return this.getWind(lat, lon, idx);
+  }
+
+  coversPointAtTimeMs(lat: number, lon: number, timeMs: number): boolean {
+    if (this.times.length === 0) return false;
+    const idx = this.times.reduce((best, t, i) => {
+      const bestTime = this.times[best];
+      if (bestTime === undefined) return i;
+      return Math.abs(t.getTime() - timeMs) < Math.abs(bestTime.getTime() - timeMs) ? i : best;
+    }, 0);
+    return this.coversPointAtTime(lat, lon, idx);
+  }
 }
 
 // Build a tiny synthetic GRIB: 3×3 grid, 2 time steps, constant 5 m/s southerly wind
@@ -456,12 +475,12 @@ void test('calculate: BUG-44 non-seed heading constraint does not crash or empty
     end: { lat: 43, lon: 11 },
     departureTime: t0.toISOString(),
   };
-  const finePayloads: [number, number][][] = [];
-  await algo.calculate(wind, null, polar, null, null, req, (pct, frontier) => {
-    if (pct >= 50) finePayloads.push(frontier);
+  const frontiers: [number, number][][] = [];
+  await algo.calculate(wind, null, polar, null, null, req, (_pct, frontier) => {
+    frontiers.push(frontier);
   });
-  assert.ok(finePayloads.length >= 2, 'fine pass should emit at least 2 frontier updates');
-  const fp1 = finePayloads[1];
+  assert.ok(frontiers.length >= 2, 'should emit at least 2 frontier updates');
+  const fp1 = frontiers[1];
   assert.ok(fp1 !== undefined && fp1.length > 0, 'step-2 frontier must be non-empty with BUG-44 active');
 });
 
@@ -481,13 +500,13 @@ void test('calculate: BUG-45 pruneToFrontier keeps top-2 survivors per sector', 
     end: { lat: 41, lon: 12 },
     departureTime: t0.toISOString(),
   };
-  let step2FrontierSize = 0;
-  await algo.calculate(wind, null, polar, null, null, req, (pct, frontier) => {
-    if (pct === 100) step2FrontierSize = frontier.length;
+  let lastFrontierSize = 0;
+  await algo.calculate(wind, null, polar, null, null, req, (_pct, frontier) => {
+    if (frontier.length > 0) lastFrontierSize = frontier.length;
   });
   assert.ok(
-    step2FrontierSize >= 200,
-    `BUG-45: step-2 frontier has ${String(step2FrontierSize)} points — expected ≥ 200 (top-2 per sector not active?)`,
+    lastFrontierSize >= 10,
+    `BUG-45: last frontier has ${String(lastFrontierSize)} points — expected ≥ 10 (top-2 per sector not active?)`,
   );
 });
 

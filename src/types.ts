@@ -72,10 +72,18 @@ export interface CurrentProvider {
 export interface WindProvider {
   readonly times: Date[]; // merged, sorted, deduplicated time axis across all files
   getWind(lat: number, lon: number, timeIdx: number): WindVector;
+  /** Wind at continuous time (ms) with temporal interpolation */
+  getWindAtTime(lat: number, lon: number, timeMs: number): WindVector;
   getWave(lat: number, lon: number, t: Date): number | undefined;
+  /** Wave height at continuous time (ms) */
+  getWaveAtTime?(lat: number, lon: number, timeMs: number): number | undefined;
   coversPoint(lat: number, lon: number): boolean;
   coversPointAtTime(lat: number, lon: number, timeIdx: number): boolean;
+  /** Check if a point is covered at a specific time in ms */
+  coversPointAtTimeMs?(lat: number, lon: number, timeMs: number): boolean;
   getFilePathForPoint(lat: number, lon: number, timeIdx: number): string;
+  /** Fetch tiles on-demand for a specific time step. Call before each algorithm step. */
+  prefetchForTime?(timeMs: number): Promise<void>;
 }
 
 export interface GribData {

@@ -55,16 +55,12 @@ function post(msg: OutMessage): void {
 async function handleCalculate(payload: CalculatePayload): Promise<void> {
   const { request, polarCsv, tileBbox, landIndexUrl, dilatedIndexUrl, windModel, useSafetyMargin } = payload;
 
-  // Parse departure time bounds
   const departureMs = new Date(request.departureTime).getTime();
-  // Estimate a generous arrival window: 15 days (max ECMWF premium) from departure
-  const arrivalMs = departureMs + 15 * 24 * 3_600_000;
-
   post({ type: 'progress', pct: 0, frontier: [] });
 
   // 1. Load polar (synchronous — just CSV parsing)
   const polar = parsePolarCsv(polarCsv);
-
+  console.log('[routing] Polar TWS:', polar.tws, 'TWA:', polar.twa, 'Speeds:', polar.speeds);
   // Helper: fetch a .bin.gz URL, auto-detecting whether the server already
   // decompressed it (Content-Encoding: gzip) or we need to decompress manually.
   async function fetchGzBinary(url: string): Promise<ArrayBuffer> {
@@ -108,17 +104,27 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
       .catch(() => null);
   }
 
+  // Best available zoom that fits in max 2×2 tiles (Windy serves zoom 3–4)
+  const routePoints = [request.start, request.end, ...(request.waypoints ?? [])];
+  const routeBbox = {
+    latMin: Math.min(...routePoints.map(p => p.lat)) - 1,
+    latMax: Math.max(...routePoints.map(p => p.lat)) + 1,
+    lonMin: Math.min(...routePoints.map(p => p.lon)) - 1,
+    lonMax: Math.max(...routePoints.map(p => p.lon)) + 1,
+  };
+  const zoom = TileWindProvider.computeZoom(routeBbox, 2);
   const windProvider = new TileWindProvider({
     windModel: windModel ?? 'ecmwf',
+    zoom,
   });
-  const currentProvider = new TileCurrentProvider();
+  const currentProvider = new TileCurrentProvider(zoom);
 
   // All loading in parallel
   const [edgeIndex, dilatedEdgeIndex] = await Promise.all([
     landFetch,
     dilatedFetch,
-    windProvider.load(tileBbox, departureMs, arrivalMs),
-    currentProvider.load(tileBbox, departureMs, arrivalMs),
+    windProvider.load(tileBbox),
+    currentProvider.load(tileBbox, departureMs, departureMs + 72 * 3_600_000),
   ]);
 
   post({ type: 'progress', pct: 10, frontier: [] });

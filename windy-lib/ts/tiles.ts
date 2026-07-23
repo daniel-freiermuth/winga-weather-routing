@@ -298,3 +298,54 @@ export const browserRgbaDecoder: RgbaDecoder = async (url: string): Promise<Uint
   return new Uint8Array(img.data.buffer);
 };
 
+
+/**
+ * Fractional pixel coordinates within a 257×257 data tile for a given lat/lon.
+ * Unlike `latLonToPixel`, does NOT round — returns continuous values for
+ * bilinear interpolation.
+ */
+export function latLonToPixelFrac(
+  lat: number, lon: number, z: number, tileX: number, tileY: number
+): { px: number; py: number } {
+  const n = 2 ** z;
+  const fx = ((lon + 180) / 360) * n - tileX;
+  const latRad = (lat * Math.PI) / 180;
+  const fy =
+    ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) *
+      n -
+    tileY;
+  return {
+    px: fx * (TILE_SIZE - 1),
+    py: fy * (TILE_SIZE - 1),
+  };
+}
+
+/**
+ * Bilinear interpolation of 4 surrounding pixels in a decoded tile.
+ * Falls back to nearest-pixel sampling when any corner has no data.
+ */
+export function sampleTileBilinear(
+  rgba: Uint8Array, header: WindyTileHeader,
+  px: number, py: number, isOceanModel = false
+): WindyTilePixelValue {
+  const x0 = Math.floor(px), y0 = Math.floor(py);
+  const x1 = Math.min(x0 + 1, TILE_SIZE - 1);
+  const y1 = Math.min(y0 + 1, TILE_SIZE - 1);
+  const fx = px - x0, fy = py - y0;
+
+  const s00 = sampleTilePixel(rgba, header, x0, y0, isOceanModel);
+  const s10 = sampleTilePixel(rgba, header, x1, y0, isOceanModel);
+  const s01 = sampleTilePixel(rgba, header, x0, y1, isOceanModel);
+  const s11 = sampleTilePixel(rgba, header, x1, y1, isOceanModel);
+
+  // If any corner has no data, fall back to nearest
+  if (!s00.hasData || !s10.hasData || !s01.hasData || !s11.hasData) {
+    return sampleTilePixel(rgba, header, Math.round(px), Math.round(py), isOceanModel);
+  }
+
+  const u = s00.u * (1 - fx) * (1 - fy) + s10.u * fx * (1 - fy) + s01.u * (1 - fx) * fy + s11.u * fx * fy;
+  const v = s00.v * (1 - fx) * (1 - fy) + s10.v * fx * (1 - fy) + s01.v * (1 - fx) * fy + s11.v * fx * fy;
+  const speed = Math.sqrt(u * u + v * v);
+  const direction = ((Math.atan2(u, v) * 180) / Math.PI + 360) % 360;
+  return { u, v, speed, direction, hasData: true };
+}

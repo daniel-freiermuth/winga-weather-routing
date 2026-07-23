@@ -38,9 +38,9 @@ import {
   WINDY_MODELS,
   buildTileUrl,
   decodeTileHeader,
-  sampleTilePixel,
+  sampleTileBilinear,
   latLonToTile,
-  latLonToPixel,
+  latLonToPixelFrac,
   refToCompact,
   getValidTimes,
   fetchMinifest,
@@ -93,17 +93,20 @@ async function fetchAndDecode(url: string): Promise<CachedTile> {
   return pending;
 }
 
-/** Find the closest minifest step to a target timestamp. */
-function closestStepIdx(steps: { iso: string; compact: string }[], targetMs: number): number {
-  let best = 0;
-  let bestDiff = Infinity;
-  for (let i = 0; i < steps.length; i++) {
-    const s = steps[i];
-    if (s === undefined) continue;
-    const diff = Math.abs(new Date(s.iso).getTime() - targetMs);
-    if (diff < bestDiff) { bestDiff = diff; best = i; }
+/** Find the closest minifest step to a target timestamp. Uses binary search on sorted steps. */
+function closestStepIdx(steps: { iso: string; compact: string }[], targetMs: number, precomputedMs?: number[]): number {
+  if (steps.length === 0) return 0;
+  const ms = precomputedMs ?? steps.map(s => new Date(s.iso).getTime());
+  // Binary search for nearest
+  let lo = 0, hi = ms.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (ms[mid]! < targetMs) lo = mid + 1;
+    else hi = mid;
   }
-  return best;
+  // Check lo and lo-1 for closest
+  if (lo > 0 && Math.abs(ms[lo - 1]! - targetMs) <= Math.abs(ms[lo]! - targetMs)) return lo - 1;
+  return lo;
 }
 
 /** Determine all tile coordinates at zoom z that cover a bounding box. */
@@ -147,6 +150,8 @@ export class TileWindProvider implements WindProvider {
   private readonly cache = new Map<string, CachedTile>();
   private windSteps: { iso: string; compact: string }[] = [];
   private waveSteps: { iso: string; compact: string }[] = [];
+  private windStepsMs: number[] = []; // precomputed timestamps for fast lookup
+  private waveStepsMs: number[] = [];
   private windModelRun = '';
   private waveModelRun = '';
   private tiles: { x: number; y: number }[] = [];
@@ -158,8 +163,8 @@ export class TileWindProvider implements WindProvider {
     this.zoom = opts.zoom ?? 3;
   }
 
-  /** Pre-fetch all tiles for the given area and time window. */
-  async load(bbox: BoundingBox, fromMs: number, toMs: number): Promise<void> {
+  /** Load metadata (model runs, time steps, tile grid). No tiles fetched yet. */
+  async load(bbox: BoundingBox, _fromMs?: number, _toMs?: number): Promise<void> {
     const [windMf, waveMf] = await Promise.all([
       fetchMinifest(this.windModel),
       fetchMinifest(this.waveModel),
@@ -169,33 +174,50 @@ export class TileWindProvider implements WindProvider {
     this.waveModelRun = refToCompact(waveMf.ref);
     this.windSteps = getValidTimes(windMf);
     this.waveSteps = getValidTimes(waveMf);
+    this.windStepsMs = this.windSteps.map(s => new Date(s.iso).getTime());
+    this.waveStepsMs = this.waveSteps.map(s => new Date(s.iso).getTime());
     this.tiles = tilesForBbox(bbox, this.zoom);
 
-    // Build time axis: wind steps within [fromMs, toMs]
-    const timesSet = new Set<number>();
-    for (const s of this.windSteps) {
-      const ms = new Date(s.iso).getTime();
-      if (ms >= fromMs && ms <= toMs) timesSet.add(ms);
-    }
-    const sortedMs = [...timesSet].sort((a, b) => a - b);
+    // Build full time axis from all available wind steps
     this.times.length = 0;
-    this.times.push(...sortedMs.map((ms) => new Date(ms)));
+    this.times.push(...this.windStepsMs.map(ms => new Date(ms)));
 
-    // Pre-fetch all wind + wave tiles in parallel
+    this.loaded = true;
+  }
+
+  /**
+   * Fetch tiles for a specific time (and its neighbor for temporal interpolation).
+   * Call before each algorithm step. Already-cached tiles are skipped.
+   */
+  async prefetchForTime(timeMs: number): Promise<void> {
+    // Find the two bracketing wind steps for temporal interpolation
+    const windIdxs = new Set<number>();
+    const wi = closestStepIdx(this.windSteps, timeMs, this.windStepsMs);
+    windIdxs.add(wi);
+    if (wi > 0) windIdxs.add(wi - 1);
+    if (wi < this.windSteps.length - 1) windIdxs.add(wi + 1);
+
+    // Same for wave
+    const waveIdxs = new Set<number>();
+    const wvi = closestStepIdx(this.waveSteps, timeMs, this.waveStepsMs);
+    waveIdxs.add(wvi);
+    if (wvi > 0) waveIdxs.add(wvi - 1);
+    if (wvi < this.waveSteps.length - 1) waveIdxs.add(wvi + 1);
+
     const fetches: Promise<void>[] = [];
     for (const t of this.tiles) {
-      for (const step of this.windSteps) {
-        const ms = new Date(step.iso).getTime();
-        if (ms < fromMs || ms > toMs) continue;
+      for (const si of windIdxs) {
+        const step = this.windSteps[si];
+        if (!step) continue;
         const key = tileKey(this.windModel, 'wind', step.compact, this.zoom, t.x, t.y);
         if (!this.cache.has(key)) {
           const url = buildTileUrl(this.windModel, this.windModelRun, step.compact, this.zoom, t.x, t.y, 'wind');
           fetches.push(fetchAndDecode(url).then((tile) => { this.cache.set(key, tile); }));
         }
       }
-      for (const step of this.waveSteps) {
-        const ms = new Date(step.iso).getTime();
-        if (ms < fromMs || ms > toMs) continue;
+      for (const si of waveIdxs) {
+        const step = this.waveSteps[si];
+        if (!step) continue;
         const key = tileKey(this.waveModel, 'waves', step.compact, this.zoom, t.x, t.y);
         if (!this.cache.has(key)) {
           const url = buildTileUrl(this.waveModel, this.waveModelRun, step.compact, this.zoom, t.x, t.y, 'waves');
@@ -203,8 +225,7 @@ export class TileWindProvider implements WindProvider {
         }
       }
     }
-    await Promise.all(fetches);
-    this.loaded = true;
+    if (fetches.length > 0) await Promise.all(fetches);
   }
 
   getWind(lat: number, lon: number, timeIdx: number): WindVector {
@@ -214,15 +235,15 @@ export class TileWindProvider implements WindProvider {
   }
 
   getWave(lat: number, lon: number, t: Date): number | undefined {
-    const idx = closestStepIdx(this.waveSteps, t.getTime());
+    const idx = closestStepIdx(this.waveSteps, t.getTime(), this.waveStepsMs);
     const step = this.waveSteps[idx];
     if (step === undefined) return undefined;
     const { x, y } = latLonToTile(lat, lon, this.zoom);
     const key = tileKey(this.waveModel, 'waves', step.compact, this.zoom, x, y);
     const tile = this.cache.get(key);
     if (tile === undefined) return undefined;
-    const { px, py } = latLonToPixel(lat, lon, this.zoom, x, y);
-    const val = sampleTilePixel(tile.rgba, tile.header, px, py, false);
+    const { px, py } = latLonToPixelFrac(lat, lon, this.zoom, x, y);
+    const val = sampleTileBilinear(tile.rgba, tile.header, px, py, false);
     return val.hasData ? val.speed : undefined;
   }
 
@@ -232,6 +253,79 @@ export class TileWindProvider implements WindProvider {
 
   coversPointAtTime(_lat: number, _lon: number, timeIdx: number): boolean {
     return this.loaded && timeIdx >= 0 && timeIdx < this.times.length;
+  }
+
+  coversPointAtTimeMs(_lat: number, _lon: number, timeMs: number): boolean {
+    if (!this.loaded || this.times.length === 0) return false;
+    const first = this.times[0];
+    const last = this.times[this.times.length - 1];
+    if (first === undefined || last === undefined) return false;
+    return timeMs >= first.getTime() && timeMs <= last.getTime();
+  }
+
+  // Cache the last time-bracket index to avoid repeated binary searches
+  // (algorithm queries the same timeMs for many points within each step)
+  private lastTimeMs = -1;
+  private lastTimeBracket = 0;
+  private lastTimeFrac = 0;
+
+  getWindAtTime(lat: number, lon: number, timeMs: number): WindVector {
+    const times = this.times;
+    if (times.length === 0) return { u: 0, v: 0 };
+    const first = times[0];
+    const last = times[times.length - 1];
+    if (first === undefined || last === undefined) return { u: 0, v: 0 };
+    if (timeMs <= first.getTime()) return this.getWindByDate(lat, lon, first);
+    if (timeMs >= last.getTime()) return this.getWindByDate(lat, lon, last);
+
+    // Reuse cached bracket if same timeMs (very common — same time for all frontier points)
+    let i: number;
+    let f: number;
+    if (timeMs === this.lastTimeMs) {
+      i = this.lastTimeBracket;
+      f = this.lastTimeFrac;
+    } else {
+      // Binary search for bracket
+      let lo = 0, hi = times.length - 2;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (times[mid]!.getTime() <= timeMs) lo = mid;
+        else hi = mid - 1;
+      }
+      i = lo;
+      const t0 = times[i]!.getTime();
+      const t1 = times[i + 1]!.getTime();
+      f = (timeMs - t0) / (t1 - t0);
+      this.lastTimeMs = timeMs;
+      this.lastTimeBracket = i;
+      this.lastTimeFrac = f;
+    }
+
+    // If very close to a step boundary, skip interpolation
+    if (f < 0.01) return this.getWindByDate(lat, lon, times[i]!);
+    if (f > 0.99) return this.getWindByDate(lat, lon, times[i + 1]!);
+
+    const w0 = this.getWindByDate(lat, lon, times[i]!);
+    const w1 = this.getWindByDate(lat, lon, times[i + 1]!);
+
+    return {
+      u: w0.u * (1 - f) + w1.u * f,
+      v: w0.v * (1 - f) + w1.v * f,
+    };
+  }
+
+  getWaveAtTime(lat: number, lon: number, timeMs: number): number | undefined {
+    return this.getWave(lat, lon, new Date(timeMs));
+  }
+
+  /** Compute optimal zoom level so the route area fits within maxTilesPerDim tiles.
+   *  Capped at zoom 4 — Windy tile CDN only serves zoom 3 and 4. */
+  static computeZoom(bbox: BoundingBox, maxTilesPerDim = 2): number {
+    const latSpan = bbox.latMax - bbox.latMin;
+    const lonSpan = bbox.lonMax - bbox.lonMin;
+    const span = Math.max(latSpan, lonSpan);
+    const z = Math.floor(Math.log2(maxTilesPerDim * 360 / span));
+    return Math.max(3, Math.min(z, 4)); // Windy serves zoom 3–4 only
   }
 
   getFilePathForPoint(lat: number, lon: number, timeIdx: number): string {
@@ -247,7 +341,7 @@ export class TileWindProvider implements WindProvider {
   private stepIdxForTimeIdx(timeIdx: number): number {
     const t = this.times[timeIdx];
     if (t === undefined) return 0;
-    return closestStepIdx(this.windSteps, t.getTime());
+    return closestStepIdx(this.windSteps, t.getTime(), this.windStepsMs);
   }
 
   private sampleWind(lat: number, lon: number, validTime: string): WindVector {
@@ -255,9 +349,16 @@ export class TileWindProvider implements WindProvider {
     const key = tileKey(this.windModel, 'wind', validTime, this.zoom, x, y);
     const tile = this.cache.get(key);
     if (tile === undefined) return { u: 0, v: 0 };
-    const { px, py } = latLonToPixel(lat, lon, this.zoom, x, y);
-    const val = sampleTilePixel(tile.rgba, tile.header, px, py, false);
+    const { px, py } = latLonToPixelFrac(lat, lon, this.zoom, x, y);
+    const val = sampleTileBilinear(tile.rgba, tile.header, px, py, false);
     return { u: val.u, v: val.v };
+  }
+
+  private getWindByDate(lat: number, lon: number, t: Date): WindVector {
+    const idx = closestStepIdx(this.windSteps, t.getTime(), this.windStepsMs);
+    const step = this.windSteps[idx];
+    if (!step) return { u: 0, v: 0 };
+    return this.sampleWind(lat, lon, step.compact);
   }
 }
 
@@ -349,8 +450,8 @@ export class TileCurrentProvider implements CurrentProvider {
     const key = tileKey('cmems', 'seacurrents', step.compact, this.zoom, x, y);
     const tile = this.cache.get(key);
     if (tile === undefined) return { u: 0, v: 0 };
-    const { px, py } = latLonToPixel(lat, lon, this.zoom, x, y);
-    const val = sampleTilePixel(tile.rgba, tile.header, px, py, true);
+    const { px, py } = latLonToPixelFrac(lat, lon, this.zoom, x, y);
+    const val = sampleTileBilinear(tile.rgba, tile.header, px, py, true);
     return val.hasData ? { u: val.u, v: val.v } : { u: 0, v: 0 };
   }
 
