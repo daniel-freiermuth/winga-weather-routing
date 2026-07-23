@@ -81,7 +81,9 @@ Drag the slider to browse forecast times. The wind, wave, and current overlays u
 
 Below the map — shows wind speed, boat speed, and wave height along the calculated route over time. Click to expand fullscreen.
 
-## Polar diagram format
+## Polar diagram
+
+### Format
 
 Standard ORC/OpenCPN semicolon-delimited CSV:
 
@@ -92,6 +94,38 @@ twa/tws;6;8;10;12;14;16;20
 ```
 
 Or enter three speeds (upwind/beam/downwind at 12 kn TWS) and click "Generate" for a simple polar.
+
+### How the polar is interpreted
+
+The polar diagram tabulates **boat speed through water** as a function of **True Wind Angle (TWA)** and **True Wind Speed (TWS)**:
+
+- **TWA** is the angle between the **wind direction** and the boat's **course through water** — NOT the compass heading. Course through water includes leeway (the sideways slip caused by wind pressure on the sails). VPP-derived polars (ORC, IRC) already account for leeway in their TWA values.
+- **TWS** is the wind speed relative to the water, not the ground. When ocean current is present, the algorithm subtracts the current vector from the true wind to obtain the wind-over-water before looking up the polar (see below).
+- **Boat speed** is the speed along the course through water. Current is applied separately to compute the ground track.
+
+## Routing physics
+
+The isochrone algorithm models the following physical quantities at each step:
+
+1. **True wind** — forecast wind speed and direction relative to the ground (from ECMWF via Windy tiles), interpolated bilinearly in space and linearly in time.
+
+2. **Ocean current** — forecast current velocity from CMEMS (Copernicus Marine Service) via Windy tiles, when available.
+
+3. **Wind over water** — the wind as experienced by the boat. Computed by subtracting the ocean current vector from the true wind: `wind_over_water = true_wind − current`. This matters because a boat in a current-carrying water mass feels less wind when current flows with the wind, and more when it flows against. The polar diagram is defined relative to this wind-over-water, not the true (ground-referenced) wind.
+
+4. **TWA and boat speed** — for each candidate course through water, compute `TWA = |course_through_water − wind_over_water_direction|` and look up the corresponding boat speed from the polar.
+
+5. **Water track** — the boat moves at polar speed along its course through water.
+
+6. **Ground track** — the water track position plus the current displacement over the time step gives the boat's actual position on the chart.
+
+7. **Land avoidance** — the ground track segment is checked against GSHHG coastline data. Candidates that cross land are rejected.
+
+### What is NOT modelled
+
+- **Leeway** is not computed explicitly. VPP-derived polars already include leeway in their TWA/speed values. Simple polars (hand-measured or generated) implicitly assume course = heading.
+- **Apparent wind effects** — the polar is indexed by true wind (over water), not apparent wind. This is standard for routing software.
+- **Sea state effects on boat speed** — wave height can be used as a routing constraint (max wave limit) but does not reduce the polar speed.
 
 ## Land data
 

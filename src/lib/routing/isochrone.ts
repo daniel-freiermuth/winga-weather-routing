@@ -221,10 +221,23 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         const gribFilePath = wind.getFilePathForPoint(point.lat, point.lon, nearestTimeIdx);
         windLookupMs += performance.now() - t0wind;
 
-        const tws = windSpeedKnots(windVec.u, windVec.v);
-        const wdir = windDirection(windVec.u, windVec.v);
+        // Compute wind-over-water: subtract current from true wind.
+        // The polar diagram is defined relative to the water the boat moves through,
+        // not relative to the ground. When current flows with the wind, the boat
+        // experiences less wind; when against, more.
+        const trueWindDir = windDirection(windVec.u, windVec.v); // for display in route output
+        let wowU = windVec.u;
+        let wowV = windVec.v;
+        if (current) {
+          const cur = current.getCurrent(point.lat, point.lon, nextTime);
+          wowU -= cur.u;
+          wowV -= cur.v;
+        }
+        const tws = windSpeedKnots(wowU, wowV); // wind speed over water (for polar lookup)
+        const wdir = windDirection(wowU, wowV);   // wind direction over water (for TWA calc)
 
-        if (maxWindKn > 0 && tws > maxWindKn) {
+        // Max wind check uses true wind (what forecasts report), not wind-over-water
+        if (maxWindKn > 0 && windSpeedKnots(windVec.u, windVec.v) > maxWindKn) {
           rejectedByPolar++;
           continue;
         }
@@ -279,7 +292,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
                 twa: point.twa,
                 tws,
                 boatSpeed: 0,
-                windDir: wdir,
+                windDir: trueWindDir,
                 stepCalcMs: 0,
                 gribFilePath,
                 parent: point,
@@ -343,7 +356,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
             twa,
             tws,
             boatSpeed: effectiveSpeed,
-            windDir: wdir,
+            windDir: trueWindDir,
             stepCalcMs: 0,
             gribFilePath,
             parent: point,
