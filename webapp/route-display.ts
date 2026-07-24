@@ -50,7 +50,7 @@ export function drawRoute(route: RouteData, ctx: RouteDisplayCtx): RouteDisplayR
     id: ROUTE_LAYER,
     type: 'line',
     source: ROUTE_SOURCE,
-    paint: { 'line-color': '#89b4fa', 'line-width': 3, 'line-opacity': 0.9 },
+    paint: { 'line-color': '#e64553', 'line-width': 3, 'line-opacity': 0.9 },
   });
   const routeLayer = { sourceId: ROUTE_SOURCE, layerId: ROUTE_LAYER };
 

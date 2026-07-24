@@ -56,6 +56,8 @@ export interface CalculationContext {
   lockScrubberToRoute(i0: number, iN: number): void;
   setRouteWaypointTimes(times: string[]): void;
   setShowRangeToggle(v: boolean): void;
+  /** Called when the user clicks on the route polyline — jumps scrubber to nearest time. */
+  onRouteClick(timeMs: number): void;
 
   // Getters for read-only state owned by App.svelte
   getStartLatLon(): LatLon | null;
@@ -143,6 +145,26 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
       calcState.legLabelLayer = result.legLabelLayer;
       calcState.windBarbMarkers = result.windBarbMarkers;
       calcState.routeLegCoords = result.routeLegCoords;
+
+      // Click on route → find closest waypoint and jump scrubber there
+      map.on('click', 'calculated-route-line', (e: maplibregl.MapMouseEvent) => {
+        if (!calcState.graphMeta || calcState.graphMeta.length === 0) return;
+        const { lng, lat } = e.lngLat;
+        // Find the closest waypoint (meta entry) to the click
+        const coords = route.feature?.geometry?.coordinates;
+        if (!coords) return;
+        let bestIdx = 0, bestDist = Infinity;
+        for (let i = 0; i < coords.length; i++) {
+          const dx = (coords[i]?.[0] ?? 0) - lng;
+          const dy = (coords[i]?.[1] ?? 0) - lat;
+          const d = dx * dx + dy * dy;
+          if (d < bestDist) { bestDist = d; bestIdx = i; }
+        }
+        const meta = calcState.graphMeta[bestIdx];
+        if (meta) ctx.onRouteClick(new Date(meta.time).getTime());
+      });
+      map.on('mouseenter', 'calculated-route-line', () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'calculated-route-line', () => { map.getCanvas().style.cursor = ''; });
       drawConditionsGraph(ctx, result.meta, result.intermediateIdxs);
       const windTimes = ctx.getWindTimes();
       if (ctx.getWindTimesLoaded() && result.meta.length > 0) {
@@ -196,50 +218,50 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
     const t = windTimes[windTimeIdx];
     if (!t) return;
     const tMs = new Date(t).getTime();
-    const { wpIdx, legIdx } = findScrubberPosition(calcState.graphMeta, tMs);
+    const { wpIdx } = findScrubberPosition(calcState.graphMeta, tMs);
     if (wpIdx === calcState.prevHighlightWpIdx) return;
     calcState.prevHighlightWpIdx = wpIdx;
-    if (calcState.highlightLegLayer) { removeSourceAndLayer(map, calcState.highlightLegLayer); calcState.highlightLegLayer = null; }
+
+    // Update wind barb opacity
     for (let i = 0; i < calcState.windBarbMarkers.length; i++) {
       const m = calcState.windBarbMarkers[i];
       if (!m) continue;
       m.getElement()!.style.opacity = i === wpIdx ? '1' : '0.4';
     }
-    if (legIdx >= 0 && calcState.routeLegCoords[legIdx]) {
-      const legCoords = calcState.routeLegCoords[legIdx]!;
-      const sourceId = 'highlight-leg';
-      const layerId = 'highlight-leg-line';
-      map.addSource(sourceId, {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'LineString',
-            coordinates: legCoords.map(([lat, lng]) => [lng, lat]),
-          },
-        },
-      });
-      map.addLayer({
-        id: layerId,
-        type: 'line',
-        source: sourceId,
-        paint: { 'line-color': '#f5c2e7', 'line-width': 4, 'line-opacity': 0.9 },
-      });
-      calcState.highlightLegLayer = { sourceId, layerId };
 
-      // Pan map to keep highlighted segment in the middle 50% of the viewport
-      const wpCoord = legCoords[0]; // [lat, lng]
+    // Place/move red circle marker at the selected waypoint
+    if (wpIdx >= 0 && calcState.routeLegCoords[wpIdx]) {
+      const wpCoord = calcState.routeLegCoords[wpIdx]![0]; // [lat, lng]
       if (wpCoord) {
-        const pt = map.project([wpCoord[1], wpCoord[0]]); // [lng, lat]
+        const lngLat: [number, number] = [wpCoord[1], wpCoord[0]];
+        if (!calcState.highlightMarker) {
+          const el = document.createElement('div');
+          el.style.width = '14px';
+          el.style.height = '14px';
+          el.style.borderRadius = '50%';
+          el.style.border = '3px solid #e64553';
+          el.style.backgroundColor = 'rgba(230, 69, 83, 0.25)';
+          el.style.pointerEvents = 'none';
+          calcState.highlightMarker = new maplibregl.Marker({ element: el, anchor: 'center' })
+            .setLngLat(lngLat)
+            .addTo(map);
+        } else {
+          calcState.highlightMarker.setLngLat(lngLat);
+        }
+
+        // Pan map to keep selected point in the middle 50% of the viewport
+        const pt = map.project(lngLat);
         const { width, height } = map.getCanvas();
         const r = window.devicePixelRatio || 1;
         const w = width / r, h = height / r;
         const inCenter = pt.x > w * 0.25 && pt.x < w * 0.75 && pt.y > h * 0.25 && pt.y < h * 0.75;
         if (!inCenter) {
-          map.easeTo({ center: [wpCoord[1], wpCoord[0]], duration: 300 });
+          map.easeTo({ center: lngLat, duration: 300 });
         }
       }
+    } else if (calcState.highlightMarker) {
+      calcState.highlightMarker.remove();
+      calcState.highlightMarker = null;
     }
   }
 

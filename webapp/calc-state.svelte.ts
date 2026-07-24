@@ -17,6 +17,7 @@ export interface CalcState {
   windBarbLayer: maplibregl.Marker[];
   legLabelLayer: SourceAndLayer | null;
   highlightLegLayer: SourceAndLayer | null;
+  highlightMarker: maplibregl.Marker | null;
   windBarbMarkers: (maplibregl.Marker | null)[];
   routeLegCoords: [number, number][][];
   prevHighlightWpIdx: number;
@@ -34,6 +35,7 @@ function freshCalcState(): CalcState {
     windBarbLayer: [],
     legLabelLayer: null,
     highlightLegLayer: null,
+    highlightMarker: null,
     windBarbMarkers: [],
     routeLegCoords: [],
     prevHighlightWpIdx: -1,
@@ -61,6 +63,7 @@ export function resetCalcState(map?: maplibregl.Map): void {
     for (const m of calcState.windBarbLayer) m.remove();
     if (calcState.legLabelLayer) removeSourceAndLayer(map, calcState.legLabelLayer);
     if (calcState.highlightLegLayer) removeSourceAndLayer(map, calcState.highlightLegLayer);
+    if (calcState.highlightMarker) calcState.highlightMarker.remove();
   }
   Object.assign(calcState, freshCalcState());
 }

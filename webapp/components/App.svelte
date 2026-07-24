@@ -634,6 +634,14 @@
         rebuildScrubberTimes();
       },
       setShowRangeToggle: (v) => { showRangeToggle = v; },
+      onRouteClick: (timeMs) => {
+        let best = 0, bestDiff = Infinity;
+        for (let i = 0; i < windTimes.length; i++) {
+          const diff = Math.abs(new Date(windTimes[i]!).getTime() - timeMs);
+          if (diff < bestDiff) { bestDiff = diff; best = i; }
+        }
+        handleScrubberChange(best);
+      },
     });
   }
   // ── Map Initialization ($effect — runs once when map becomes available) ────
