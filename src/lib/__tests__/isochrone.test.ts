@@ -560,7 +560,7 @@ void test('calculate: land index blocks land points', async () => {
 
   await assert.rejects(
     async () => algo.calculate(wind, null, polar, allLand, null, req, () => undefined),
-    /no reachable positions/i,
+    /start point is on land/i,
   );
 });
 

@@ -157,6 +157,21 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         throw new Error('Destination is inside an avoided region — move it to open water or unmark that region');
     }
 
+    // Nautical Safety Rule: hard error if start, destination, or any intermediate waypoint is on land.
+    if (edgeIndex) {
+      if (isPointOnLand(edgeIndex, start.lat, start.lon))
+        throw new Error('Start point is on land — move it to open water');
+      if (isPointOnLand(edgeIndex, end.lat, end.lon))
+        throw new Error('Destination is on land — move it to open water');
+      if (request.waypoints) {
+        for (let wi = 0; wi < request.waypoints.length; wi++) {
+          const wp = request.waypoints[wi];
+          if (wp && isPointOnLand(edgeIndex, wp.lat, wp.lon))
+            throw new Error(`Waypoint ${String(wi + 1)} is on land — move it to open water`);
+        }
+      }
+    }
+
     const seedVec = wind.getWindAtTime(start.lat, start.lon, departureMs);
     let isochrone: IsochronePoint[] = [
       {
