@@ -825,6 +825,10 @@
       inlineStyle="flex:1;min-height:200px"
       center={prefs.mapCenter}
       zoom={prefs.mapZoom}
+      pitchWithRotate={false}
+      dragRotate={false}
+      touchPitch={false}
+      attributionControl={false}
       style={{
         version: 8,
         sources: {
