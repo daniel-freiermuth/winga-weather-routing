@@ -62,7 +62,7 @@
   }
 
   const hasWave = $derived(meta.some(m => m.waveHeight != null));
-  const hasWavePeriod = $derived(meta.some(m => m.wavePeriod != null));
+  const hasWavePeriod = $derived(meta.some(m => m.wavePeriod != null || m.waveDir != null));
   const hasGust = $derived(meta.some(m => m.gustKn != null));
   const hasCurrent = $derived(meta.some(m => m.currentSpeedKn != null));
   const dateGroups = $derived.by(() => {
@@ -169,6 +169,12 @@
               <td class="label-cell">Period <span class="unit">s</span></td>
               {#each meta as m}
                 <td class="data-cell">{m.wavePeriod != null ? m.wavePeriod.toFixed(1) : '—'}</td>
+              {/each}
+            </tr>
+            <tr>
+              <td class="label-cell">Wave dir</td>
+              {#each meta as m}
+                <td class="data-cell">{m.waveDir != null ? `${windArrow(m.waveDir)}${Math.round(m.waveDir)}°` : '—'}</td>
               {/each}
             </tr>
           {/if}

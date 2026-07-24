@@ -81,6 +81,8 @@ export interface WindProvider {
   getGustAtTime?(lat: number, lon: number, timeMs: number): number | undefined;
   /** Mean wave period at continuous time (ms) with temporal interpolation, in seconds */
   getWavePeriodAtTime?(lat: number, lon: number, timeMs: number): number | undefined;
+  /** Wave propagation direction at continuous time (ms), degrees from north */
+  getWaveDirAtTime?(lat: number, lon: number, timeMs: number): number | undefined;
   coversPoint(lat: number, lon: number): boolean;
   coversPointAtTime(lat: number, lon: number, timeIdx: number): boolean;
   /** Check if a point is covered at a specific time in ms */
@@ -164,6 +166,7 @@ export interface RoutePoint {
   currentU?: number | undefined; // ocean current east component (m/s)
   currentV?: number | undefined; // ocean current north component (m/s)
   wavePeriod?: number | undefined; // mean wave period (seconds)
+  waveDir?: number | undefined; // wave propagation direction (degrees from north)
 }
 
 export interface CalculationRequest {

@@ -268,7 +268,7 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
 
   // Wire worker message handler
   routingWorker.addEventListener('message', (e) => {
-    const j = e.data as { type: string; pct?: number; progress?: number; frontier?: number[][]; route?: { lat: number; lon: number; time: string; heading: number; twa: number; tws: number; boatSpeed?: number; windDir: number; waveHeight?: number; gribFilePath?: string; gustKn?: number; currentU?: number; currentV?: number; wavePeriod?: number }[]; warning?: string; error?: string };
+    const j = e.data as { type: string; pct?: number; progress?: number; frontier?: number[][]; route?: { lat: number; lon: number; time: string; heading: number; twa: number; tws: number; boatSpeed?: number; windDir: number; waveHeight?: number; gribFilePath?: string; gustKn?: number; currentU?: number; currentV?: number; wavePeriod?: number; waveDir?: number }[]; warning?: string; error?: string };
     if (j.type === 'progress') {
       const pct = Math.round(j.pct ?? j.progress ?? 0);
       ctx.setProgress(pct);
@@ -303,6 +303,7 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
                 if (p.gribFilePath != null) meta.gribFile = p.gribFilePath;
                 if (p.gustKn != null) meta.gustKn = p.gustKn;
                 if (p.wavePeriod != null) meta.wavePeriod = p.wavePeriod;
+                if (p.waveDir != null) meta.waveDir = p.waveDir;
                 if (p.currentU != null && p.currentV != null) {
                   const cSpd = Math.sqrt(p.currentU * p.currentU + p.currentV * p.currentV) * 1.94384;
                   if (cSpd > 0.01) {

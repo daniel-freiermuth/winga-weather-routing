@@ -560,6 +560,7 @@ function backtrack(
       currentU: cur?.u,
       currentV: cur?.v,
       wavePeriod: wind.getWavePeriodAtTime ? wind.getWavePeriodAtTime(end.lat, end.lon, timeMs) : undefined,
+      waveDir: wind.getWaveDirAtTime ? wind.getWaveDirAtTime(end.lat, end.lon, timeMs) : undefined,
     });
   }
 
@@ -585,6 +586,7 @@ function backtrack(
       currentU: cur?.u,
       currentV: cur?.v,
       wavePeriod: wind.getWavePeriodAtTime ? wind.getWavePeriodAtTime(p.lat, p.lon, timeMs) : undefined,
+      waveDir: wind.getWaveDirAtTime ? wind.getWaveDirAtTime(p.lat, p.lon, timeMs) : undefined,
     });
     p = p.parent;
   }

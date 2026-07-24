@@ -318,8 +318,8 @@ export class TileWindProvider implements WindProvider {
     return v0 * (1 - f) + v1 * f;
   }
 
-  /** Sample wave tile at a position: returns height (B) and period (sqrt(R²+G²)) from one read. */
-  private sampleWaveTile(lat: number, lon: number, validTime: string): { height: number; period: number } | undefined {
+  /** Sample wave tile at a position: returns height (B), period and direction (R/G vector). */
+  private sampleWaveTile(lat: number, lon: number, validTime: string): { height: number; period: number; direction: number } | undefined {
     const { x, y } = latLonToTile(lat, lon, this.zoom);
     const key = tileKey(this.waveModel, 'waves', validTime, this.zoom, x, y);
     const tile = this.cache.get(key);
@@ -327,7 +327,7 @@ export class TileWindProvider implements WindProvider {
     const { px, py } = latLonToPixelFrac(lat, lon, this.zoom, x, y);
     const val = sampleTileBilinear(tile.rgba, tile.header, px, py, false, true);
     if (!val.hasData) return undefined;
-    return { height: val.height, period: val.speed };
+    return { height: val.height, period: val.speed, direction: val.direction };
   }
 
   /** Sample gust speed (m/s) at a specific valid time. Gust is a scalar (R channel). */
@@ -349,6 +349,11 @@ export class TileWindProvider implements WindProvider {
   getWavePeriodAtTime(lat: number, lon: number, timeMs: number): number | undefined {
     return this.interpolateOverTime(this.waveStepsMs, this.waveSteps, timeMs,
       (vt) => this.sampleWaveTile(lat, lon, vt)?.period);
+  }
+
+  getWaveDirAtTime(lat: number, lon: number, timeMs: number): number | undefined {
+    return this.interpolateOverTime(this.waveStepsMs, this.waveSteps, timeMs,
+      (vt) => this.sampleWaveTile(lat, lon, vt)?.direction);
   }
 
   getGustAtTime(lat: number, lon: number, timeMs: number): number | undefined {
