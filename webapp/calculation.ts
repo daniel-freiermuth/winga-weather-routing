@@ -53,6 +53,7 @@ export interface CalculationContext {
   setConditionsGraph(data: { svgContent: string; viewBox: string; hasWave: boolean; layout: GraphLayout } | null): void;
   setConditionsVisible(v: boolean): void;
   lockScrubberToRoute(i0: number, iN: number): void;
+  setRouteWaypointTimes(times: string[]): void;
   setShowRangeToggle(v: boolean): void;
 
   // Getters for read-only state owned by App.svelte
@@ -149,12 +150,16 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
       drawConditionsGraph(ctx, result.meta, result.intermediateIdxs);
       const windTimes = ctx.getWindTimes();
       if (ctx.getWindTimesLoaded() && result.meta.length > 0) {
+        // Inject route waypoint times into the scrubber time grid
+        ctx.setRouteWaypointTimes(result.meta.map(m => m.time));
+        // Now find i0/iN in the updated windTimes (which now includes waypoint times)
+        const updatedWindTimes = ctx.getWindTimes();
         const t0ms = new Date(result.meta[0]!.time).getTime();
         const tNms = new Date(result.meta[result.meta.length - 1]!.time).getTime();
-        let i0 = windTimes.findIndex((t) => new Date(t).getTime() >= t0ms);
-        let iN = windTimes.findIndex((t) => new Date(t).getTime() >= tNms);
+        let i0 = updatedWindTimes.findIndex((t) => new Date(t).getTime() >= t0ms);
+        let iN = updatedWindTimes.findIndex((t) => new Date(t).getTime() >= tNms);
         if (i0 < 0) i0 = 0;
-        if (iN < 0) iN = windTimes.length - 1;
+        if (iN < 0) iN = updatedWindTimes.length - 1;
         ctx.lockScrubberToRoute(i0, iN);
         calcState.routeScrubberRange = { i0, iN };
         calcState.scrubberLockedToRoute = true;
@@ -192,7 +197,6 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
           properties: {},
           geometry: {
             type: 'LineString',
-            // routeLegCoords are [lat, lng] — convert to [lng, lat] for GeoJSON
             coordinates: legCoords.map(([lat, lng]) => [lng, lat]),
           },
         },
@@ -204,6 +208,19 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
         paint: { 'line-color': '#f5c2e7', 'line-width': 4, 'line-opacity': 0.9 },
       });
       calcState.highlightLegLayer = { sourceId, layerId };
+
+      // Pan map to keep highlighted segment in the middle 50% of the viewport
+      const wpCoord = legCoords[0]; // [lat, lng]
+      if (wpCoord) {
+        const pt = map.project([wpCoord[1], wpCoord[0]]); // [lng, lat]
+        const { width, height } = map.getCanvas();
+        const r = window.devicePixelRatio || 1;
+        const w = width / r, h = height / r;
+        const inCenter = pt.x > w * 0.25 && pt.x < w * 0.75 && pt.y > h * 0.25 && pt.y < h * 0.75;
+        if (!inCenter) {
+          map.easeTo({ center: [wpCoord[1], wpCoord[0]], duration: 300 });
+        }
+      }
     }
   }
 
@@ -213,6 +230,7 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
     if (!startLatLon || !endLatLon) return;
     calcState.routeScrubberRange = null;
     calcState.scrubberLockedToRoute = false;
+    ctx.setRouteWaypointTimes([]);
     ctx.setShowRangeToggle(false);
 
     const depTime = ctx.getDepartureTime();

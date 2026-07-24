@@ -619,6 +619,10 @@
         rangeToggleLabel = 'Full range';
         updateScrubberView();
       },
+      setRouteWaypointTimes: (times) => {
+        timeAxis = { ...timeAxis, routeWaypointTimes: times };
+        rebuildScrubberTimes();
+      },
       setShowRangeToggle: (v) => { showRangeToggle = v; },
     });
   }
@@ -875,7 +879,17 @@
     visible={conditionsVisible}
     expanded={conditionsExpanded}
     meta={calcState.graphMeta ?? []}
+    scrubberTimeMs={windTimes[scrubberIndex] != null ? new Date(windTimes[scrubberIndex]!).getTime() : null}
     onToggle={handleConditionsToggle}
+    onTimeClick={(timeMs) => {
+      // Find closest windTimes index
+      let best = 0, bestDiff = Infinity;
+      for (let i = 0; i < windTimes.length; i++) {
+        const diff = Math.abs(new Date(windTimes[i]!).getTime() - timeMs);
+        if (diff < bestDiff) { bestDiff = diff; best = i; }
+      }
+      handleScrubberChange(best);
+    }}
   />
 
   {#if analyseResults.length > 0}

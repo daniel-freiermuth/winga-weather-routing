@@ -1,13 +1,16 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import type { WaypointMeta } from '../types';
 
   interface Props {
     visible: boolean;
     expanded: boolean;
     meta: WaypointMeta[];
+    scrubberTimeMs: number | null;
     onToggle: () => void;
+    onTimeClick: (timeMs: number) => void;
   }
-  let { visible, expanded, meta, onToggle }: Props = $props();
+  let { visible, expanded, meta, scrubberTimeMs, onToggle, onTimeClick }: Props = $props();
 
   function formatTime(iso: string): string {
     const d = new Date(iso);
@@ -25,20 +28,18 @@
   }
 
   // Windy-style wind speed color ramp (knots → background color).
-  // Stops based on Windy's wind overlay palette.
   const WIND_STOPS: [number, number, number, number][] = [
-    //  kn,   R,   G,   B
-    [  0,   98, 113, 183],   // calm — muted blue
-    [  5,   57, 163, 171],   // light — teal
-    [ 10,   75, 178, 101],   // gentle — green
-    [ 15,  150, 201,  63],   // moderate — yellow-green
-    [ 20,  233, 212,  60],   // fresh — yellow
-    [ 25,  233, 161,  45],   // strong — orange
-    [ 30,  232, 104,  43],   // near gale — dark orange
-    [ 40,  199,  51,  61],   // gale — red
-    [ 50,  145,  46, 120],   // storm — purple
-    [ 60,  113,  31, 106],   // violent storm — dark purple
-    [ 80,   80,  10,  80],   // hurricane
+    [  0,   98, 113, 183],
+    [  5,   57, 163, 171],
+    [ 10,   75, 178, 101],
+    [ 15,  150, 201,  63],
+    [ 20,  233, 212,  60],
+    [ 25,  233, 161,  45],
+    [ 30,  232, 104,  43],
+    [ 40,  199,  51,  61],
+    [ 50,  145,  46, 120],
+    [ 60,  113,  31, 106],
+    [ 80,   80,  10,  80],
   ];
 
   function windColor(kn: number): string {
@@ -65,6 +66,7 @@
   const hasWavePeriod = $derived(meta.some(m => m.wavePeriod != null || m.waveDir != null));
   const hasGust = $derived(meta.some(m => m.gustKn != null));
   const hasCurrent = $derived(meta.some(m => m.currentSpeedKn != null));
+
   const dateGroups = $derived.by(() => {
     const groups: { date: string; count: number }[] = [];
     for (const m of meta) {
@@ -74,6 +76,47 @@
       else groups.push({ date: d, count: 1 });
     }
     return groups;
+  });
+
+  // Active column: closest waypoint to scrubber time
+  const activeCol = $derived.by(() => {
+    if (scrubberTimeMs == null || meta.length === 0) return -1;
+    let best = 0, bestDiff = Infinity;
+    for (let i = 0; i < meta.length; i++) {
+      const diff = Math.abs(new Date(meta[i]!.time).getTime() - scrubberTimeMs);
+      if (diff < bestDiff) { bestDiff = diff; best = i; }
+    }
+    return best;
+  });
+
+  function handleColClick(colIdx: number) {
+    const m = meta[colIdx];
+    if (m) onTimeClick(new Date(m.time).getTime());
+  }
+
+  // Auto-scroll to keep active column in view
+  let tableWrap = $state<HTMLDivElement | undefined>();
+
+  $effect(() => {
+    if (activeCol < 0 || !tableWrap || !expanded) return;
+    void tick().then(() => {
+      if (!tableWrap) return;
+      const th = tableWrap.querySelector(`.time-cell:nth-child(${String(activeCol + 2)})`) as HTMLElement | null;
+      if (!th) return;
+      const wrapRect = tableWrap.getBoundingClientRect();
+      const thRect = th.getBoundingClientRect();
+      const thCenter = (thRect.left + thRect.right) / 2;
+      // Visible zone boundaries: middle 50% of the scroll container
+      const visLeft = wrapRect.left + wrapRect.width * 0.25;
+      const visRight = wrapRect.left + wrapRect.width * 0.75;
+      if (thCenter < visLeft) {
+        // Scroll left to center the column
+        tableWrap.scrollLeft += thCenter - (wrapRect.left + wrapRect.width * 0.5);
+      } else if (thCenter > visRight) {
+        // Scroll right to center the column
+        tableWrap.scrollLeft += thCenter - (wrapRect.left + wrapRect.width * 0.5);
+      }
+    });
   });
 </script>
 
@@ -87,9 +130,8 @@
   </div>
 
   {#if expanded && meta.length > 0}
-    <div class="table-wrap">
+    <div class="table-wrap" bind:this={tableWrap}>
       <table>
-        <!-- Date header row -->
         <thead>
           <tr class="date-row">
             <th class="label-cell"></th>
@@ -97,100 +139,73 @@
               <th colspan={g.count} class="date-cell">{g.date}</th>
             {/each}
           </tr>
-          <!-- Time header row -->
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
           <tr class="time-row">
             <th class="label-cell"></th>
             {#each meta as m, i}
-              <th class="time-cell" class:departure={i === 0}>{formatTime(m.time)}</th>
+              <th
+                class="time-cell"
+                class:departure={i === 0}
+                class:active={i === activeCol}
+                onclick={() => handleColClick(i)}
+              >{formatTime(m.time)}</th>
             {/each}
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td class="label-cell">TWS <span class="unit">kn</span></td>
-            {#each meta as m}
-              <td class="data-cell wind" style:background-color={windColor(m.tws)}>{m.tws.toFixed(1)}</td>
-            {/each}
-          </tr>
+          {#snippet dataRow(label: string, unit: string, values: (string | null)[], colorFn?: (i: number) => string | null)}
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <tr>
+              <td class="label-cell">{label}{#if unit} <span class="unit">{unit}</span>{/if}</td>
+              {#each values as v, i}
+                <td
+                  class="data-cell"
+                  class:wind={colorFn != null && colorFn(i) != null}
+                  class:active={i === activeCol}
+                  style:background-color={colorFn?.(i) ?? undefined}
+                  onclick={() => handleColClick(i)}
+                >{v ?? '—'}</td>
+              {/each}
+            </tr>
+          {/snippet}
+
+          {@render dataRow('TWS', 'kn',
+            meta.map(m => m.tws.toFixed(1)),
+            (i) => windColor(meta[i]!.tws))}
           {#if hasGust}
-            <tr>
-              <td class="label-cell">Gust <span class="unit">kn</span></td>
-              {#each meta as m}
-                <td class="data-cell wind" style:background-color={windColor(m.gustKn ?? 0)}>{m.gustKn != null ? m.gustKn.toFixed(1) : '—'}</td>
-              {/each}
-            </tr>
+            {@render dataRow('Gust', 'kn',
+              meta.map(m => m.gustKn != null ? m.gustKn.toFixed(1) : null),
+              (i) => { const g = meta[i]!.gustKn; return g != null ? windColor(g) : null; })}
           {/if}
-          <tr>
-            <td class="label-cell">Wind</td>
-            {#each meta as m}
-              <td class="data-cell">{windArrow(m.windDir)}{Math.round(m.windDir)}°</td>
-            {/each}
-          </tr>
-          <tr>
-            <td class="label-cell">TWA</td>
-            {#each meta as m}
-              <td class="data-cell">{Math.round(m.twa)}°</td>
-            {/each}
-          </tr>
-          <tr>
-            <td class="label-cell">CTW</td>
-            {#each meta as m}
-              <td class="data-cell">{Math.round(m.heading)}°</td>
-            {/each}
-          </tr>
-          <tr>
-            <td class="label-cell">STW <span class="unit">kn</span></td>
-            {#each meta as m}
-              <td class="data-cell">{m.boatSpeed != null ? m.boatSpeed.toFixed(1) : '—'}</td>
-            {/each}
-          </tr>
-          <tr>
-            <td class="label-cell">COG</td>
-            {#each meta as m}
-              <td class="data-cell">{m.cogDeg != null ? `${Math.round(m.cogDeg)}°` : '—'}</td>
-            {/each}
-          </tr>
-          <tr>
-            <td class="label-cell">SOG <span class="unit">kn</span></td>
-            {#each meta as m}
-              <td class="data-cell">{m.sogKn != null ? m.sogKn.toFixed(1) : '—'}</td>
-            {/each}
-          </tr>
+          {@render dataRow('Wind', '',
+            meta.map(m => `${windArrow(m.windDir)}${Math.round(m.windDir)}°`))}
+          {@render dataRow('TWA', '',
+            meta.map(m => `${Math.round(m.twa)}°`))}
+          {@render dataRow('CTW', '',
+            meta.map(m => `${Math.round(m.heading)}°`))}
+          {@render dataRow('STW', 'kn',
+            meta.map(m => m.boatSpeed != null ? m.boatSpeed.toFixed(1) : null))}
+          {@render dataRow('COG', '',
+            meta.map(m => m.cogDeg != null ? `${Math.round(m.cogDeg)}°` : null))}
+          {@render dataRow('SOG', 'kn',
+            meta.map(m => m.sogKn != null ? m.sogKn.toFixed(1) : null))}
           {#if hasWave}
-            <tr>
-              <td class="label-cell">Wave <span class="unit">m</span></td>
-              {#each meta as m}
-                <td class="data-cell">{m.waveHeight != null ? m.waveHeight.toFixed(1) : '—'}</td>
-              {/each}
-            </tr>
+            {@render dataRow('Wave', 'm',
+              meta.map(m => m.waveHeight != null ? m.waveHeight.toFixed(1) : null))}
           {/if}
           {#if hasWavePeriod}
-            <tr>
-              <td class="label-cell">Period <span class="unit">s</span></td>
-              {#each meta as m}
-                <td class="data-cell">{m.wavePeriod != null ? m.wavePeriod.toFixed(1) : '—'}</td>
-              {/each}
-            </tr>
-            <tr>
-              <td class="label-cell">Wave dir</td>
-              {#each meta as m}
-                <td class="data-cell">{m.waveDir != null ? `${windArrow(m.waveDir)}${Math.round(m.waveDir)}°` : '—'}</td>
-              {/each}
-            </tr>
+            {@render dataRow('Period', 's',
+              meta.map(m => m.wavePeriod != null ? m.wavePeriod.toFixed(1) : null))}
+            {@render dataRow('Wave dir', '',
+              meta.map(m => m.waveDir != null ? `${windArrow(m.waveDir)}${Math.round(m.waveDir)}°` : null))}
           {/if}
           {#if hasCurrent}
-            <tr>
-              <td class="label-cell">Current <span class="unit">kn</span></td>
-              {#each meta as m}
-                <td class="data-cell">{m.currentSpeedKn != null ? m.currentSpeedKn.toFixed(1) : '—'}</td>
-              {/each}
-            </tr>
-            <tr>
-              <td class="label-cell">Cur dir</td>
-              {#each meta as m}
-                <td class="data-cell">{m.currentDir != null ? `${windArrow((m.currentDir + 180) % 360)}${Math.round(m.currentDir)}°` : '—'}</td>
-              {/each}
-            </tr>
+            {@render dataRow('Current', 'kn',
+              meta.map(m => m.currentSpeedKn != null ? m.currentSpeedKn.toFixed(1) : null))}
+            {@render dataRow('Cur dir', '',
+              meta.map(m => m.currentDir != null ? `${windArrow((m.currentDir + 180) % 360)}${Math.round(m.currentDir)}°` : null))}
           {/if}
         </tbody>
       </table>
@@ -227,6 +242,7 @@
   .table-wrap {
     overflow-x: auto;
     overflow-y: hidden;
+    scroll-behavior: smooth;
   }
   table {
     border-collapse: collapse;
@@ -263,7 +279,9 @@
     text-align: center;
     border-bottom: 1px solid #45475a;
     min-width: 40px;
+    cursor: pointer;
   }
+  .time-cell:hover { color: #cdd6f4; }
   .time-cell.departure {
     color: #89b4fa;
     font-weight: 600;
@@ -273,13 +291,32 @@
     padding: 2px 4px;
     text-align: center;
     border-bottom: 1px solid #2a2f45;
+    cursor: pointer;
   }
-  tr:hover .data-cell:not(.wind) {
+  tr:hover .data-cell:not(.wind):not(.active) {
     background: #313244;
   }
   .data-cell.wind {
     color: #fff;
     font-weight: 600;
     text-shadow: 0 0 3px rgba(0,0,0,0.5);
+  }
+  /* Active column — scrubber indicator */
+  .time-cell.active {
+    color: #f9e2af;
+    font-weight: 700;
+  }
+  .data-cell.active:not(.wind) {
+    box-shadow: inset 2px 0 0 #f9e2af, inset -2px 0 0 #f9e2af;
+  }
+  .data-cell.active.wind {
+    box-shadow: inset 2px 0 0 rgba(255,255,255,0.7), inset -2px 0 0 rgba(255,255,255,0.7);
+  }
+  .time-cell.active::after {
+    content: '▼';
+    display: block;
+    font-size: 6px;
+    line-height: 1;
+    color: #f9e2af;
   }
 </style>

@@ -15,6 +15,8 @@ export interface TimeAxisManager {
   gribTimesMap: Map<string, string[]>;
   enabledGribPaths: Set<string>;
   gribInfoFiles: GribFileMeta[];
+  /** Route waypoint times to merge into the scrubber time grid. */
+  routeWaypointTimes: string[];
 }
 
 /**
@@ -32,6 +34,7 @@ export function createTimeAxis(): TimeAxisManager {
     gribTimesMap: new Map(),
     enabledGribPaths: new Set(),
     gribInfoFiles: [],
+    routeWaypointTimes: [],
   };
 }
 
@@ -73,14 +76,14 @@ export function rebuildTimes(mgr: TimeAxisManager): TimeAxisManager {
   }
 
   const windArr = Array.from(windSet).sort();
-  let unified = [...windArr];
+  const unifiedSet = new Set(windArr);
+  // Merge current times
   if (mgr.currentEnabled && mgr.currentFileTimes.length > 0) {
-    const s = new Set(windArr);
-    for (const t of mgr.currentFileTimes) {
-      if (!s.has(t)) unified.push(t);
-    }
-    unified.sort();
+    for (const t of mgr.currentFileTimes) unifiedSet.add(t);
   }
+  // Merge route waypoint times so the scrubber can land on exact waypoint positions
+  for (const t of mgr.routeWaypointTimes) unifiedSet.add(t);
+  const unified = Array.from(unifiedSet).sort();
 
   const loaded = unified.length > 0;
 
