@@ -150,8 +150,8 @@
 
   .wp-table-wrap {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
-    max-height: 400px;
     padding: 0 12px;
   }
 
