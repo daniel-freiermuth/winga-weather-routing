@@ -31,6 +31,7 @@
     onWaypointReorder: (fromIndex: number, toIndex: number) => void;
     onLoadRoute: (routeIndex: number) => void;
     onCalculate: () => void;
+    onCancel: () => void;
     onAnalyse: () => void;
     onModeChange: (mode: 'route' | 'evaluate') => void;
     onWaypointRouteChange?: (e: Event) => void;
@@ -59,6 +60,7 @@
     onWaypointReorder,
     onLoadRoute,
     onCalculate,
+    onCancel,
     onAnalyse,
     onModeChange,
     onWaypointRouteChange,
@@ -187,21 +189,25 @@
         bind:value={departureTime}
       />
 
-      <!-- Calculate button -->
-      <button
-        class="btn-calculate"
-        disabled={!canCalculate || isCalculating}
-        onclick={onCalculate}
-      >
-        {isCalculating ? 'Calculating…' : 'Calculate Route'}
-      </button>
-      {#if calcHint}
-        <span class="hint">{calcHint}</span>
-      {/if}
-      {#if showProgress}
+      <!-- Calculate / Cancel buttons -->
+      {#if isCalculating}
+        <button class="btn-cancel" onclick={onCancel}>
+          Cancel
+        </button>
         <div class="progress-wrap">
           <div class="progress-bar" style:width="{calcProgress}%"></div>
         </div>
+      {:else}
+        <button
+          class="btn-calculate"
+          disabled={!canCalculate}
+          onclick={onCalculate}
+        >
+          Calculate Route
+        </button>
+        {#if calcHint}
+          <span class="hint">{calcHint}</span>
+        {/if}
       {/if}
 
     {:else}
@@ -402,6 +408,21 @@
   .btn-calculate:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+  .btn-cancel {
+    width: 100%;
+    margin-top: 8px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    background: #f38ba8;
+    color: #1e1e2e;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .btn-cancel:hover {
+    opacity: 0.9;
   }
   .btn-analyse {
     width: 100%;

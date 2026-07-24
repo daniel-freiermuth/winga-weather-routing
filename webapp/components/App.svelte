@@ -272,6 +272,7 @@
   function setStatus(type: string, msg: string) {
     statusType = type;
     statusText = msg;
+    if (type === 'done' && calcState.pendingRouteData) sidebarView = 'summary';
   }
 
   function handleShowFailurePopup(msg: string, isWarning: boolean) {
@@ -383,6 +384,8 @@
   // ── Waypoint Handlers ─────────────────────────────────────────────────────
 
   function handleWaypointChange(index: number, point: { lat: number; lon: number } | null) {
+    // Auto-cancel running calculation — the input changed, old result would be stale
+    if (isCalculating) handleCancelCalculation();
     waypoints = waypoints.map((wp, i) => i === index ? { ...wp, value: point } : wp);
     // Update map markers
     if (index === 0 && point) {
@@ -394,7 +397,6 @@
     } else if (index === waypoints.length - 1 && !point) {
       endMarker?.remove();
     }
-    // Intermediate markers
     updateIntermediateMarkers();
   }
 
@@ -492,23 +494,38 @@
   function handleContextSetStart() {
     handleWaypointChange(0, { lat: contextMenu.lat, lon: contextMenu.lng });
     contextMenu = { ...contextMenu, visible: false };
+    sidebarView = 'setup';
   }
 
   function handleContextSetEnd() {
     handleWaypointChange(waypoints.length - 1, { lat: contextMenu.lat, lon: contextMenu.lng });
     contextMenu = { ...contextMenu, visible: false };
+    sidebarView = 'setup';
   }
 
   function handleContextAddWaypoint() {
     handleWaypointAdd();
     handleWaypointChange(waypoints.length - 2, { lat: contextMenu.lat, lon: contextMenu.lng });
     contextMenu = { ...contextMenu, visible: false };
+    sidebarView = 'setup';
   }
 
   // ── Event Handlers ─────────────────────────────────────────────────────────
 
   function handleCalculate() {
     void calcApi?.startCalculation();
+  }
+  function handleCancelCalculation() {
+    if (!isCalculating) return;
+    routingWorker?.terminate();
+    isCalculating = false;
+    showProgress = false;
+    setStatus('', 'Calculation cancelled');
+    // Create a new worker and re-setup calculation module
+    routingWorker = new Worker(new URL('../worker.ts', import.meta.url), { type: 'module' });
+    if (mapRef && isochroneState) {
+      calcApi = initCalcApi(mapRef, routingWorker!, isochroneState!);
+    }
   }
 
   function handleAnalyse() {
@@ -575,37 +592,10 @@
     if (!r.ok) throw new Error(`HTTP ${String(r.status)}`);
     showSaveModal = false;
   }
-  // ── Map Initialization ($effect — runs once when map becomes available) ────
 
-  let mapInitialized = false;
-  $effect(() => {
-    const m = mapRef;
-    if (!m || mapInitialized) return;
-    mapInitialized = true;
-
-    startMarker = new maplibregl.Marker({ element: greenIcon(), anchor: 'center' });
-    endMarker = new maplibregl.Marker({ element: redIcon(), anchor: 'center' });
-    isochroneState = { sourceIds: [], layerIds: [], count: 0, map: m };
-    routingWorker = new Worker(new URL('../worker.ts', import.meta.url), { type: 'module' });
-
-    // ── Map context menu handler ──────────────────────────────────────────
-    m.on('contextmenu', (e: maplibregl.MapMouseEvent) => {
-      e.preventDefault();
-      const container = m.getContainer().getBoundingClientRect();
-      contextMenu = {
-        visible: true,
-        x: e.point.x + container.left,
-        y: e.point.y + container.top,
-        lat: e.lngLat.lat,
-        lng: e.lngLat.lng,
-      };
-    });
-
-    // ── Calculation module ──────────────────────────────────────────────────
-    // calcState imported from calc-state.svelte.ts — no bridge needed
-
-    calcApi = setupCalculation({
-      map: m, routingWorker: routingWorker!, isochroneState: isochroneState!,
+  function initCalcApi(map: maplibregl.Map, worker: Worker, iso: typeof isochroneState) {
+    return setupCalculation({
+      map, routingWorker: worker, isochroneState: iso!,
       setProgress: (pct: number) => { calcProgress = pct; },
       setCalculating: (v: boolean) => { isCalculating = v; },
       setShowProgress: (v: boolean) => { showProgress = v; },
@@ -646,6 +636,37 @@
       },
       setShowRangeToggle: (v) => { showRangeToggle = v; },
     });
+  }
+  // ── Map Initialization ($effect — runs once when map becomes available) ────
+
+  let mapInitialized = false;
+  $effect(() => {
+    const m = mapRef;
+    if (!m || mapInitialized) return;
+    mapInitialized = true;
+
+    startMarker = new maplibregl.Marker({ element: greenIcon(), anchor: 'center' });
+    endMarker = new maplibregl.Marker({ element: redIcon(), anchor: 'center' });
+    isochroneState = { sourceIds: [], layerIds: [], count: 0, map: m };
+    routingWorker = new Worker(new URL('../worker.ts', import.meta.url), { type: 'module' });
+
+    // ── Map context menu handler ──────────────────────────────────────────
+    m.on('contextmenu', (e: maplibregl.MapMouseEvent) => {
+      e.preventDefault();
+      const container = m.getContainer().getBoundingClientRect();
+      contextMenu = {
+        visible: true,
+        x: e.point.x + container.left,
+        y: e.point.y + container.top,
+        lat: e.lngLat.lat,
+        lng: e.lngLat.lng,
+      };
+    });
+
+    // ── Calculation module ──────────────────────────────────────────────────
+    // calcState imported from calc-state.svelte.ts — no bridge needed
+
+    calcApi = initCalcApi(m, routingWorker!, isochroneState!);
 
     // ── SK resources ────────────────────────────────────────────────────────
     // skState imported from sk-state.svelte.ts — no bridge needed
@@ -740,11 +761,6 @@
     }, 200);
   });
 
-  $effect(() => {
-    if (calcState.pendingRouteData && routeSummaryWaypoints.length > 0) {
-      sidebarView = 'summary';
-    }
-  });
 </script>
 
 <!-- Sidebar -->
@@ -783,6 +799,7 @@
         if (!isNaN(idx)) handleLoadRoute(idx);
       }}
       onCalculate={handleCalculate}
+      onCancel={handleCancelCalculation}
       onAnalyse={handleAnalyse}
     />
   {:else}
