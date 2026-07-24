@@ -1,19 +1,22 @@
 // Shared reactive state for the calculation module.
 // Both App.svelte and calculation.ts import from here — no getter/setter bridges needed.
 //
-// RESET RULE: adding a field here? Add it to freshCalcState() too — that's the
-// single source of defaults. `resetCalcState()` bulk-assigns from it.
+// RESET CONTRACT: resetCalcState(map) is the ONE way to tear down route results.
+// It removes map objects, then resets all data. Adding a field? Add it to
+// CalcState + freshCalcState(). If it's a map resource, add cleanup in resetCalcState().
 
 import type { WaypointMeta, GraphLayout, RouteData } from './types';
 import type maplibregl from 'maplibre-gl';
 
-interface CalcState {
+interface SourceAndLayer { sourceId: string; layerId: string }
+
+export interface CalcState {
   routeScrubberRange: { i0: number; iN: number } | null;
   scrubberLockedToRoute: boolean;
-  routeLayer: { sourceId: string; layerId: string } | null;
+  routeLayer: SourceAndLayer | null;
   windBarbLayer: maplibregl.Marker[];
-  legLabelLayer: { sourceId: string; layerId: string } | null;
-  highlightLegLayer: { sourceId: string; layerId: string } | null;
+  legLabelLayer: SourceAndLayer | null;
+  highlightLegLayer: SourceAndLayer | null;
   windBarbMarkers: (maplibregl.Marker | null)[];
   routeLegCoords: [number, number][][];
   prevHighlightWpIdx: number;
@@ -43,7 +46,21 @@ function freshCalcState(): CalcState {
 
 export const calcState: CalcState = $state(freshCalcState());
 
-/** Reset all calculation state to defaults. Caller must clean up map objects first. */
-export function resetCalcState(): void {
+export function removeSourceAndLayer(map: maplibregl.Map, ids: SourceAndLayer): void {
+  if (map.getLayer(ids.layerId)) map.removeLayer(ids.layerId);
+  if (map.getSource(ids.sourceId)) map.removeSource(ids.sourceId);
+}
+
+/**
+ * Tear down all route results: remove map objects, then reset data.
+ * This is the ONLY way to clear route state — ensures nothing leaks.
+ */
+export function resetCalcState(map?: maplibregl.Map): void {
+  if (map) {
+    if (calcState.routeLayer) removeSourceAndLayer(map, calcState.routeLayer);
+    for (const m of calcState.windBarbLayer) m.remove();
+    if (calcState.legLabelLayer) removeSourceAndLayer(map, calcState.legLabelLayer);
+    if (calcState.highlightLegLayer) removeSourceAndLayer(map, calcState.highlightLegLayer);
+  }
   Object.assign(calcState, freshCalcState());
 }

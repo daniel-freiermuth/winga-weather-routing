@@ -485,7 +485,7 @@
    *  so scrubber/highlight callbacks don't act on old data. */
   function enterPlanningMode() {
     sidebarView = 'setup';
-    resetCalcState();
+    resetCalcState(mapRef);
     showRangeToggle = false;
     timeAxis = { ...timeAxis, routeWaypointTimes: [] };
     rebuildScrubberTimes();

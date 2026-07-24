@@ -2,7 +2,7 @@
 // and manages scrubber highlighting for the calculated route.
 
 import maplibregl from 'maplibre-gl';
-import { calcState } from './calc-state.svelte';
+import { calcState, removeSourceAndLayer } from './calc-state.svelte';
 import type { WaypointMeta, GraphLayout, RouteData, GribFileMeta } from './types';
 import type { ScrubberState } from './scrubber-controller';
 import { fmt as _fmt, toDisplay as _toDisplay } from './units';
@@ -82,10 +82,6 @@ export interface CalculationApi {
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-function removeSourceAndLayer(map: maplibregl.Map, ids: { sourceId: string; layerId: string }) {
-  if (map.getLayer(ids.layerId)) map.removeLayer(ids.layerId);
-  if (map.getSource(ids.sourceId)) map.removeSource(ids.sourceId);
-}
 
 function findScrubberPosition(graphMeta: WaypointMeta[] | null, tMs: number) {
   if (!graphMeta || graphMeta.length < 2) return { wpIdx: -1, legIdx: -1 };
@@ -230,24 +226,14 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
     const startLatLon = ctx.getStartLatLon();
     const endLatLon = ctx.getEndLatLon();
     if (!startLatLon || !endLatLon) return;
-    calcState.routeScrubberRange = null;
-    calcState.scrubberLockedToRoute = false;
-    ctx.setRouteWaypointTimes([]);
-    ctx.setShowRangeToggle(false);
 
     const depTime = ctx.getDepartureTime();
     if (!depTime) return ctx.setStatus('error', 'Please set a departure time');
 
     clearIsochrones(isochroneState);
-    if (calcState.routeLayer) { removeSourceAndLayer(map, calcState.routeLayer); calcState.routeLayer = null; }
-    for (const m of calcState.windBarbLayer) m.remove();
-    calcState.windBarbLayer = [];
-    if (calcState.legLabelLayer) { removeSourceAndLayer(map, calcState.legLabelLayer); calcState.legLabelLayer = null; }
-    if (calcState.highlightLegLayer) { removeSourceAndLayer(map, calcState.highlightLegLayer); calcState.highlightLegLayer = null; }
     ctx.setShowProgress(true);
     ctx.setProgress(0);
     ctx.setCalculating(true);
-    if (calcState.calcStream) { calcState.calcStream.close(); calcState.calcStream = null; }
 
     ctx.setStatus('', 'Starting calculation…');
 
