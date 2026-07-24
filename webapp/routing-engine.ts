@@ -123,8 +123,10 @@ export function buildWorkerPayload(req: RoutingRequest): unknown {
       },
       polarCsv: req.polarCsv,
       tileBbox: {
-        latMin: latMin - margin, latMax: latMax + margin,
-        lonMin: lonMin - margin, lonMax: lonMax + margin,
+        latMin: latMin - margin,
+        latMax: latMax + margin,
+        lonMin: lonMin - margin,
+        lonMax: lonMax + margin,
       },
       landIndexUrl: new URL('./data/edge-index.bin.gz', import.meta.url).href,
       dilatedIndexUrl: req.useSafetyMargin

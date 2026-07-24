@@ -6,14 +6,31 @@ import { writable } from 'svelte/store';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type LatLon = { lat: number; lon: number };
-export interface WindPoint { lat: number; lon: number; u: number; v: number }
-export interface WavePoint { lat: number; lon: number; waveHeight: number }
-export interface CurrentPoint { lat: number; lon: number; u: number; v: number }
+export interface WindPoint {
+  lat: number;
+  lon: number;
+  u: number;
+  v: number;
+}
+export interface WavePoint {
+  lat: number;
+  lon: number;
+  waveHeight: number;
+}
+export interface CurrentPoint {
+  lat: number;
+  lon: number;
+  u: number;
+  v: number;
+}
 
 export interface WaveGridMeta {
-  latMin: number; latMax: number;
-  lonMin: number; lonMax: number;
-  latStep: number; lonStep: number;
+  latMin: number;
+  latMax: number;
+  lonMin: number;
+  lonMax: number;
+  latStep: number;
+  lonStep: number;
 }
 
 // ── Overlay data (written by forecast-fetcher.ts, read by App.svelte) ─────────

@@ -17,12 +17,21 @@ let allWindPoints: WindPoint[] = [];
 let allWavePoints: WavePoint[] = [];
 let allCurrentPoints: { lat: number; lon: number; u: number; v: number }[] = [];
 
-export function getWindPoints() { return allWindPoints; }
-export function getWavePoints() { return allWavePoints; }
-export function getCurrentPoints() { return allCurrentPoints; }
+export function getWindPoints() {
+  return allWindPoints;
+}
+export function getWavePoints() {
+  return allWavePoints;
+}
+export function getCurrentPoints() {
+  return allCurrentPoints;
+}
 
 export async function fetchWindPoints(
-  timeIdx: number, timeAxis: TimeAxisState, map: MapLibreMap, signal?: AbortSignal,
+  timeIdx: number,
+  timeAxis: TimeAxisState,
+  map: MapLibreMap,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (!timeAxis.windTimesLoaded) return;
   const timeStr = timeAxis.windTimes[timeIdx];
@@ -34,8 +43,10 @@ export async function fetchWindPoints(
   if (!map) return;
   const bounds = map.getBounds();
   const bbox = {
-    latMin: bounds.getSouth(), latMax: bounds.getNorth(),
-    lonMin: bounds.getWest(), lonMax: bounds.getEast(),
+    latMin: bounds.getSouth(),
+    latMax: bounds.getNorth(),
+    lonMin: bounds.getWest(),
+    lonMax: bounds.getEast(),
   };
   try {
     if (timeAxis.windNativeTimes.includes(timeStr)) {
@@ -55,7 +66,10 @@ export async function fetchWindPoints(
 }
 
 export async function fetchWavePoints(
-  timeIdx: number, timeAxis: TimeAxisState, map: MapLibreMap, signal?: AbortSignal,
+  timeIdx: number,
+  timeAxis: TimeAxisState,
+  map: MapLibreMap,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (!timeAxis.windTimesLoaded) return;
   const timeStr = timeAxis.windTimes[timeIdx];
@@ -67,8 +81,10 @@ export async function fetchWavePoints(
   if (!map) return;
   const bounds = map.getBounds();
   const bbox = {
-    latMin: bounds.getSouth(), latMax: bounds.getNorth(),
-    lonMin: bounds.getWest(), lonMax: bounds.getEast(),
+    latMin: bounds.getSouth(),
+    latMax: bounds.getNorth(),
+    lonMin: bounds.getWest(),
+    lonMax: bounds.getEast(),
   };
   try {
     let result: { points: { lat: number; lon: number; waveHeight: number }[]; timeMs: number };
@@ -85,9 +101,12 @@ export async function fetchWavePoints(
       const lats = allWavePoints.map((p) => p.lat);
       const lons = allWavePoints.map((p) => p.lon);
       waveGridMetaStore.set({
-        latMin: Math.min(...lats), latMax: Math.max(...lats),
-        lonMin: Math.min(...lons), lonMax: Math.max(...lons),
-        latStep: 0.5, lonStep: 0.5,
+        latMin: Math.min(...lats),
+        latMax: Math.max(...lats),
+        lonMin: Math.min(...lons),
+        lonMax: Math.max(...lons),
+        latStep: 0.5,
+        lonStep: 0.5,
       });
     }
   } catch (e: unknown) {
@@ -96,14 +115,14 @@ export async function fetchWavePoints(
   }
 }
 
-export async function fetchCurrentPoints(
-  timeMs: number, map: MapLibreMap, signal?: AbortSignal,
-): Promise<void> {
+export async function fetchCurrentPoints(timeMs: number, map: MapLibreMap, signal?: AbortSignal): Promise<void> {
   if (!map) return;
   const bounds = map.getBounds();
   const bbox = {
-    latMin: bounds.getSouth(), latMax: bounds.getNorth(),
-    lonMin: bounds.getWest(), lonMax: bounds.getEast(),
+    latMin: bounds.getSouth(),
+    latMax: bounds.getNorth(),
+    lonMin: bounds.getWest(),
+    lonMax: bounds.getEast(),
   };
   try {
     allCurrentPoints = await dataLayer.fetchCurrentGrid(timeMs, bbox, signal);

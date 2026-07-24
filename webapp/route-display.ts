@@ -3,7 +3,10 @@
 import maplibregl from 'maplibre-gl';
 import type { WaypointMeta, RouteData } from './types';
 
-interface FmtResult { num: string; sym: string }
+interface FmtResult {
+  num: string;
+  sym: string;
+}
 
 export interface RouteDisplayCtx {
   map: maplibregl.Map;
@@ -68,10 +71,14 @@ export function drawRoute(route: RouteData, ctx: RouteDisplayCtx): RouteDisplayR
   // Find intermediate waypoint indices
   const intermediateIdxs = ctx.routeWaypoints
     .map((wp) => {
-      let best = -1, bestDist = Infinity;
+      let best = -1,
+        bestDist = Infinity;
       coords.forEach(([lng, lat]: number[], i: number) => {
         const d = Math.hypot(lat! - wp.lat, lng! - wp.lon);
-        if (d < bestDist) { bestDist = d; best = i; }
+        if (d < bestDist) {
+          bestDist = d;
+          best = i;
+        }
       });
       return best;
     })

@@ -46,8 +46,10 @@ const DEFAULTS: Prefs = {
 function load(): Prefs {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...DEFAULTS, ...JSON.parse(raw) as Partial<Prefs> };
-  } catch { /* corrupt data — use defaults */ }
+    if (raw) return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Prefs>) };
+  } catch {
+    /* corrupt data — use defaults */
+  }
   return { ...DEFAULTS };
 }
 

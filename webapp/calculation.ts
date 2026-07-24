@@ -14,8 +14,16 @@ import type { IsochroneState } from './routing-engine';
 type LatLon = { lat: number; lon: number };
 
 const C64_PALETTE = [
-  '#6c7086', '#ffffff', '#883932', '#67b6bd', '#8b3f96',
-  '#55a049', '#40318d', '#bfce72', '#8b5429', '#574200',
+  '#6c7086',
+  '#ffffff',
+  '#883932',
+  '#67b6bd',
+  '#8b3f96',
+  '#55a049',
+  '#40318d',
+  '#bfce72',
+  '#8b5429',
+  '#574200',
 ];
 
 export interface RoutingOptionsLike {
@@ -33,7 +41,6 @@ export interface RoutingOptionsLike {
     waypointLabelInterval: number;
   };
 }
-
 
 /** All dependencies the calculation module needs from the app shell. */
 export interface CalculationContext {
@@ -72,7 +79,6 @@ export interface CalculationContext {
   getGribInfoFiles(): GribFileMeta[];
   getForecastSkillHorizonHours(): number;
   getPolarCsv(): string | undefined;
-
 }
 
 export interface CalculationApi {
@@ -83,7 +89,6 @@ export interface CalculationApi {
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
-
 
 function findScrubberPosition(graphMeta: WaypointMeta[] | null, tMs: number) {
   if (!graphMeta || graphMeta.length < 2) return { wpIdx: -1, legIdx: -1 };
@@ -97,14 +102,24 @@ function findScrubberPosition(graphMeta: WaypointMeta[] | null, tMs: number) {
 
 function drawConditionsGraph(ctx: CalculationContext, meta: WaypointMeta[], intermediateIdxs: number[] = []) {
   const result = buildConditionsGraph({
-    meta, intermediateIdxs, windSpeedMs: ctx.getWindSpeedMs(), gribInfoFiles: ctx.getGribInfoFiles(),
-    c64Palette: C64_PALETTE, forecastSkillHorizonHours: ctx.getForecastSkillHorizonHours(),
-    toDisplay: _toDisplay, fmt: _fmt,
+    meta,
+    intermediateIdxs,
+    windSpeedMs: ctx.getWindSpeedMs(),
+    gribInfoFiles: ctx.getGribInfoFiles(),
+    c64Palette: C64_PALETTE,
+    forecastSkillHorizonHours: ctx.getForecastSkillHorizonHours(),
+    toDisplay: _toDisplay,
+    fmt: _fmt,
   });
   if (!result) return;
   calcState.graphMeta = meta;
   calcState.graphLayout = result.layout;
-  ctx.setConditionsGraph({ svgContent: result.svgContent, viewBox: result.viewBox, hasWave: result.hasWave, layout: result.layout });
+  ctx.setConditionsGraph({
+    svgContent: result.svgContent,
+    viewBox: result.viewBox,
+    hasWave: result.hasWave,
+    layout: result.layout,
+  });
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -126,18 +141,24 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
       if (calcState.routeLayer) removeSourceAndLayer(map, calcState.routeLayer);
       for (const m of calcState.windBarbLayer) m.remove();
       if (calcState.legLabelLayer) removeSourceAndLayer(map, calcState.legLabelLayer);
-      if (calcState.highlightLegLayer) { removeSourceAndLayer(map, calcState.highlightLegLayer); calcState.highlightLegLayer = null; }
+      if (calcState.highlightLegLayer) {
+        removeSourceAndLayer(map, calcState.highlightLegLayer);
+        calcState.highlightLegLayer = null;
+      }
       calcState.windBarbMarkers = [];
       calcState.routeLegCoords = [];
       calcState.prevHighlightWpIdx = -1;
       const routingOptions = ctx.getRoutingOptions();
       const result = drawRoute(route, {
-        map, fmt: _fmt, windSpeedMs: ctx.getWindSpeedMs(),
+        map,
+        fmt: _fmt,
+        windSpeedMs: ctx.getWindSpeedMs(),
         getWaypointLabels: () => {
           const opts = routingOptions?.getOptions();
           return { labels: opts?.waypointLabels ?? true, intervalH: opts?.waypointLabelInterval ?? 0 };
         },
-        routeWaypoints: ctx.getRouteWaypoints(), setStatus: ctx.setStatus,
+        routeWaypoints: ctx.getRouteWaypoints(),
+        setStatus: ctx.setStatus,
       });
       if (!result) return;
       calcState.routeLayer = result.routeLayer;
@@ -153,23 +174,31 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
         // Find the closest waypoint (meta entry) to the click
         const coords = route.feature?.geometry?.coordinates;
         if (!coords) return;
-        let bestIdx = 0, bestDist = Infinity;
+        let bestIdx = 0,
+          bestDist = Infinity;
         for (let i = 0; i < coords.length; i++) {
           const dx = (coords[i]?.[0] ?? 0) - lng;
           const dy = (coords[i]?.[1] ?? 0) - lat;
           const d = dx * dx + dy * dy;
-          if (d < bestDist) { bestDist = d; bestIdx = i; }
+          if (d < bestDist) {
+            bestDist = d;
+            bestIdx = i;
+          }
         }
         const meta = calcState.graphMeta[bestIdx];
         if (meta) ctx.onRouteClick(new Date(meta.time).getTime());
       });
-      map.on('mouseenter', 'calculated-route-line', () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', 'calculated-route-line', () => { map.getCanvas().style.cursor = ''; });
+      map.on('mouseenter', 'calculated-route-line', () => {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mouseleave', 'calculated-route-line', () => {
+        map.getCanvas().style.cursor = '';
+      });
       drawConditionsGraph(ctx, result.meta, result.intermediateIdxs);
       const windTimes = ctx.getWindTimes();
       if (ctx.getWindTimesLoaded() && result.meta.length > 0) {
         // Inject route waypoint times into the scrubber time grid
-        ctx.setRouteWaypointTimes(result.meta.map(m => m.time));
+        ctx.setRouteWaypointTimes(result.meta.map((m) => m.time));
         // Now find i0/iN in the updated windTimes (which now includes waypoint times)
         const updatedWindTimes = ctx.getWindTimes();
         const t0ms = new Date(result.meta[0]!.time).getTime();
@@ -191,15 +220,20 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
       if (coords && coords.length > 0) {
         const lngs = coords.map((c: number[]) => c[0] ?? 0);
         const lats = coords.map((c: number[]) => c[1] ?? 0);
-        const lngMin = Math.min(...lngs), lngMax = Math.max(...lngs);
-        const latMin = Math.min(...lats), latMax = Math.max(...lats);
+        const lngMin = Math.min(...lngs),
+          lngMax = Math.max(...lngs);
+        const latMin = Math.min(...lats),
+          latMax = Math.max(...lats);
         const lngPad = (lngMax - lngMin) * 0.5 || 0.5;
         const latPad = (latMax - latMin) * 0.5 || 0.5;
         requestAnimationFrame(() => {
           map.resize();
           requestAnimationFrame(() => {
             map.fitBounds(
-              [[lngMin - lngPad, latMin - latPad], [lngMax + lngPad, latMax + latPad]],
+              [
+                [lngMin - lngPad, latMin - latPad],
+                [lngMax + lngPad, latMax + latPad],
+              ],
               { padding: 20 },
             );
           });
@@ -253,7 +287,8 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
         const pt = map.project(lngLat);
         const { width, height } = map.getCanvas();
         const r = window.devicePixelRatio || 1;
-        const w = width / r, h = height / r;
+        const w = width / r,
+          h = height / r;
         const inCenter = pt.x > w * 0.25 && pt.x < w * 0.75 && pt.y > h * 0.25 && pt.y < h * 0.75;
         if (!inCenter) {
           map.easeTo({ center: lngLat, duration: 300 });
@@ -293,33 +328,63 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
     // Unwrap Svelte $state proxies — structured cloning (postMessage) can't handle Proxy objects
     const plainStart = startLatLon ? { lat: startLatLon.lat, lon: startLatLon.lon } : startLatLon;
     const plainEnd = endLatLon ? { lat: endLatLon.lat, lon: endLatLon.lon } : endLatLon;
-    const plainWaypoints = ctx.getRouteWaypoints().map(wp => ({ lat: wp.lat, lon: wp.lon }));
+    const plainWaypoints = ctx.getRouteWaypoints().map((wp) => ({ lat: wp.lat, lon: wp.lon }));
 
-    routingWorker.postMessage(buildWorkerPayload({
-      start: plainStart,
-      end: plainEnd,
-      departureTime: new Date(depTime).toISOString(),
-      waypoints: plainWaypoints.length > 0 ? plainWaypoints : undefined,
-      polarCsv,
-      useLandAvoidance: opts?.useLandAvoidance ?? true,
-      useSafetyMargin: opts?.useSafetyMargin ?? false,
-      options: {
-        motorBelowKn: opts?.motorBelowKn,
-        motorSpeedKn: opts?.motorSpeedKn,
-        waitForWind: opts?.waitForWind,
-        maxWindKn: opts?.maxWindKn,
-        maxWaveM: opts?.maxWaveM,
-        tackPenaltySec: opts?.tackPenaltySec ?? 30,
-        tackThresholdDeg: opts?.tackThresholdDeg ?? 60,
-      },
-    }));
+    routingWorker.postMessage(
+      buildWorkerPayload({
+        start: plainStart,
+        end: plainEnd,
+        departureTime: new Date(depTime).toISOString(),
+        waypoints: plainWaypoints.length > 0 ? plainWaypoints : undefined,
+        polarCsv,
+        useLandAvoidance: opts?.useLandAvoidance ?? true,
+        useSafetyMargin: opts?.useSafetyMargin ?? false,
+        options: {
+          motorBelowKn: opts?.motorBelowKn,
+          motorSpeedKn: opts?.motorSpeedKn,
+          waitForWind: opts?.waitForWind,
+          maxWindKn: opts?.maxWindKn,
+          maxWaveM: opts?.maxWaveM,
+          tackPenaltySec: opts?.tackPenaltySec ?? 30,
+          tackThresholdDeg: opts?.tackThresholdDeg ?? 60,
+        },
+      }),
+    );
 
     ctx.setStatus('', 'Calculating…');
   }
 
   // Wire worker message handler
   routingWorker.addEventListener('message', (e) => {
-    const j = e.data as { type: string; pct?: number; progress?: number; frontier?: number[][]; legOrigin?: [number, number]; clearIsochrones?: boolean; route?: { lat: number; lon: number; time: string; heading: number; twa: number; tws: number; boatSpeed?: number; windDir: number; waveHeight?: number; gribFilePath?: string; gustKn?: number; currentU?: number; currentV?: number; wavePeriod?: number; waveDir?: number; wowTws?: number; wowDir?: number }[]; warning?: string; error?: string };
+    const j = e.data as {
+      type: string;
+      pct?: number;
+      progress?: number;
+      frontier?: number[][];
+      legOrigin?: [number, number];
+      clearIsochrones?: boolean;
+      route?: {
+        lat: number;
+        lon: number;
+        time: string;
+        heading: number;
+        twa: number;
+        tws: number;
+        boatSpeed?: number;
+        windDir: number;
+        waveHeight?: number;
+        gribFilePath?: string;
+        gustKn?: number;
+        currentU?: number;
+        currentV?: number;
+        wavePeriod?: number;
+        waveDir?: number;
+        wowTws?: number;
+        wowDir?: number;
+      }[];
+      warning?: string;
+      error?: string;
+    };
     if (j.type === 'progress') {
       const pct = Math.round(j.pct ?? j.progress ?? 0);
       ctx.setProgress(pct);
@@ -328,9 +393,7 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
         clearIsochrones(isochroneState);
       }
       if (j.frontier?.length && ctx.getIsochroneEnabled()) {
-        const origin = j.legOrigin
-          ? { lat: j.legOrigin[0], lon: j.legOrigin[1] }
-          : ctx.getStartLatLon();
+        const origin = j.legOrigin ? { lat: j.legOrigin[0], lon: j.legOrigin[1] } : ctx.getStartLatLon();
         if (origin) renderIsochrone(j.frontier, origin, isochroneState);
       }
     } else if (j.type === 'result') {
@@ -343,7 +406,7 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
             type: 'Feature',
             geometry: {
               type: 'LineString',
-              coordinates: j.route.map(p => [p.lon, p.lat]),
+              coordinates: j.route.map((p) => [p.lon, p.lat]),
             },
             properties: {
               coordinatesMeta: j.route.map((p, i) => {
@@ -367,25 +430,26 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
                   const cSpd = Math.sqrt(p.currentU * p.currentU + p.currentV * p.currentV) * 1.94384;
                   if (cSpd > 0.01) {
                     meta.currentSpeedKn = cSpd;
-                    meta.currentDir = (Math.atan2(p.currentU, p.currentV) * 180 / Math.PI + 360) % 360;
+                    meta.currentDir = ((Math.atan2(p.currentU, p.currentV) * 180) / Math.PI + 360) % 360;
                   }
                 }
                 // COG and SOG from consecutive positions (ground track)
                 if (i > 0) {
                   const prev = j.route![i - 1]!;
-                  const dLat = (p.lat - prev.lat) * Math.PI / 180;
-                  const dLon = (p.lon - prev.lon) * Math.PI / 180;
-                  const lat1r = prev.lat * Math.PI / 180;
-                  const lat2r = p.lat * Math.PI / 180;
+                  const dLat = ((p.lat - prev.lat) * Math.PI) / 180;
+                  const dLon = ((p.lon - prev.lon) * Math.PI) / 180;
+                  const lat1r = (prev.lat * Math.PI) / 180;
+                  const lat2r = (p.lat * Math.PI) / 180;
                   // Haversine distance in NM
                   const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1r) * Math.cos(lat2r) * Math.sin(dLon / 2) ** 2;
                   const distNM = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 3440.065;
                   // Bearing
                   const y = Math.sin(dLon) * Math.cos(lat2r);
                   const x = Math.cos(lat1r) * Math.sin(lat2r) - Math.sin(lat1r) * Math.cos(lat2r) * Math.cos(dLon);
-                  meta.cogDeg = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+                  meta.cogDeg = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
                   // SOG in knots
-                  const t0 = typeof prev.time === 'string' ? new Date(prev.time).getTime() : (prev.time as unknown as number);
+                  const t0 =
+                    typeof prev.time === 'string' ? new Date(prev.time).getTime() : (prev.time as unknown as number);
                   const t1 = typeof p.time === 'string' ? new Date(p.time).getTime() : (p.time as unknown as number);
                   const dtH = (t1 - t0) / 3600000;
                   meta.sogKn = dtH > 0 ? distNM / dtH : 0;

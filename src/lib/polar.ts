@@ -85,8 +85,7 @@ export function interpolateBoatSpeed(polar: PolarData, twaDeg: number, twsKnots:
   const firstTws = polar.tws[0];
   if (firstTws === undefined) return 0;
   if (twsKnots < firstTws) {
-    const minTwsSpeed =
-      (1 - tTwa) * (polar.speeds[twaIdx]?.[0] ?? 0) + tTwa * (polar.speeds[twaNext]?.[0] ?? 0);
+    const minTwsSpeed = (1 - tTwa) * (polar.speeds[twaIdx]?.[0] ?? 0) + tTwa * (polar.speeds[twaNext]?.[0] ?? 0);
     return minTwsSpeed * (twsKnots / firstTws);
   }
 

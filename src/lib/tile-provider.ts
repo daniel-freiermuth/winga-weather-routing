@@ -32,10 +32,7 @@ import {
   fetchMinifest,
   browserRgbaDecoder,
 } from '@winga-weather-routing/windy-lib';
-import type {
-  WindyModelKey,
-  WindyTileHeader,
-} from '@winga-weather-routing/windy-lib';
+import type { WindyModelKey, WindyTileHeader } from '@winga-weather-routing/windy-lib';
 import type { BoundingBox, CurrentProvider, GribFileMeta, WindProvider, WindVector } from '../types';
 
 // ── Cached tile ───────────────────────────────────────────────────────────────
@@ -61,19 +58,17 @@ async function fetchAndDecode(url: string): Promise<CachedTile> {
 }
 
 /** Cache key: `${model}/${overlay}/${validTimeCompact}/${z}/${x}/${y}` */
-function tileKey(
-  model: string, overlay: string, validTime: string,
-  z: number, x: number, y: number,
-): string {
+function tileKey(model: string, overlay: string, validTime: string, z: number, x: number, y: number): string {
   return `${model}/${overlay}/${validTime}/${String(z)}/${String(x)}/${String(y)}`;
 }
 
 /** Find the closest minifest step to a target timestamp. Uses binary search on sorted steps. */
 function closestStepIdx(steps: { iso: string; compact: string }[], targetMs: number, precomputedMs?: number[]): number {
   if (steps.length === 0) return 0;
-  const ms = precomputedMs ?? steps.map(s => new Date(s.iso).getTime());
+  const ms = precomputedMs ?? steps.map((s) => new Date(s.iso).getTime());
   // Binary search for nearest
-  let lo = 0, hi = ms.length - 1;
+  let lo = 0,
+    hi = ms.length - 1;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
     if ((ms[mid] ?? 0) < targetMs) lo = mid + 1;
@@ -140,22 +135,19 @@ export class TileWindProvider implements WindProvider {
 
   /** Load metadata (model runs, time steps, tile grid). No tiles fetched yet. */
   async load(bbox: BoundingBox, _fromMs?: number, _toMs?: number): Promise<void> {
-    const [windMf, waveMf] = await Promise.all([
-      fetchMinifest(this.windModel),
-      fetchMinifest(this.waveModel),
-    ]);
+    const [windMf, waveMf] = await Promise.all([fetchMinifest(this.windModel), fetchMinifest(this.waveModel)]);
 
     this.windModelRun = refToCompact(windMf.ref);
     this.waveModelRun = refToCompact(waveMf.ref);
     this.windSteps = getValidTimes(windMf);
     this.waveSteps = getValidTimes(waveMf);
-    this.windStepsMs = this.windSteps.map(s => new Date(s.iso).getTime());
-    this.waveStepsMs = this.waveSteps.map(s => new Date(s.iso).getTime());
+    this.windStepsMs = this.windSteps.map((s) => new Date(s.iso).getTime());
+    this.waveStepsMs = this.waveSteps.map((s) => new Date(s.iso).getTime());
     this.tiles = tilesForBbox(bbox, this.zoom);
 
     // Build full time axis from all available wind steps
     this.times.length = 0;
-    this.times.push(...this.windStepsMs.map(ms => new Date(ms)));
+    this.times.push(...this.windStepsMs.map((ms) => new Date(ms)));
 
     this.loaded = true;
   }
@@ -188,13 +180,25 @@ export class TileWindProvider implements WindProvider {
         const windKey = tileKey(this.windModel, 'wind', step.compact, this.zoom, t.x, t.y);
         if (!this.cache.has(windKey)) {
           const url = buildTileUrl(this.windModel, this.windModelRun, step.compact, this.zoom, t.x, t.y, 'wind');
-          fetches.push(fetchAndDecode(url).then((tile) => { this.cache.set(windKey, tile); }));
+          fetches.push(
+            fetchAndDecode(url).then((tile) => {
+              this.cache.set(windKey, tile);
+            }),
+          );
         }
         // Gust tiles (same model/steps as wind)
         const gustKey = tileKey(this.windModel, 'gust', step.compact, this.zoom, t.x, t.y);
         if (!this.cache.has(gustKey)) {
           const url = buildTileUrl(this.windModel, this.windModelRun, step.compact, this.zoom, t.x, t.y, 'gust');
-          fetches.push(fetchAndDecode(url).then((tile) => { this.cache.set(gustKey, tile); }).catch(() => { /* gust tiles may 404 */ }));
+          fetches.push(
+            fetchAndDecode(url)
+              .then((tile) => {
+                this.cache.set(gustKey, tile);
+              })
+              .catch(() => {
+                /* gust tiles may 404 */
+              }),
+          );
         }
       }
       for (const si of waveIdxs) {
@@ -202,8 +206,26 @@ export class TileWindProvider implements WindProvider {
         if (!step) continue;
         const key = tileKey(this.waveModel, 'waves', step.compact, this.zoom, t.x, t.y);
         if (!this.cache.has(key)) {
-          const url = buildTileUrl(this.waveModel, this.waveModelRun, step.compact, this.zoom, t.x, t.y, 'waves', 'surface', 'png');
-          fetches.push(fetchAndDecode(url).then((tile) => { this.cache.set(key, tile); }).catch(() => { /* wave tiles may 404 over land */ }));
+          const url = buildTileUrl(
+            this.waveModel,
+            this.waveModelRun,
+            step.compact,
+            this.zoom,
+            t.x,
+            t.y,
+            'waves',
+            'surface',
+            'png',
+          );
+          fetches.push(
+            fetchAndDecode(url)
+              .then((tile) => {
+                this.cache.set(key, tile);
+              })
+              .catch(() => {
+                /* wave tiles may 404 over land */
+              }),
+          );
         }
       }
     }
@@ -262,7 +284,8 @@ export class TileWindProvider implements WindProvider {
       f = this.lastTimeFrac;
     } else {
       // Binary search for bracket
-      let lo = 0, hi = times.length - 2;
+      let lo = 0,
+        hi = times.length - 2;
       while (lo < hi) {
         const mid = (lo + hi + 1) >> 1;
         if ((times[mid]?.getTime() ?? 0) <= timeMs) lo = mid;
@@ -278,10 +301,17 @@ export class TileWindProvider implements WindProvider {
     }
 
     // If very close to a step boundary, skip interpolation
-    if (f < 0.01) { const t = times[i]; return t ? this.getWindByDate(lat, lon, t) : { u: 0, v: 0 }; }
-    if (f > 0.99) { const t = times[i + 1]; return t ? this.getWindByDate(lat, lon, t) : { u: 0, v: 0 }; }
+    if (f < 0.01) {
+      const t = times[i];
+      return t ? this.getWindByDate(lat, lon, t) : { u: 0, v: 0 };
+    }
+    if (f > 0.99) {
+      const t = times[i + 1];
+      return t ? this.getWindByDate(lat, lon, t) : { u: 0, v: 0 };
+    }
 
-    const ti = times[i], ti1 = times[i + 1];
+    const ti = times[i],
+      ti1 = times[i + 1];
     const w0 = ti ? this.getWindByDate(lat, lon, ti) : { u: 0, v: 0 };
     const w1 = ti1 ? this.getWindByDate(lat, lon, ti1) : { u: 0, v: 0 };
 
@@ -319,7 +349,11 @@ export class TileWindProvider implements WindProvider {
   }
 
   /** Sample wave tile at a position: returns height (B), period and direction (R/G vector). */
-  private sampleWaveTile(lat: number, lon: number, validTime: string): { height: number; period: number; direction: number } | undefined {
+  private sampleWaveTile(
+    lat: number,
+    lon: number,
+    validTime: string,
+  ): { height: number; period: number; direction: number } | undefined {
     const { x, y } = latLonToTile(lat, lon, this.zoom);
     const key = tileKey(this.waveModel, 'waves', validTime, this.zoom, x, y);
     const tile = this.cache.get(key);
@@ -342,23 +376,34 @@ export class TileWindProvider implements WindProvider {
   }
 
   getWaveAtTime(lat: number, lon: number, timeMs: number): number | undefined {
-    return this.interpolateOverTime(this.waveStepsMs, this.waveSteps, timeMs,
-      (vt) => this.sampleWaveTile(lat, lon, vt)?.height);
+    return this.interpolateOverTime(
+      this.waveStepsMs,
+      this.waveSteps,
+      timeMs,
+      (vt) => this.sampleWaveTile(lat, lon, vt)?.height,
+    );
   }
 
   getWavePeriodAtTime(lat: number, lon: number, timeMs: number): number | undefined {
-    return this.interpolateOverTime(this.waveStepsMs, this.waveSteps, timeMs,
-      (vt) => this.sampleWaveTile(lat, lon, vt)?.period);
+    return this.interpolateOverTime(
+      this.waveStepsMs,
+      this.waveSteps,
+      timeMs,
+      (vt) => this.sampleWaveTile(lat, lon, vt)?.period,
+    );
   }
 
   getWaveDirAtTime(lat: number, lon: number, timeMs: number): number | undefined {
-    return this.interpolateOverTime(this.waveStepsMs, this.waveSteps, timeMs,
-      (vt) => this.sampleWaveTile(lat, lon, vt)?.direction);
+    return this.interpolateOverTime(
+      this.waveStepsMs,
+      this.waveSteps,
+      timeMs,
+      (vt) => this.sampleWaveTile(lat, lon, vt)?.direction,
+    );
   }
 
   getGustAtTime(lat: number, lon: number, timeMs: number): number | undefined {
-    return this.interpolateOverTime(this.windStepsMs, this.windSteps, timeMs,
-      (vt) => this.sampleGust(lat, lon, vt));
+    return this.interpolateOverTime(this.windStepsMs, this.windSteps, timeMs, (vt) => this.sampleGust(lat, lon, vt));
   }
 
   /** Compute optimal zoom level so the route area fits within maxTilesPerDim tiles.
@@ -367,7 +412,7 @@ export class TileWindProvider implements WindProvider {
     const latSpan = bbox.latMax - bbox.latMin;
     const lonSpan = bbox.lonMax - bbox.lonMin;
     const span = Math.max(latSpan, lonSpan);
-    const z = Math.floor(Math.log2(maxTilesPerDim * 360 / span));
+    const z = Math.floor(Math.log2((maxTilesPerDim * 360) / span));
     return Math.max(3, Math.min(z, 4)); // Windy serves zoom 3–4 only
   }
 
@@ -431,8 +476,12 @@ export class TileCurrentProvider implements CurrentProvider {
       path: 'windy/cmems',
       mtime: Date.now(),
       type: 'current',
-      latMin: -90, latMax: 90, lonMin: -180, lonMax: 180,
-      latStep: 0.1, lonStep: 0.1,
+      latMin: -90,
+      latMax: 90,
+      lonMin: -180,
+      lonMax: 180,
+      latStep: 0.1,
+      lonStep: 0.1,
       timeStart: new Date(),
       timeEnd: new Date(),
       nTimes: 0,
@@ -445,7 +494,7 @@ export class TileCurrentProvider implements CurrentProvider {
     const mf = await fetchMinifest('cmems');
     this.modelRun = refToCompact(mf.ref);
     this.steps = getValidTimes(mf);
-    this.stepsMs = this.steps.map(s => new Date(s.iso).getTime());
+    this.stepsMs = this.steps.map((s) => new Date(s.iso).getTime());
     this.tiles = tilesForBbox(bbox, this.zoom);
 
     const horizonMs = new Date(mf.end).getTime();
@@ -478,7 +527,15 @@ export class TileCurrentProvider implements CurrentProvider {
         const key = tileKey('cmems', 'seacurrents', step.compact, this.zoom, t.x, t.y);
         if (!this.cache.has(key)) {
           const url = buildTileUrl('cmems', this.modelRun, step.compact, this.zoom, t.x, t.y, 'seacurrents');
-          fetches.push(fetchAndDecode(url).then((tile) => { this.cache.set(key, tile); }).catch(() => { /* may fail over land */ }));
+          fetches.push(
+            fetchAndDecode(url)
+              .then((tile) => {
+                this.cache.set(key, tile);
+              })
+              .catch(() => {
+                /* may fail over land */
+              }),
+          );
         }
       }
     }
@@ -498,7 +555,8 @@ export class TileCurrentProvider implements CurrentProvider {
       if (t1 > t0) {
         const f = Math.max(0, Math.min(1, (timeMs - t0) / (t1 - t0)));
         if (f > 0.01 && f < 0.99) {
-          const s0 = this.steps[i], s1 = this.steps[i + 1];
+          const s0 = this.steps[i],
+            s1 = this.steps[i + 1];
           if (s0 && s1) {
             const c0 = this.sampleCurrent(lat, lon, s0.compact);
             const c1 = this.sampleCurrent(lat, lon, s1.compact);
@@ -522,8 +580,12 @@ export class TileCurrentProvider implements CurrentProvider {
   }
 
   coversPoint(lat: number, lon: number): boolean {
-    return this.loaded &&
-      lat >= this.bbox.latMin && lat <= this.bbox.latMax &&
-      lon >= this.bbox.lonMin && lon <= this.bbox.lonMax;
+    return (
+      this.loaded &&
+      lat >= this.bbox.latMin &&
+      lat <= this.bbox.latMax &&
+      lon >= this.bbox.lonMin &&
+      lon <= this.bbox.lonMax
+    );
   }
 }

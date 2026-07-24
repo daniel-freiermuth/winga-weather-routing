@@ -28,32 +28,40 @@ export function drawMeteogram(canvas: HTMLCanvasElement, data: WaypointWeather[]
   const h = rect.height;
 
   // Layout
-  const ml = 40;   // left margin (y-axis labels)
-  const mr = 10;   // right margin
-  const mt = 24;    // top margin (wind arrows)
-  const mb = 36;    // bottom margin (x-axis labels)
+  const ml = 40; // left margin (y-axis labels)
+  const mr = 10; // right margin
+  const mt = 24; // top margin (wind arrows)
+  const mb = 36; // bottom margin (x-axis labels)
   const plotW = w - ml - mr;
   const plotH = h - mt - mb;
 
   // Data ranges
-  const times = data.map(d => d.etaMs);
+  const times = data.map((d) => d.etaMs);
   const tMin = times[0]!;
   const tMax = times[times.length - 1]!;
   const tRange = tMax - tMin || 1;
 
-  const winds = data.map(d => d.twsKn ?? 0);
-  const waves = data.map(d => d.waveHeightM ?? 0);
-  const gusts = data.map(d => d.gustKn ?? 0);
-  const speeds = data.map(d => d.boatSpeedKn ?? 0);
+  const winds = data.map((d) => d.twsKn ?? 0);
+  const waves = data.map((d) => d.waveHeightM ?? 0);
+  const gusts = data.map((d) => d.gustKn ?? 0);
+  const speeds = data.map((d) => d.boatSpeedKn ?? 0);
 
   const maxWind = Math.max(5, ...winds, ...gusts) * 1.15;
   const maxWave = Math.max(1, ...waves) * 1.3;
   const maxSpeed = Math.max(maxWind, Math.max(5, ...speeds) * 1.15);
 
-  function tx(ms: number) { return ml + ((ms - tMin) / tRange) * plotW; }
-  function tyWind(kn: number) { return mt + plotH - (kn / maxWind) * plotH; }
-  function tyWave(m: number) { return mt + plotH - (m / maxWave) * (plotH * 0.3); } // waves use bottom 30%
-  function tySpeed(kn: number) { return mt + plotH - (kn / maxSpeed) * plotH; }
+  function tx(ms: number) {
+    return ml + ((ms - tMin) / tRange) * plotW;
+  }
+  function tyWind(kn: number) {
+    return mt + plotH - (kn / maxWind) * plotH;
+  }
+  function tyWave(m: number) {
+    return mt + plotH - (m / maxWave) * (plotH * 0.3);
+  } // waves use bottom 30%
+  function tySpeed(kn: number) {
+    return mt + plotH - (kn / maxSpeed) * plotH;
+  }
 
   // Background
   ctx.fillStyle = '#1e2230';
@@ -64,11 +72,14 @@ export function drawMeteogram(canvas: HTMLCanvasElement, data: WaypointWeather[]
   ctx.lineWidth = 0.5;
   for (let v = 0; v <= maxWind; v += 5) {
     const y = tyWind(v);
-    ctx.beginPath(); ctx.moveTo(ml, y); ctx.lineTo(w - mr, y); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(ml, y);
+    ctx.lineTo(w - mr, y);
+    ctx.stroke();
   }
 
   // Wave area (blue, bottom 30%)
-  if (waves.some(v => v > 0)) {
+  if (waves.some((v) => v > 0)) {
     ctx.fillStyle = 'rgba(116, 199, 236, 0.25)';
     ctx.beginPath();
     ctx.moveTo(tx(times[0]!), mt + plotH);
@@ -84,7 +95,8 @@ export function drawMeteogram(canvas: HTMLCanvasElement, data: WaypointWeather[]
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     for (let i = 0; i < data.length; i++) {
-      const x = tx(times[i]!), y = tyWave(waves[i]!);
+      const x = tx(times[i]!),
+        y = tyWave(waves[i]!);
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.stroke();
@@ -106,17 +118,19 @@ export function drawMeteogram(canvas: HTMLCanvasElement, data: WaypointWeather[]
   ctx.lineWidth = 2;
   ctx.beginPath();
   for (let i = 0; i < data.length; i++) {
-    const x = tx(times[i]!), y = tyWind(winds[i]!);
+    const x = tx(times[i]!),
+      y = tyWind(winds[i]!);
     i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   }
 
   // Gust area (red between wind and gust)
-  if (gusts.some(v => v > 0)) {
+  if (gusts.some((v) => v > 0)) {
     ctx.fillStyle = 'rgba(243, 139, 168, 0.15)';
     ctx.beginPath();
     // Upper edge: gust line (top)
     for (let i = 0; i < data.length; i++) {
-      const x = tx(times[i]!), y = tyWind(gusts[i]!);
+      const x = tx(times[i]!),
+        y = tyWind(gusts[i]!);
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     // Lower edge: wind line (bottom), reversed
@@ -132,7 +146,8 @@ export function drawMeteogram(canvas: HTMLCanvasElement, data: WaypointWeather[]
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
     for (let i = 0; i < data.length; i++) {
-      const x = tx(times[i]!), y = tyWind(gusts[i]!);
+      const x = tx(times[i]!),
+        y = tyWind(gusts[i]!);
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.stroke();
@@ -141,13 +156,14 @@ export function drawMeteogram(canvas: HTMLCanvasElement, data: WaypointWeather[]
   ctx.stroke();
 
   // Boat speed line (dashed green)
-  if (speeds.some(v => v > 0)) {
+  if (speeds.some((v) => v > 0)) {
     ctx.strokeStyle = '#a6e3a1';
     ctx.lineWidth = 1.5;
     ctx.setLineDash([4, 3]);
     ctx.beginPath();
     for (let i = 0; i < data.length; i++) {
-      const x = tx(times[i]!), y = tyWind(speeds[i]!);
+      const x = tx(times[i]!),
+        y = tyWind(speeds[i]!);
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.stroke();
@@ -161,7 +177,7 @@ export function drawMeteogram(canvas: HTMLCanvasElement, data: WaypointWeather[]
     if (d.twdDeg == null) continue;
     const x = tx(times[i]!);
     const y = mt - 4;
-    const rad = (d.twdDeg + 180) * Math.PI / 180; // arrow points in the direction wind blows TO
+    const rad = ((d.twdDeg + 180) * Math.PI) / 180; // arrow points in the direction wind blows TO
     const len = 7;
 
     ctx.save();
@@ -182,7 +198,10 @@ export function drawMeteogram(canvas: HTMLCanvasElement, data: WaypointWeather[]
   ctx.setLineDash([2, 3]);
   for (const d of data) {
     const x = tx(d.etaMs);
-    ctx.beginPath(); ctx.moveTo(x, mt); ctx.lineTo(x, mt + plotH); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, mt);
+    ctx.lineTo(x, mt + plotH);
+    ctx.stroke();
   }
   ctx.setLineDash([]);
 
@@ -228,7 +247,10 @@ export function drawMeteogram(canvas: HTMLCanvasElement, data: WaypointWeather[]
     ctx.strokeStyle = item.color;
     ctx.lineWidth = 2;
     if (item.dash) ctx.setLineDash([3, 2]);
-    ctx.beginPath(); ctx.moveTo(legendX, legendY); ctx.lineTo(legendX + 14, legendY); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(legendX, legendY);
+    ctx.lineTo(legendX + 14, legendY);
+    ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = '#a6adc8';
     ctx.fillText(item.label, legendX + 18, legendY + 3);
@@ -246,7 +268,7 @@ export function drawMeteogram(canvas: HTMLCanvasElement, data: WaypointWeather[]
 export function setupMeteogramTooltip(canvas: HTMLCanvasElement, tooltip: HTMLElement, data: WaypointWeather[]) {
   if (data.length < 2) return;
 
-  const times = data.map(d => d.etaMs);
+  const times = data.map((d) => d.etaMs);
   const tMin = times[0]!;
   const tMax = times[times.length - 1]!;
   const tRange = tMax - tMin || 1;
@@ -254,7 +276,8 @@ export function setupMeteogramTooltip(canvas: HTMLCanvasElement, tooltip: HTMLEl
   canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
-    const ml = 40, mr = 10;
+    const ml = 40,
+      mr = 10;
     const plotW = rect.width - ml - mr;
     const t = ((mx - ml) / plotW) * tRange + tMin;
 
@@ -263,7 +286,10 @@ export function setupMeteogramTooltip(canvas: HTMLCanvasElement, tooltip: HTMLEl
     let minDiff = Infinity;
     for (const d of data) {
       const diff = Math.abs(d.etaMs - t);
-      if (diff < minDiff) { minDiff = diff; closest = d; }
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = d;
+      }
     }
 
     const dt = new Date(closest.etaMs);
@@ -280,7 +306,7 @@ export function setupMeteogramTooltip(canvas: HTMLCanvasElement, tooltip: HTMLEl
     tooltip.innerHTML = lines.join('<br>');
     tooltip.style.display = 'block';
     tooltip.style.left = Math.min(mx + 12, rect.width - 160) + 'px';
-    tooltip.style.top = (e.clientY - rect.top - 80) + 'px';
+    tooltip.style.top = e.clientY - rect.top - 80 + 'px';
   });
 
   canvas.addEventListener('mouseleave', () => {

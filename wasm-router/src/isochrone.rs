@@ -15,7 +15,7 @@ pub struct RoutePoint {
     pub time_ms: f64,
     pub heading: f64,
     pub twa: f64,
-    pub tws: f64, // knots
+    pub tws: f64,        // knots
     pub boat_speed: f64, // knots, 0.0 for departure
     pub wind_dir: f64,
     pub step_calc_ms: f64,
@@ -95,9 +95,12 @@ pub trait DataProvider {
 }
 
 /// Calculate a single routing leg from start to end.
+#[allow(clippy::too_many_arguments)]
 pub fn calculate_leg(
-    start_lat: f64, start_lon: f64,
-    end_lat: f64, end_lon: f64,
+    start_lat: f64,
+    start_lon: f64,
+    end_lat: f64,
+    end_lon: f64,
     departure_ms: f64,
     forecast_end_ms: f64,
     polar: &PolarData,
@@ -178,17 +181,19 @@ pub fn calculate_leg(
             let wdir = wind_direction(wow_u, wow_v);
 
             // Max wind check (true wind)
-            if config.max_wind_kn > 0.0 && wind_speed_knots(wind_vec.0, wind_vec.1) > config.max_wind_kn {
+            if config.max_wind_kn > 0.0
+                && wind_speed_knots(wind_vec.0, wind_vec.1) > config.max_wind_kn
+            {
                 continue;
             }
 
             // Max wave check
-            if config.max_wave_m > 0.0 {
-                if let Some(wh) = data.get_wave(pt_lat, pt_lon, current_time_ms) {
-                    if wh > config.max_wave_m {
-                        continue;
-                    }
-                }
+            if config.max_wave_m > 0.0
+                && data
+                    .get_wave(pt_lat, pt_lon, current_time_ms)
+                    .is_some_and(|wh| wh > config.max_wave_m)
+            {
+                continue;
             }
 
             // Cone check
@@ -199,7 +204,11 @@ pub fn calculate_leg(
                 destination_point(pt_lat, pt_lon, config.cone_disable_lookahead_nm, pt_to_dest)
             };
             let direct_blocked = data.crosses_land(pt_lat, pt_lon, cone_end.0, cone_end.1);
-            let cone_half = if direct_blocked { 180.0 } else { config.cone_half_angle };
+            let cone_half = if direct_blocked {
+                180.0
+            } else {
+                config.cone_half_angle
+            };
 
             let mut wait_added = false;
             let mut hdg = 0.0f64;
@@ -311,10 +320,8 @@ pub fn calculate_leg(
         for &idx in &candidates {
             let p = &arena[idx];
             let d = haversine_nm(p.lat, p.lon, end_lat, end_lon);
-            if d <= arrival_r {
-                if best_arrival.is_none() || d < best_arrival.unwrap().1 {
-                    best_arrival = Some((idx, d));
-                }
+            if d <= arrival_r && (best_arrival.is_none() || d < best_arrival.unwrap().1) {
+                best_arrival = Some((idx, d));
             }
         }
         if let Some((idx, _)) = best_arrival {
@@ -323,7 +330,13 @@ pub fn calculate_leg(
         }
 
         // Prune to frontier
-        frontier = prune_to_frontier(&arena, &candidates, start_lat, start_lon, config.sector_size);
+        frontier = prune_to_frontier(
+            &arena,
+            &candidates,
+            start_lat,
+            start_lon,
+            config.sector_size,
+        );
 
         if frontier.is_empty() {
             return Err(format!(
@@ -334,7 +347,10 @@ pub fn calculate_leg(
 
         steps_completed += 1;
         let pct = ((steps_completed as f64 + 1.0) / est_total_steps as f64 * 100.0).min(99.0);
-        let frontier_pts: Vec<(f64, f64)> = frontier.iter().map(|&i| (arena[i].lat, arena[i].lon)).collect();
+        let frontier_pts: Vec<(f64, f64)> = frontier
+            .iter()
+            .map(|&i| (arena[i].lat, arena[i].lon))
+            .collect();
         data.on_progress(pct, &frontier_pts);
 
         current_time_ms = next_time_ms;
@@ -346,7 +362,8 @@ pub fn calculate_leg(
     } else if !frontier.is_empty() {
         // Partial route: find frontier point closest to destination
         let mut best_idx = frontier[0];
-        let mut best_dist = haversine_nm(arena[best_idx].lat, arena[best_idx].lon, end_lat, end_lon);
+        let mut best_dist =
+            haversine_nm(arena[best_idx].lat, arena[best_idx].lon, end_lat, end_lon);
         for &idx in &frontier[1..] {
             let d = haversine_nm(arena[idx].lat, arena[idx].lon, end_lat, end_lon);
             if d < best_dist {
@@ -405,7 +422,8 @@ pub fn calculate_leg(
 fn prune_to_frontier(
     arena: &[IsoPoint],
     candidates: &[usize],
-    start_lat: f64, start_lon: f64,
+    start_lat: f64,
+    start_lon: f64,
     sector_size: f64,
 ) -> Vec<usize> {
     let n_sectors = (360.0 / sector_size).ceil() as usize;

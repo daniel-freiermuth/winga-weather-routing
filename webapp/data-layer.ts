@@ -109,7 +109,10 @@ function closestStep(steps: ForecastStep[], targetMs: number) {
   let bestDiff = Infinity;
   for (const s of steps) {
     const diff = Math.abs(new Date(s.iso).getTime() - targetMs);
-    if (diff < bestDiff) { bestDiff = diff; best = s; }
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = s;
+    }
   }
   return best;
 }
@@ -128,7 +131,17 @@ function closestStep(steps: ForecastStep[], targetMs: number) {
  * @param {AbortSignal} [signal]
  * @returns {Promise<Array<{lat:number, lon:number, u:number, v:number, speed:number}>>}
  */
-async function sampleOverlayGrid(model: string, modelRun: string, validTime: string, overlay: string, isOcean: boolean, bbox: BoundingBox, step: number, signal?: AbortSignal, isPng = false) {
+async function sampleOverlayGrid(
+  model: string,
+  modelRun: string,
+  validTime: string,
+  overlay: string,
+  isOcean: boolean,
+  bbox: BoundingBox,
+  step: number,
+  signal?: AbortSignal,
+  isPng = false,
+) {
   // Determine which tiles cover the bbox
   const tl = latLonToTile(bbox.latMax, bbox.lonMin, ZOOM);
   const br = latLonToTile(bbox.latMin, bbox.lonMax, ZOOM);
@@ -139,7 +152,10 @@ async function sampleOverlayGrid(model: string, modelRun: string, validTime: str
     for (let ty = tl.y; ty <= br.y; ty++) {
       const url = buildTileUrl(model, modelRun, validTime, ZOOM, tx, ty, overlay, 'surface', isPng ? 'png' : 'jpg');
       if (!tilePromises.has(`${tx}/${ty}`)) {
-        tilePromises.set(`${tx}/${ty}`, fetchTile(url).catch(() => null));
+        tilePromises.set(
+          `${tx}/${ty}`,
+          fetchTile(url).catch(() => null),
+        );
       }
     }
   }
@@ -211,8 +227,10 @@ export async function fetchWindGridAtTime(timeMs: number, bbox: BoundingBox, sig
   }
   const t1ms = new Date(windSteps[lo + 1]!.iso).getTime();
   const f = (timeMs - t0ms) / (t1ms - t0ms);
-  if (f < 0.01) return sampleOverlayGrid(windModel, windModelRun, windSteps[lo]!.compact, 'wind', false, bbox, 0.5, signal);
-  if (f > 0.99) return sampleOverlayGrid(windModel, windModelRun, windSteps[lo + 1]!.compact, 'wind', false, bbox, 0.5, signal);
+  if (f < 0.01)
+    return sampleOverlayGrid(windModel, windModelRun, windSteps[lo]!.compact, 'wind', false, bbox, 0.5, signal);
+  if (f > 0.99)
+    return sampleOverlayGrid(windModel, windModelRun, windSteps[lo + 1]!.compact, 'wind', false, bbox, 0.5, signal);
   // Fetch both grids and interpolate
   const [g0, g1] = await Promise.all([
     sampleOverlayGrid(windModel, windModelRun, windSteps[lo]!.compact, 'wind', false, bbox, 0.5, signal),
@@ -251,7 +269,17 @@ export async function fetchWaveGrid(timeIdx: number, bbox: BoundingBox, signal?:
   const waveStep = closestStep(waveSteps, windTimeMs);
   if (!waveStep) return { points: [], timeMs: 0 };
 
-  const raw = await sampleOverlayGrid('ecmwf-wam', waveModelRun, waveStep.compact, 'waves', true, bbox, 0.5, signal, true);
+  const raw = await sampleOverlayGrid(
+    'ecmwf-wam',
+    waveModelRun,
+    waveStep.compact,
+    'waves',
+    true,
+    bbox,
+    0.5,
+    signal,
+    true,
+  );
   const points = raw
     .filter((p) => p.height > 0.1)
     .map((p) => ({ lat: p.lat, lon: p.lon, waveHeight: Math.round(p.height * 1000) / 1000 }));
@@ -271,29 +299,48 @@ export async function fetchWaveGridAtTime(timeMs: number, bbox: BoundingBox, sig
   const t0ms = new Date(waveSteps[lo]!.iso).getTime();
 
   const sampleWave = async (step: { compact: string }) => {
-    const raw = await sampleOverlayGrid('ecmwf-wam', waveModelRun, step.compact, 'waves', true, bbox, 0.5, signal, true);
+    const raw = await sampleOverlayGrid(
+      'ecmwf-wam',
+      waveModelRun,
+      step.compact,
+      'waves',
+      true,
+      bbox,
+      0.5,
+      signal,
+      true,
+    );
     return raw.filter((p) => p.height > 0.1);
   };
 
   if (lo >= waveSteps.length - 1 || t0ms === timeMs) {
     const raw = await sampleWave(waveSteps[lo]!);
-    return { points: raw.map(p => ({ lat: p.lat, lon: p.lon, waveHeight: Math.round(p.height * 1000) / 1000 })), timeMs };
+    return {
+      points: raw.map((p) => ({ lat: p.lat, lon: p.lon, waveHeight: Math.round(p.height * 1000) / 1000 })),
+      timeMs,
+    };
   }
   const t1ms = new Date(waveSteps[lo + 1]!.iso).getTime();
   const f = (timeMs - t0ms) / (t1ms - t0ms);
   if (f < 0.01) {
     const raw = await sampleWave(waveSteps[lo]!);
-    return { points: raw.map(p => ({ lat: p.lat, lon: p.lon, waveHeight: Math.round(p.height * 1000) / 1000 })), timeMs };
+    return {
+      points: raw.map((p) => ({ lat: p.lat, lon: p.lon, waveHeight: Math.round(p.height * 1000) / 1000 })),
+      timeMs,
+    };
   }
   if (f > 0.99) {
     const raw = await sampleWave(waveSteps[lo + 1]!);
-    return { points: raw.map(p => ({ lat: p.lat, lon: p.lon, waveHeight: Math.round(p.height * 1000) / 1000 })), timeMs };
+    return {
+      points: raw.map((p) => ({ lat: p.lat, lon: p.lon, waveHeight: Math.round(p.height * 1000) / 1000 })),
+      timeMs,
+    };
   }
   const [g0, g1] = await Promise.all([sampleWave(waveSteps[lo]!), sampleWave(waveSteps[lo + 1]!)]);
   if (signal?.aborted) return { points: [], timeMs };
   const g1Map = new Map<string, number>();
   for (const p of g1) g1Map.set(`${String(p.lat)},${String(p.lon)}`, p.height);
-  const points = g0.map(p => {
+  const points = g0.map((p) => {
     const h1 = g1Map.get(`${String(p.lat)},${String(p.lon)}`);
     const h = h1 != null ? p.height * (1 - f) + h1 * f : p.height;
     return { lat: p.lat, lon: p.lon, waveHeight: Math.round(h * 1000) / 1000 };
@@ -345,7 +392,9 @@ export async function queryPointWeather(lat: number, lon: number, timeMs: number
       const tile = await fetchTile(url);
       const val = sampleTilePixel(tile.rgba, tile.header, px, py, false);
       if (val.hasData) result.wind = { u: val.u, v: val.v };
-    } catch { /* tile unavailable */ }
+    } catch {
+      /* tile unavailable */
+    }
 
     // Gust from ECMWF tile (scalar overlay — value is in the R channel = val.u)
     try {
@@ -353,7 +402,9 @@ export async function queryPointWeather(lat: number, lon: number, timeMs: number
       const tile = await fetchTile(url);
       const val = sampleTilePixel(tile.rgba, tile.header, px, py, false);
       if (val.hasData) result.gustMs = val.u; // scalar: R channel only
-    } catch { /* tile unavailable */ }
+    } catch {
+      /* tile unavailable */
+    }
   }
 
   // Wave from ECMWF-WAM tile
@@ -364,7 +415,9 @@ export async function queryPointWeather(lat: number, lon: number, timeMs: number
       const tile = await fetchTile(url);
       const val = sampleTilePixel(tile.rgba, tile.header, px, py, false, true);
       if (val.hasData && val.height > 0.05) result.waveHeightM = val.height;
-    } catch { /* tile unavailable */ }
+    } catch {
+      /* tile unavailable */
+    }
   }
 
   // Current from CMEMS tile (72h horizon)
@@ -377,7 +430,9 @@ export async function queryPointWeather(lat: number, lon: number, timeMs: number
         const tile = await fetchTile(url);
         const val = sampleTilePixel(tile.rgba, tile.header, px, py, true);
         if (val.hasData && val.speed > 0.005) result.current = { u: val.u, v: val.v };
-      } catch { /* tile unavailable */ }
+      } catch {
+        /* tile unavailable */
+      }
     }
   }
 
@@ -389,7 +444,7 @@ export async function queryPointWeather(lat: number, lon: number, timeMs: number
 import { fetchLandIndex, parseIndexFromArrayBuffer } from '../src/lib/land-index-loader';
 import { polygonsInBbox, buildLandIndex } from '../src/lib/landmask';
 
-let landIndex: LandIndex | null = null;       // LandIndex for the standard (h-tier) coastline
+let landIndex: LandIndex | null = null; // LandIndex for the standard (h-tier) coastline
 let dilatedLandIndex: LandIndex | null = null; // LandIndex for the dilated (safety margin) coastline
 
 /**
@@ -415,10 +470,14 @@ export async function loadLandData(url: string, dilatedUrl?: string) {
 }
 
 /** Whether land data has been loaded. */
-export function landDataReady() { return landIndex !== null; }
+export function landDataReady() {
+  return landIndex !== null;
+}
 
 /** Whether dilated land data has been loaded. */
-export function dilatedLandDataReady() { return dilatedLandIndex !== null; }
+export function dilatedLandDataReady() {
+  return dilatedLandIndex !== null;
+}
 
 /**
  * Return a GeoJSON FeatureCollection of land polygons within the bbox.

@@ -9,11 +9,7 @@ export interface GraphTooltipState {
   windSpeedMs: boolean;
 }
 
-export function setupGraphTooltip(
-  svgEl: Element,
-  tooltipEl: HTMLElement,
-  getState: () => GraphTooltipState,
-): void {
+export function setupGraphTooltip(svgEl: Element, tooltipEl: HTMLElement, getState: () => GraphTooltipState): void {
   svgEl.addEventListener('mousemove', (ev) => {
     const e = ev as MouseEvent;
     const { graphMeta, graphLayout, windSpeedMs } = getState();
@@ -22,7 +18,10 @@ export function setupGraphTooltip(
     const x = e.clientX - rect.left;
     const { ml, pw } = graphLayout;
     const frac = (x - (ml * rect.width) / graphLayout.VW) / ((pw * rect.width) / graphLayout.VW);
-    if (frac < 0 || frac > 1) { tooltipEl.style.display = 'none'; return; }
+    if (frac < 0 || frac > 1) {
+      tooltipEl.style.display = 'none';
+      return;
+    }
     const idx = Math.min(graphMeta.length - 1, Math.max(0, Math.round(frac * (graphMeta.length - 1))));
     const m = graphMeta[idx]!;
     const tw = fmt(m.tws ?? 0, 'speed', windSpeedMs);
@@ -41,5 +40,7 @@ export function setupGraphTooltip(
     tooltipEl.style.top = `${String(e.clientY - 20)}px`;
   });
 
-  svgEl.addEventListener('mouseleave', () => { tooltipEl.style.display = 'none'; });
+  svgEl.addEventListener('mouseleave', () => {
+    tooltipEl.style.display = 'none';
+  });
 }

@@ -5,7 +5,7 @@ mod geo;
 mod isochrone;
 mod polar;
 
-use isochrone::{calculate_leg, DataProvider, LegConfig, RoutePoint};
+use isochrone::{DataProvider, LegConfig, RoutePoint, calculate_leg};
 use polar::PolarData;
 use wasm_bindgen::prelude::*;
 
@@ -92,7 +92,7 @@ pub fn calculate_route(
     polar_twa: &[f64],
     polar_tws: &[f64],
     polar_speeds: &[f64],
-    legs: &[f64],      // flat [lat0, lon0, lat1, lon1, ...]
+    legs: &[f64], // flat [lat0, lon0, lat1, lon1, ...]
     departure_ms: f64,
     forecast_end_ms: f64,
     options: &[f64],
@@ -100,7 +100,7 @@ pub fn calculate_route(
     let polar = PolarData::from_flat(polar_twa, polar_tws, polar_speeds);
 
     let config = LegConfig {
-        heading_step: options.get(0).copied().unwrap_or(5.0),
+        heading_step: options.first().copied().unwrap_or(5.0),
         sector_size: options.get(1).copied().unwrap_or(1.0),
         min_boat_speed: options.get(2).copied().unwrap_or(0.3),
         max_wind_kn: options.get(3).copied().unwrap_or(0.0),
@@ -135,8 +135,10 @@ pub fn calculate_route(
         let end_lon = legs[(leg_idx + 1) * 2 + 1];
 
         let leg_result = calculate_leg(
-            start_lat, start_lon,
-            end_lat, end_lon,
+            start_lat,
+            start_lon,
+            end_lat,
+            end_lon,
             leg_departure_ms,
             forecast_end_ms,
             &polar,

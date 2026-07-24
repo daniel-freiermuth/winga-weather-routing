@@ -30,10 +30,11 @@ export async function loadDepartureResources(deps: SkDeps): Promise<void> {
         entries.push({ label: (wp['name'] as string | undefined) ?? 'Unnamed waypoint', lat, lon });
       }
     }
-  } catch { /* offline */ }
+  } catch {
+    /* offline */
+  }
   skState.departureResources = entries;
 }
-
 
 export async function loadWaypointRoutes(deps: SkDeps): Promise<void> {
   try {
@@ -49,9 +50,10 @@ export async function loadWaypointRoutes(deps: SkDeps): Promise<void> {
       routes.push({ label: (v['name'] as string | undefined) ?? 'Unnamed', coords });
     }
     skState.waypointRoutes = routes;
-  } catch { /* offline */ }
+  } catch {
+    /* offline */
+  }
 }
-
 
 // ── Vessel position stream ───────────────────────────────────────────────────
 
@@ -59,14 +61,18 @@ export function connectVesselPositionStream(deps: SkDeps): void {
   const ws = new WebSocket(deps.skWebSocketUrl('/signalk/v1/stream?subscribe=none'));
   skState.vesselPositionWs = ws;
   ws.onopen = () => {
-    ws.send(JSON.stringify({
-      context: 'vessels.self',
-      subscribe: [{ path: 'navigation.position', period: 1000 }],
-    }));
+    ws.send(
+      JSON.stringify({
+        context: 'vessels.self',
+        subscribe: [{ path: 'navigation.position', period: 1000 }],
+      }),
+    );
   };
   ws.onmessage = (e) => {
     try {
-      const delta = JSON.parse(e.data as string) as { updates?: { values?: { path: string; value?: { latitude: number; longitude: number } }[] }[] };
+      const delta = JSON.parse(e.data as string) as {
+        updates?: { values?: { path: string; value?: { latitude: number; longitude: number } }[] }[];
+      };
       for (const update of delta.updates ?? []) {
         for (const v of update.values ?? []) {
           if (v.path === 'navigation.position' && v.value) {
@@ -74,7 +80,9 @@ export function connectVesselPositionStream(deps: SkDeps): void {
           }
         }
       }
-    } catch { /* ignore parse errors */ }
+    } catch {
+      /* ignore parse errors */
+    }
   };
   ws.onclose = () => {
     skState.vesselPosition = null;
@@ -82,4 +90,3 @@ export function connectVesselPositionStream(deps: SkDeps): void {
     setTimeout(() => connectVesselPositionStream(deps), 5000);
   };
 }
-

@@ -1,9 +1,15 @@
 // Shared type definitions for the weather routing webapp.
 
 export interface WaypointMeta {
-  name: string; time: string;
-  windDir: number; heading: number; twa: number; tws: number;
-  boatSpeed?: number; waveHeight?: number; gribFile?: string;
+  name: string;
+  time: string;
+  windDir: number;
+  heading: number;
+  twa: number;
+  tws: number;
+  boatSpeed?: number;
+  waveHeight?: number;
+  gribFile?: string;
   gustKn?: number;
   currentSpeedKn?: number;
   currentDir?: number; // degrees, direction current flows TOWARDS
@@ -16,9 +22,16 @@ export interface WaypointMeta {
 }
 
 export interface GraphLayout {
-  VW: number; ml: number; pw: number; mt: number; ph: number;
-  hasWave: boolean; hasGrib: boolean;
-  maxLeft: number; maxBoatSpeed: number; maxWave: number;
+  VW: number;
+  ml: number;
+  pw: number;
+  mt: number;
+  ph: number;
+  hasWave: boolean;
+  hasGrib: boolean;
+  maxLeft: number;
+  maxBoatSpeed: number;
+  maxWave: number;
 }
 
 export interface RouteData {
@@ -30,15 +43,23 @@ export interface RouteData {
 }
 
 export interface UnitPref {
-  formula?: string; inverseFormula?: string;
-  displayFormat?: string; symbol?: string;
+  formula?: string;
+  inverseFormula?: string;
+  displayFormat?: string;
+  symbol?: string;
 }
 
 export type UnitCategory = 'speed' | 'depth' | 'distance';
 
 export interface GribFileMeta {
-  path: string; type?: string;
-  latMin: number; latMax: number; lonMin: number; lonMax: number;
-  timeStart: string; timeEnd: string; nTimes: number;
+  path: string;
+  type?: string;
+  latMin: number;
+  latMax: number;
+  lonMin: number;
+  lonMax: number;
+  timeStart: string;
+  timeEnd: string;
+  nTimes: number;
   referenceTime?: string;
 }

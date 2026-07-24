@@ -53,7 +53,10 @@ export function buildRegionIndex(
       for (const pos of ringCoords) {
         const lon = pos[0]; // GeoJSON position: [lon, lat, alt?]
         const lat = pos[1];
-        if (lon === undefined || lat === undefined) { i++; continue; } // GeoJSON always has lon+lat; guard satisfies TS
+        if (lon === undefined || lat === undefined) {
+          i++;
+          continue;
+        } // GeoJSON always has lon+lat; guard satisfies TS
         exterior[i * 2] = lon;
         exterior[i * 2 + 1] = lat;
         if (lat < latMin) latMin = lat;

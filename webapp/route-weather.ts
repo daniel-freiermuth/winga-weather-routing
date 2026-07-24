@@ -44,7 +44,12 @@ export interface WaypointWeather {
  * @param {(pct: number) => void} [onProgress]  Progress callback (0-100)
  * @returns {Promise<WaypointWeather[]>}
  */
-export async function analyseRouteWeather(waypoints: Array<{ lat: number; lon: number }>, departureMs: number, polarCsv: string, onProgress?: (pct: number) => void): Promise<WaypointWeather[]> {
+export async function analyseRouteWeather(
+  waypoints: Array<{ lat: number; lon: number }>,
+  departureMs: number,
+  polarCsv: string,
+  onProgress?: (pct: number) => void,
+): Promise<WaypointWeather[]> {
   if (waypoints.length < 2) return [];
 
   const polar = parsePolarCsv(polarCsv);

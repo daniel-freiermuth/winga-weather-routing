@@ -46,9 +46,7 @@ export function sortByBearing(pts: number[][], origin: { lat: number; lon: numbe
   return pts
     .slice()
     .sort(
-      (a, b) =>
-        Math.atan2(a[1]! - origin.lon, a[0]! - origin.lat) -
-        Math.atan2(b[1]! - origin.lon, b[0]! - origin.lat),
+      (a, b) => Math.atan2(a[1]! - origin.lon, a[0]! - origin.lat) - Math.atan2(b[1]! - origin.lon, b[0]! - origin.lat),
     );
 }
 
@@ -56,7 +54,11 @@ export function sortByBearing(pts: number[][], origin: { lat: number; lon: numbe
  * Split sorted ring at angular gaps larger than threshold.
  * Merges the last segment into the first if the wrap-around gap is within threshold.
  */
-export function splitByAngularGap(pts: number[][], origin: { lat: number; lon: number }, thresholdDeg: number): number[][][] {
+export function splitByAngularGap(
+  pts: number[][],
+  origin: { lat: number; lon: number },
+  thresholdDeg: number,
+): number[][][] {
   if (pts.length < 2) return [pts];
   const bearing = (p: number[]) => (Math.atan2(p[1]! - origin.lon, p[0]! - origin.lat) * 180) / Math.PI;
   const bearings = pts.map(bearing);

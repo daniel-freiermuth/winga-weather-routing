@@ -8,7 +8,10 @@
 import type { WaypointMeta, GraphLayout, RouteData } from './types';
 import type maplibregl from 'maplibre-gl';
 
-interface SourceAndLayer { sourceId: string; layerId: string }
+interface SourceAndLayer {
+  sourceId: string;
+  layerId: string;
+}
 
 export interface CalcState {
   routeScrubberRange: { i0: number; iN: number } | null;

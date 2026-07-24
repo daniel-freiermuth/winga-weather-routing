@@ -29,16 +29,22 @@ export interface ConditionsGraphResult {
 }
 
 export function buildConditionsGraph(opts: ConditionsGraphOpts): ConditionsGraphResult | null {
-  const { meta, intermediateIdxs, windSpeedMs, gribInfoFiles, c64Palette, forecastSkillHorizonHours, toDisplay, fmt } = opts;
+  const { meta, intermediateIdxs, windSpeedMs, gribInfoFiles, c64Palette, forecastSkillHorizonHours, toDisplay, fmt } =
+    opts;
 
   if (!meta || meta.length < 2) return null;
 
   const hasWave = meta.some((m) => m.waveHeight != null);
 
-  const VW = 820, VH = 200;
-  const ml = windSpeedMs ? 30 : 0, mr = 20, mt = 14, mb = 66;
+  const VW = 820,
+    VH = 200;
+  const ml = windSpeedMs ? 30 : 0,
+    mr = 20,
+    mt = 14,
+    mb = 66;
   const pr = 800;
-  const pw = VW - ml - mr, ph = VH - mt - mb;
+  const pw = VW - ml - mr,
+    ph = VH - mt - mb;
 
   const twsDisplayVals = meta.map((m) => toDisplay(m.tws ?? 0, 'speed', windSpeedMs));
   const boatDisplayVals = meta.map((m) => (m.boatSpeed != null ? toDisplay(m.boatSpeed, 'speed') : null));
@@ -98,22 +104,30 @@ export function buildConditionsGraph(opts: ConditionsGraphOpts): ConditionsGraph
     el.push(`<text x="2" y="${String(mt - 8)}" fill="#89b4fa" font-size="9">m/s</text>`);
     for (let v = 0; v <= maxTwsDisp; v += twsAxisStep) {
       const y = parseFloat(yWind(v));
-      el.push(`<line x1="0" y1="${y.toFixed(1)}" x2="${String(VW)}" y2="${y.toFixed(1)}" stroke="#313244" stroke-width="0.5"/>`);
+      el.push(
+        `<line x1="0" y1="${y.toFixed(1)}" x2="${String(VW)}" y2="${y.toFixed(1)}" stroke="#313244" stroke-width="0.5"/>`,
+      );
       el.push(`<text x="2" y="${y.toFixed(1)}" fill="#89b4fa" font-size="10">${String(v)}</text>`);
     }
     const boatSym = fmt(0, 'speed').sym;
     const boatStep = maxBoatDisp <= 15 ? 5 : 10;
-    el.push(`<text x="${String(ml - 2)}" y="${String(mt - 8)}" text-anchor="end" fill="#fab387" font-size="9">${boatSym}</text>`);
+    el.push(
+      `<text x="${String(ml - 2)}" y="${String(mt - 8)}" text-anchor="end" fill="#fab387" font-size="9">${boatSym}</text>`,
+    );
     for (let v = 0; v <= maxBoatDisp; v += boatStep) {
       const y = parseFloat(yLeft(v));
-      el.push(`<text x="${String(ml - 2)}" y="${y.toFixed(1)}" text-anchor="end" fill="#fab387" font-size="10">${String(v)}</text>`);
+      el.push(
+        `<text x="${String(ml - 2)}" y="${y.toFixed(1)}" text-anchor="end" fill="#fab387" font-size="10">${String(v)}</text>`,
+      );
     }
   } else {
     const speedSym = fmt(0, 'speed').sym;
     el.push(`<text x="2" y="${String(mt - 8)}" fill="#89b4fa" font-size="9">${speedSym}</text>`);
     for (let v = 0; v <= maxLeft; v += twsAxisStep) {
       const y = parseFloat(yLeft(v));
-      el.push(`<line x1="0" y1="${y.toFixed(1)}" x2="${String(VW)}" y2="${y.toFixed(1)}" stroke="#313244" stroke-width="0.5"/>`);
+      el.push(
+        `<line x1="0" y1="${y.toFixed(1)}" x2="${String(VW)}" y2="${y.toFixed(1)}" stroke="#313244" stroke-width="0.5"/>`,
+      );
       el.push(`<text x="2" y="${y.toFixed(1)}" fill="#89b4fa" font-size="10">${String(v)}</text>`);
     }
   }
@@ -121,19 +135,29 @@ export function buildConditionsGraph(opts: ConditionsGraphOpts): ConditionsGraph
   // Right y-axis (wave)
   if (hasWave) {
     const waveSym = fmt(0, 'depth').sym;
-    el.push(`<text x="${String(pr + 2)}" y="${String(mt - 8)}" text-anchor="start" fill="#a6e3a1" font-size="9">${waveSym}</text>`);
+    el.push(
+      `<text x="${String(pr + 2)}" y="${String(mt - 8)}" text-anchor="start" fill="#a6e3a1" font-size="9">${waveSym}</text>`,
+    );
     const wStep = maxWave <= 3 ? 0.5 : 1;
     for (let v = 0; v <= maxWave + 0.001; v += wStep) {
       const y = parseFloat(yWave(v));
       const dispWave = fmt(v, 'depth');
-      el.push(`<text x="${String(pr + 2)}" y="${y.toFixed(1)}" text-anchor="start" fill="#a6e3a1" font-size="10">${dispWave.num}</text>`);
+      el.push(
+        `<text x="${String(pr + 2)}" y="${y.toFixed(1)}" text-anchor="start" fill="#a6e3a1" font-size="10">${dispWave.num}</text>`,
+      );
     }
-    el.push(`<line x1="${String(pr)}" y1="${String(mt)}" x2="${String(pr)}" y2="${String(mt + ph)}" stroke="#45475a" stroke-width="1"/>`);
+    el.push(
+      `<line x1="${String(pr)}" y1="${String(mt)}" x2="${String(pr)}" y2="${String(mt + ph)}" stroke="#45475a" stroke-width="1"/>`,
+    );
   }
 
   // Axis lines
-  el.push(`<line x1="${String(ml)}" y1="${String(mt)}" x2="${String(ml)}" y2="${String(mt + ph)}" stroke="#45475a" stroke-width="1"/>`);
-  el.push(`<line x1="${String(ml)}" y1="${String(mt + ph)}" x2="${String(pr)}" y2="${String(mt + ph)}" stroke="#45475a" stroke-width="1"/>`);
+  el.push(
+    `<line x1="${String(ml)}" y1="${String(mt)}" x2="${String(ml)}" y2="${String(mt + ph)}" stroke="#45475a" stroke-width="1"/>`,
+  );
+  el.push(
+    `<line x1="${String(ml)}" y1="${String(mt + ph)}" x2="${String(pr)}" y2="${String(mt + ph)}" stroke="#45475a" stroke-width="1"/>`,
+  );
 
   // Wind speed line
   el.push(
@@ -209,7 +233,8 @@ export function buildConditionsGraph(opts: ConditionsGraphOpts): ConditionsGraph
     const windDeg = ((m.windDir ?? 0) + 180) % 360;
     const rad = (windDeg * Math.PI) / 180;
     const len = 9;
-    const dx = Math.sin(rad) * len, dy = -Math.cos(rad) * len;
+    const dx = Math.sin(rad) * len,
+      dy = -Math.cos(rad) * len;
     el.push(
       `<line x1="${(x - dx / 2).toFixed(1)}" y1="${(arrowY - dy / 2).toFixed(1)}" x2="${(x + dx / 2).toFixed(1)}" y2="${(arrowY + dy / 2).toFixed(1)}" stroke="#a6adc8" stroke-width="1" marker-end="url(#wdarrow)"/>`,
     );
@@ -236,9 +261,13 @@ export function buildConditionsGraph(opts: ConditionsGraphOpts): ConditionsGraph
       const filePath = meta[i]!.gribFile;
       const colorIdx = filePath != null ? gribInfoFiles.findIndex((f) => f.path === filePath) : -1;
       const color = colorIdx >= 0 ? c64Palette[colorIdx % c64Palette.length]! : '#45475a';
-      el.push(`<rect x="${x1.toFixed(1)}" y="${String(stripeTop)}" width="${(x2 - x1).toFixed(1)}" height="${String(stripeH)}" fill="${color}" opacity="0.7"/>`);
+      el.push(
+        `<rect x="${x1.toFixed(1)}" y="${String(stripeTop)}" width="${(x2 - x1).toFixed(1)}" height="${String(stripeH)}" fill="${color}" opacity="0.7"/>`,
+      );
     }
-    el.push(`<text x="${String(ml + 2)}" y="${String(stripeTop + stripeH + 10)}" fill="#6c7086" font-size="8">GRIB</text>`);
+    el.push(
+      `<text x="${String(ml + 2)}" y="${String(stripeTop + stripeH + 10)}" fill="#6c7086" font-size="8">GRIB</text>`,
+    );
   }
 
   // Intermediate waypoint markers
@@ -247,7 +276,9 @@ export function buildConditionsGraph(opts: ConditionsGraphOpts): ConditionsGraph
     el.push(
       `<line x1="${String(x)}" y1="${String(mt)}" x2="${String(x)}" y2="${String(mt + ph)}" stroke="#f5c2e7" stroke-width="1" stroke-dasharray="4,3" opacity="0.75"/>`,
     );
-    el.push(`<text x="${String(x)}" y="${String(mt - 3)}" text-anchor="middle" font-size="8" fill="#f5c2e7">WP${String(k + 1)}</text>`);
+    el.push(
+      `<text x="${String(x)}" y="${String(mt - 3)}" text-anchor="middle" font-size="8" fill="#f5c2e7">WP${String(k + 1)}</text>`,
+    );
   }
 
   return {

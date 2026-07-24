@@ -217,8 +217,7 @@ export interface RegionIndex {
 
 /** Minimal GeoJSON geometry union covering the polygon types used by region avoidance. */
 export type GeoJsonGeometry =
-  | { type: 'Polygon'; coordinates: number[][][] }
-  | { type: 'MultiPolygon'; coordinates: number[][][][] };
+  { type: 'Polygon'; coordinates: number[][][] } | { type: 'MultiPolygon'; coordinates: number[][][][] };
 
 export interface SignalKResourceEntry {
   id?: string;

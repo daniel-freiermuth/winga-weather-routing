@@ -33,7 +33,13 @@ interface CalculatePayload {
 type InMessage = { type: 'calculate'; payload: CalculatePayload };
 
 type OutMessage =
-  | { type: 'progress'; pct: number; frontier: [number, number][]; legOrigin?: [number, number]; clearIsochrones?: boolean }
+  | {
+      type: 'progress';
+      pct: number;
+      frontier: [number, number][];
+      legOrigin?: [number, number];
+      clearIsochrones?: boolean;
+    }
   | { type: 'result'; route: RoutePoint[]; warning?: string }
   | { type: 'error'; message: string };
 
@@ -57,7 +63,7 @@ const _self = globalThis as Record<string, unknown>;
 const _windBuf = new Float64Array(2);
 const _curBuf = new Float64Array(2);
 const _zeroBuf = new Float64Array(2); // constant [0, 0]
-const _reusableDate = new Date(0);    // reused to avoid Date allocation in hot loop
+const _reusableDate = new Date(0); // reused to avoid Date allocation in hot loop
 
 _self['js_get_wind'] = (lat: number, lon: number, time_ms: number): Float64Array => {
   const v = windProvider.getWindAtTime(lat, lon, time_ms);
@@ -89,9 +95,7 @@ _self['js_get_wave'] = (lat: number, lon: number, time_ms: number): number => {
 };
 
 _self['js_covers_point'] = (lat: number, lon: number, time_ms: number): boolean => {
-  return windProvider.coversPointAtTimeMs
-    ? windProvider.coversPointAtTimeMs(lat, lon, time_ms)
-    : true;
+  return windProvider.coversPointAtTimeMs ? windProvider.coversPointAtTimeMs(lat, lon, time_ms) : true;
 };
 
 _self['js_on_progress'] = (pct: number, frontier: Float64Array): void => {
@@ -110,8 +114,12 @@ _self['js_prefetch'] = (_time_ms: number): void => {
 
 type WasmModule = {
   calculate_route(
-    polar_twa: Float64Array, polar_tws: Float64Array, polar_speeds: Float64Array,
-    legs: Float64Array, departure_ms: number, forecast_end_ms: number,
+    polar_twa: Float64Array,
+    polar_tws: Float64Array,
+    polar_speeds: Float64Array,
+    legs: Float64Array,
+    departure_ms: number,
+    forecast_end_ms: number,
     options: Float64Array,
   ): Float64Array;
 };
@@ -152,7 +160,10 @@ async function fetchGzBinary(url: string): Promise<ArrayBuffer> {
   }
   const combined = new Uint8Array(total);
   let off = 0;
-  for (const c of chunks) { combined.set(c, off); off += c.length; }
+  for (const c of chunks) {
+    combined.set(c, off);
+    off += c.length;
+  }
   return combined.buffer;
 }
 
@@ -168,18 +179,20 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
   const polar = parsePolarCsv(polarCsv);
 
   // 2. Pre-fetch everything in parallel (including WASM)
-  const landFetch = fetchGzBinary(landIndexUrl).then(buf => parseIndexFromArrayBuffer(buf));
+  const landFetch = fetchGzBinary(landIndexUrl).then((buf) => parseIndexFromArrayBuffer(buf));
   let dilatedFetch: Promise<ReturnType<typeof parseIndexFromArrayBuffer> | null> = Promise.resolve(null);
   if (useSafetyMargin === true && dilatedIndexUrl !== undefined) {
-    dilatedFetch = fetchGzBinary(dilatedIndexUrl).then(buf => parseIndexFromArrayBuffer(buf)).catch(() => null);
+    dilatedFetch = fetchGzBinary(dilatedIndexUrl)
+      .then((buf) => parseIndexFromArrayBuffer(buf))
+      .catch(() => null);
   }
 
   const routePoints = [request.start, request.end, ...(request.waypoints ?? [])];
   const routeBbox = {
-    latMin: Math.min(...routePoints.map(p => p.lat)) - 1,
-    latMax: Math.max(...routePoints.map(p => p.lat)) + 1,
-    lonMin: Math.min(...routePoints.map(p => p.lon)) - 1,
-    lonMax: Math.max(...routePoints.map(p => p.lon)) + 1,
+    latMin: Math.min(...routePoints.map((p) => p.lat)) - 1,
+    latMax: Math.max(...routePoints.map((p) => p.lat)) + 1,
+    lonMin: Math.min(...routePoints.map((p) => p.lon)) - 1,
+    lonMax: Math.max(...routePoints.map((p) => p.lon)) + 1,
   };
   const zoom = TileWindProvider.computeZoom(routeBbox, 2);
   windProvider = new TileWindProvider({ windModel: windModel ?? 'ecmwf', zoom });
@@ -202,10 +215,9 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
   // (WASM loop is synchronous — can't do async prefetch mid-step)
   const forecastEnd = windProvider.times[windProvider.times.length - 1];
   const forecastEndMs = forecastEnd ? forecastEnd.getTime() : departureMs + 7 * 24 * 3_600_000;
-  const directDist = Math.sqrt(
-    (request.end.lat - request.start.lat) ** 2 + (request.end.lon - request.start.lon) ** 2,
-  ) * 60;
-  const estDurationMs = Math.min(directDist / 5 * 3_600_000, forecastEndMs - departureMs);
+  const directDist =
+    Math.sqrt((request.end.lat - request.start.lat) ** 2 + (request.end.lon - request.start.lon) ** 2) * 60;
+  const estDurationMs = Math.min((directDist / 5) * 3_600_000, forecastEndMs - departureMs);
   const stepMs = Math.max(900_000, estDurationMs / 100);
   const prefetches: Promise<void>[] = [];
   for (let t = departureMs; t <= departureMs + estDurationMs + stepMs; t += stepMs) {
@@ -242,7 +254,7 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
     100, // coneHalfAngle
     100, // coneDisableLookaheadNm
     120, // maxHeadingChange
-    0,   // arrivalRadiusNm (0 = dynamic)
+    0, // arrivalRadiusNm (0 = dynamic)
   ]);
 
   const flat = wasm.calculate_route(

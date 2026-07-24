@@ -8,8 +8,11 @@ import { fileURLToPath } from 'url';
 const __dir = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(resolve(__dir, '../package.json'), 'utf-8')) as { version: string };
 const commitHash = (() => {
-  try { return execSync('git rev-parse --short HEAD').toString().trim(); }
-  catch { return 'unknown'; }
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim();
+  } catch {
+    return 'unknown';
+  }
 })();
 
 export default defineConfig(({ command }) => ({
@@ -17,7 +20,6 @@ export default defineConfig(({ command }) => ({
   root: __dir,
 
   plugins: [svelte()],
-
 
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),

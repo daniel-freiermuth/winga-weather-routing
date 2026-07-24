@@ -44,9 +44,7 @@ export function createTimeAxis(): TimeAxisManager {
  */
 export function rebuildTimes(mgr: TimeAxisManager): TimeAxisManager {
   const windSet = new Set<string>();
-  const enabledWind = mgr.gribInfoFiles.filter(
-    (f) => f.type !== 'current' && mgr.enabledGribPaths.has(f.path),
-  );
+  const enabledWind = mgr.gribInfoFiles.filter((f) => f.type !== 'current' && mgr.enabledGribPaths.has(f.path));
 
   if (enabledWind.length > 0) {
     for (const f of enabledWind) {

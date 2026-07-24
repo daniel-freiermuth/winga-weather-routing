@@ -162,8 +162,7 @@ export function segmentCrossesLandFast(
         const x4 = ring[ni * 2];
         const y4 = ring[ni * 2 + 1];
         if (x3 === undefined || y3 === undefined || x4 === undefined || y4 === undefined) continue;
-        if (segmentsIntersect(lon1, lat1, lon2, lat2, x3, y3, x4, y4))
-          return true;
+        if (segmentsIntersect(lon1, lat1, lon2, lat2, x3, y3, x4, y4)) return true;
       }
     }
     if (latCell === latEnd && lonCell === lonEnd) break;
@@ -297,8 +296,7 @@ export function segmentCrossesRing(
     const xi = ring[i * 2];
     const yi = ring[i * 2 + 1];
     if (xi === undefined || yi === undefined) break;
-    if (segmentsIntersect(lon1, lat1, lon2, lat2, xj, yj, xi, yi))
-      return true;
+    if (segmentsIntersect(lon1, lat1, lon2, lat2, xj, yj, xi, yi)) return true;
     xj = xi;
     yj = yi;
   }

@@ -34,7 +34,8 @@ pub fn destination_point(lat: f64, lon: f64, dist_nm: f64, bearing_deg: f64) -> 
     let lat1 = lat * DEG_TO_RAD;
     let lon1 = lon * DEG_TO_RAD;
     let new_lat = (lat1.sin() * d.cos() + lat1.cos() * d.sin() * brng.cos()).asin();
-    let new_lon = lon1 + (brng.sin() * d.sin() * lat1.cos()).atan2(d.cos() - lat1.sin() * new_lat.sin());
+    let new_lon =
+        lon1 + (brng.sin() * d.sin() * lat1.cos()).atan2(d.cos() - lat1.sin() * new_lat.sin());
     (new_lat * RAD_TO_DEG, new_lon * RAD_TO_DEG)
 }
 

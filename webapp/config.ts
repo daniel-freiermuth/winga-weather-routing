@@ -33,15 +33,19 @@ export async function loadConfig(
     }
     if ((cfg['forecastSkillHorizonHours'] as number | undefined) != null)
       configState.forecastSkillHorizonHours = cfg['forecastSkillHorizonHours'] as number;
-  } catch { /* no config file */ }
+  } catch {
+    /* no config file */
+  }
 
   try {
     const up = await skFetch('/signalk/v1/unitpreferences/active');
     if (up.ok) {
-      configState.unitPrefs = (await up.json() as { categories: Record<string, UnitPref> }).categories;
+      configState.unitPrefs = ((await up.json()) as { categories: Record<string, UnitPref> }).categories;
       unitPrefsStore.set(configState.unitPrefs);
     }
-  } catch { /* offline or not supported */ }
+  } catch {
+    /* offline or not supported */
+  }
 
   const depthSym = fmt(0, 'depth').sym;
   callbacks.setWaveLegendMax(`${fmt(configState.waveOverlayMaxM, 'depth').num} ${depthSym}`);
@@ -51,8 +55,10 @@ export async function loadConfig(
   try {
     const bi = await fetch('./buildinfo.json');
     if (bi.ok) {
-      const { version } = await bi.json() as { version: string };
+      const { version } = (await bi.json()) as { version: string };
       callbacks.setBuildVersion(`v${version}`);
     }
-  } catch { /* no buildinfo */ }
+  } catch {
+    /* no buildinfo */
+  }
 }

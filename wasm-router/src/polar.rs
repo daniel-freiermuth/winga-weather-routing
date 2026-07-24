@@ -51,8 +51,12 @@ impl PolarData {
 
     fn bilinear_at(
         &self,
-        twa_lo: usize, twa_hi: usize, twa_f: f64,
-        tws_lo: usize, tws_hi: usize, tws_f: f64,
+        twa_lo: usize,
+        twa_hi: usize,
+        twa_f: f64,
+        tws_lo: usize,
+        tws_hi: usize,
+        tws_f: f64,
     ) -> f64 {
         let n_tws = self.tws.len();
         let s00 = self.speeds[twa_lo * n_tws + tws_lo];

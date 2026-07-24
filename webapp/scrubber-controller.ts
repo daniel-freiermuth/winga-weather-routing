@@ -4,8 +4,16 @@
 import type { WaypointMeta, GribFileMeta } from './types';
 
 const C64_PALETTE = [
-  '#6c7086', '#ffffff', '#883932', '#67b6bd', '#8b3f96',
-  '#55a049', '#40318d', '#bfce72', '#8b5429', '#574200',
+  '#6c7086',
+  '#ffffff',
+  '#883932',
+  '#67b6bd',
+  '#8b3f96',
+  '#55a049',
+  '#40318d',
+  '#bfce72',
+  '#8b5429',
+  '#574200',
 ];
 
 export interface ScrubberState {
@@ -24,7 +32,10 @@ export function computeLabel(idx: number, windTimes: string[]): string {
   const t = windTimes[idx];
   if (!t) return '';
   return new Date(t).toLocaleString([], {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 
@@ -39,7 +50,9 @@ export function computeCoverageHtml(rangeStart: number, rangeEnd: number, state:
     if (si > ei) return;
     const p1 = (((si - rangeStart) / span) * 100).toFixed(2);
     const p2 = (((ei - rangeStart) / span) * 100).toFixed(2);
-    rows.push(`<div style="height:4px;border-radius:2px;background:linear-gradient(to right,#313244 0% ${p1}%,${color} ${p1}% ${p2}%,#313244 ${p2}% 100%)"></div>`);
+    rows.push(
+      `<div style="height:4px;border-radius:2px;background:linear-gradient(to right,#313244 0% ${p1}%,${color} ${p1}% ${p2}%,#313244 ${p2}% 100%)"></div>`,
+    );
   };
 
   if (state.scrubberLockedToRoute && state.graphMeta && state.graphMeta.some((m) => m.gribFile != null)) {
@@ -48,9 +61,12 @@ export function computeCoverageHtml(rangeStart: number, rangeEnd: number, state:
       const tMs = new Date(state.graphMeta[i]!.time).getTime();
       let si = state.windTimes.findIndex((t) => new Date(t).getTime() >= tMs);
       if (si < 0) si = rangeEnd;
-      const nextMs = i < state.graphMeta.length - 1
-        ? new Date(state.graphMeta[i + 1]!.time).getTime()
-        : state.windTimes[rangeEnd] ? new Date(state.windTimes[rangeEnd]!).getTime() : tMs;
+      const nextMs =
+        i < state.graphMeta.length - 1
+          ? new Date(state.graphMeta[i + 1]!.time).getTime()
+          : state.windTimes[rangeEnd]
+            ? new Date(state.windTimes[rangeEnd]!).getTime()
+            : tMs;
       let ei = state.windTimes.findIndex((t) => new Date(t).getTime() >= nextMs);
       if (ei < 0) ei = rangeEnd;
       ei = Math.max(si, ei - 1);
@@ -62,7 +78,9 @@ export function computeCoverageHtml(rangeStart: number, rangeEnd: number, state:
       stops.push(`${color} ${a}% ${b}%`);
     }
     if (stops.length > 0) {
-      rows.push(`<div style="height:4px;border-radius:2px;background:linear-gradient(to right,${stops.join(',')})"></div>`);
+      rows.push(
+        `<div style="height:4px;border-radius:2px;background:linear-gradient(to right,${stops.join(',')})"></div>`,
+      );
     }
   } else {
     state.gribInfoFiles.forEach((f, i) => {
