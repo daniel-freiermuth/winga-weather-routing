@@ -93,6 +93,24 @@
     }
   }
 
+  /** Encounter wave period (s) — perceived by the moving boat.
+   *  Uses deep-water dispersion: ω_e = ω₀(1 − ω₀·V·cos(μ)/g). */
+  function encounterPeriod(m: WaypointMeta): number | undefined {
+    if (m.wavePeriod == null || m.waveDir == null || m.boatSpeed == null) return undefined;
+    const T = m.wavePeriod;
+    if (T < 0.5) return undefined;
+    const V = m.boatSpeed * 0.514444; // knots → m/s
+    // μ = angle between heading (CTW) and wave propagation direction
+    // waveDir = FROM convention; propagation = waveDir + 180
+    const wavePropDir = (m.waveDir + 180) % 360;
+    const mu = Math.abs(((m.heading - wavePropDir + 540) % 360) - 180); // 0=following, 180=head
+    const omega0 = 2 * Math.PI / T;
+    const g = 9.81;
+    const omegaE = omega0 * (1 - (omega0 / g) * V * Math.cos(mu * Math.PI / 180));
+    if (omegaE < 0.05) return undefined; // boat outruns waves — period undefined
+    return 2 * Math.PI / omegaE;
+  }
+
   const dateGroups = $derived.by(() => {
     const groups: { date: string; count: number }[] = [];
     for (const m of meta) {
@@ -255,6 +273,10 @@
               meta.map(m => m.wavePeriod != null ? m.wavePeriod.toFixed(1) : null),
               undefined, undefined,
               'Mean Wave Period — average time between successive wave crests')}
+            {@render dataRow('Enc. per.', 's',
+              meta.map(m => { const te = encounterPeriod(m); return te != null ? te.toFixed(1) : null; }),
+              undefined, undefined,
+              'Encounter Period — wave period as felt by the moving boat (deep-water approximation; less accurate in shallow water < ~30 m for 6 s waves)')}
             {@render dataRow('Wave dir', '°',
               meta.map(m => m.waveDir != null ? `${windArrow(m.waveDir)}${Math.round(m.waveDir)}` : null),
               undefined, undefined,
