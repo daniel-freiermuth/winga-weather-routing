@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Map } from 'maplibre-gl';
+  import { prefs, savePrefs } from '../prefs';
 
   interface Props {
     visible: boolean;
@@ -37,18 +38,34 @@
   const savedPolar = localStorage.getItem('wr-polar-csv');
   if (savedPolar) onPolarChange?.(savedPolar);
 
-  // ── Routing options state ──
-  let coastAvoidance = $state(true);
-  let safetyMargin = $state(false);
-  let motorBelowKn = $state('');
-  let motorSpeedKn = $state('');
-  let waitForWind = $state(false);
-  let maxWindKn = $state('');
-  let maxWaveM = $state('');
-  let tackPenaltySec = $state('30');
-  let tackThresholdDeg = $state('60');
-  let waypointLabels = $state(true);
-  let waypointLabelInterval = $state('0');
+  // ── Routing options state (initialized from prefs) ──
+  let coastAvoidance = $state(prefs.coastAvoidance);
+  let safetyMargin = $state(prefs.safetyMargin);
+  let motorBelowKn = $state(prefs.motorBelowKn);
+  let motorSpeedKn = $state(prefs.motorSpeedKn);
+  let waitForWind = $state(prefs.waitForWind);
+  let maxWindKn = $state(prefs.maxWindKn);
+  let maxWaveM = $state(prefs.maxWaveM);
+  let tackPenaltySec = $state(prefs.tackPenaltySec);
+  let tackThresholdDeg = $state(prefs.tackThresholdDeg);
+  let waypointLabels = $state(prefs.waypointLabels);
+  let waypointLabelInterval = $state(prefs.waypointLabelInterval);
+
+  // Auto-save routing options when any value changes
+  $effect(() => {
+    prefs.coastAvoidance = coastAvoidance;
+    prefs.safetyMargin = safetyMargin;
+    prefs.motorBelowKn = motorBelowKn;
+    prefs.motorSpeedKn = motorSpeedKn;
+    prefs.waitForWind = waitForWind;
+    prefs.maxWindKn = maxWindKn;
+    prefs.maxWaveM = maxWaveM;
+    prefs.tackPenaltySec = tackPenaltySec;
+    prefs.tackThresholdDeg = tackThresholdDeg;
+    prefs.waypointLabels = waypointLabels;
+    prefs.waypointLabelInterval = waypointLabelInterval;
+    savePrefs(prefs);
+  });
 
   export function getOptions() {
     return {

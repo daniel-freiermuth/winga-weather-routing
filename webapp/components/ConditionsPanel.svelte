@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import type { WaypointMeta } from '../types';
+  import { prefs, savePrefs } from '../prefs';
 
   interface Props {
     visible: boolean;
@@ -104,11 +105,13 @@
   // Wind speed unit cycling: kn → m/s → km/h → Bft
   const WIND_UNITS = ['kn', 'm/s', 'km/h', 'Bft'] as const;
   type WindUnit = typeof WIND_UNITS[number];
-  let windUnit = $state<WindUnit>('kn');
+  let windUnit = $state<WindUnit>(prefs.windUnit);
 
   function cycleWindUnit() {
     const idx = WIND_UNITS.indexOf(windUnit);
     windUnit = WIND_UNITS[(idx + 1) % WIND_UNITS.length]!;
+    prefs.windUnit = windUnit;
+    savePrefs(prefs);
   }
 
   /** Convert knots to the active wind unit. */

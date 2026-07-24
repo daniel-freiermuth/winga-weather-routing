@@ -28,6 +28,7 @@
   import type { WindPoint, WavePoint, CurrentPoint, WaveGridMeta } from '../stores';
   import { forecastLoaded, windPoints as windPointsStore, wavePoints as wavePointsStore, currentPoints as currentPointsStore, waveGridMetaStore as waveGridMetaStoreRef } from '../stores';
   import { calcState, resetCalcState } from '../calc-state.svelte';
+  import { prefs, savePrefs } from '../prefs';
   import { skState } from '../sk-state.svelte';
   import { configState } from '../config-state.svelte';
   import { fmt as _fmt } from '../units';
@@ -661,6 +662,14 @@
       };
     });
 
+    // Save map position on pan/zoom
+    m.on('moveend', () => {
+      const c = m.getCenter();
+      prefs.mapCenter = [c.lng, c.lat];
+      prefs.mapZoom = m.getZoom();
+      savePrefs(prefs);
+    });
+
     // ── Calculation module ──────────────────────────────────────────────────
     // calcState imported from calc-state.svelte.ts — no bridge needed
 
@@ -814,8 +823,8 @@
     <MapLibre
       bind:map={mapRef}
       inlineStyle="flex:1;min-height:200px"
-      center={[18, 57]}
-      zoom={6}
+      center={prefs.mapCenter}
+      zoom={prefs.mapZoom}
       style={{
         version: 8,
         sources: {
