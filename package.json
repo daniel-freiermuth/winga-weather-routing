@@ -24,7 +24,6 @@
   "license": "Apache-2.0",
   "main": "dist/index.js",
   "scripts": {
-    "prebuild": "node scripts/inject-buildinfo.js",
     "build": "tsc && vite build webapp",
     "build:server": "tsc",
     "build:webapp": "vite build webapp",
@@ -34,12 +33,11 @@
     "test": "tsx --test 'src/lib/__tests__/**/*.test.ts'",
     "lint": "eslint src/ webapp/",
     "check": "tsc --noEmit && npx tsc --noEmit -p webapp/tsconfig.json && svelte-check --workspace webapp && eslint src/ && tsx --test 'src/lib/__tests__/**/*.test.ts'",
-    "format": "prettier --write src/ public/index.html",
-    "format:check": "prettier --check src/ public/index.html"
+    "format": "prettier --write src/ webapp/",
+    "format:check": "prettier --check src/ webapp/"
   },
   "files": [
     "dist/",
-    "public/",
     "wr-icon-128px.png",
     "route-to-route-demo.png",
     "screenshot2.jpg"
