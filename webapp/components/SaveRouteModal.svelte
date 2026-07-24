@@ -9,12 +9,12 @@
 
   let routeName = $state(`Weather Route ${new Date().toLocaleString()}`);
   let saving = $state(false);
-  let inputEl: HTMLInputElement;
+  let inputEl = $state<HTMLInputElement | undefined>();
 
   $effect(() => {
     if (visible && inputEl) {
       routeName = `Weather Route ${new Date().toLocaleString()}`;
-      requestAnimationFrame(() => inputEl.select());
+      requestAnimationFrame(() => { if (inputEl) inputEl.select(); });
     }
   });
 

@@ -40,8 +40,10 @@
   let polarStatusColor = $state(localStorage.getItem('wr-polar-csv') ? '#a6e3a1' : '#6c7086');
 
   // Restore polar from localStorage on init
-  const savedPolar = localStorage.getItem('wr-polar-csv');
-  if (savedPolar) onPolarChange?.(savedPolar);
+  $effect(() => {
+    const savedPolar = localStorage.getItem('wr-polar-csv');
+    if (savedPolar) onPolarChange?.(savedPolar);
+  });
 
   // ── Routing options state (initialized from prefs) ──
   let coastAvoidance = $state(prefs.coastAvoidance);
@@ -194,7 +196,8 @@
   });
 
   // ── SK Server state ──
-  let skUrlValue = $state(currentSkUrl);
+  let skUrlValue = $state('');
+  $effect(() => { skUrlValue = currentSkUrl; });
 
   function handleSkUrlChange() {
     let val = skUrlValue.trim().replace(/\/+$/, '');
@@ -238,6 +241,7 @@
 
 {#if visible}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="overlay" onclick={handleOverlayClick}>
     <div class="modal">
       <div class="header">
@@ -474,23 +478,6 @@
   }
 
   /* Polar */
-  input[type='file'] {
-    font-size: 12px;
-    color: #cdd6f4;
-  }
-  input[type='file']::file-selector-button {
-    background: #313244;
-    color: #cdd6f4;
-    border: 1px solid #45475a;
-    border-radius: 4px;
-    padding: 3px 8px;
-    font-size: 11px;
-    cursor: pointer;
-    margin-right: 8px;
-  }
-  input[type='file']::file-selector-button:hover {
-    background: #45475a;
-  }
 
   .status {
     font-size: 11px;

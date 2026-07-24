@@ -213,7 +213,7 @@
   let regionOverlayRef: { getAvoidIds: () => string[]; reload: () => Promise<void>; toggleAvoid: (id: string, avoid: boolean) => void } | undefined;
   let regionListData = $state<{ id: string; name: string; avoided: boolean }[]>([]);
   let currentEnabled = true;
-  let windTimes: string[] = [];
+  let windTimes = $state<string[]>([]);
   let windTimesCount = 0;
   let windNativeTimes: string[] = [];
   let currentFileTimes: string[] = [];
@@ -255,7 +255,7 @@
   let routeWeatherMarkers: maplibregl.Marker[] = [];
 
   // SettingsModal component ref (replaces RoutingOptions)
-  let settingsModalRef: { getOptions: () => { useLandAvoidance: boolean; useSafetyMargin: boolean; motorBelowKn: number | undefined; motorSpeedKn: number | undefined; waitForWind: boolean | undefined; maxWindKn: number | undefined; maxWaveM: number | undefined; tackPenaltySec: number; tackThresholdDeg: number; waypointLabels: boolean; waypointLabelInterval: number } } | undefined;
+  let settingsModalRef = $state<{ getOptions: () => { useLandAvoidance: boolean; useSafetyMargin: boolean; motorBelowKn: number | undefined; motorSpeedKn: number | undefined; waitForWind: boolean | undefined; maxWindKn: number | undefined; maxWaveM: number | undefined; tackPenaltySec: number; tackThresholdDeg: number; waypointLabels: boolean; waypointLabelInterval: number } } | undefined>();
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 

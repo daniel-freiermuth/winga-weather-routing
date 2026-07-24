@@ -142,10 +142,6 @@
     accent-color: #89b4fa;
     cursor: pointer;
   }
-  .right-spacer {
-    flex-shrink: 0;
-    width: 52px;
-  }
   .btn-use-departure {
     font-size: 10px;
     color: #a6adc8;
