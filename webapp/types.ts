@@ -4,6 +4,11 @@ export interface WaypointMeta {
   name: string; time: string;
   windDir: number; heading: number; twa: number; tws: number;
   boatSpeed?: number; waveHeight?: number; gribFile?: string;
+  gustKn?: number;
+  currentSpeedKn?: number;
+  currentDir?: number; // degrees, direction current flows TOWARDS
+  cogDeg?: number; // course over ground (degrees)
+  sogKn?: number; // speed over ground (knots)
 }
 
 export interface GraphLayout {

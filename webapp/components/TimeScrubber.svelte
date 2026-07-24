@@ -8,7 +8,6 @@
     nowMarkerLeft: string | null;
     showRangeToggle: boolean;
     rangeToggleLabel: string;
-    showRightSpacer: boolean;
     visible: boolean;
     onIndexChange: (idx: number) => void;
     onJumpToNow: () => void;
@@ -17,7 +16,7 @@
   }
   let {
     windTimes, scrubberIndex, lockedRange, label, coverageHtml,
-    nowMarkerLeft, showRangeToggle, rangeToggleLabel, showRightSpacer,
+    nowMarkerLeft, showRangeToggle, rangeToggleLabel,
     visible, onIndexChange, onJumpToNow, onToggleRange, onUseAsDeparture,
   }: Props = $props();
 
@@ -59,9 +58,6 @@
                 onclick={onToggleRange}>
           {rangeToggleLabel}
         </button>
-      {/if}
-      {#if showRightSpacer}
-        <div class="right-spacer"></div>
       {/if}
     </div>
   {/if}

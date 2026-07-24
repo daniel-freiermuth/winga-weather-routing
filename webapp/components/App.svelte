@@ -41,7 +41,6 @@
   import { loadDepartureResources as _loadDepartureResources, loadWaypointRoutes as _loadWaypointRoutes, connectVesselPositionStream as _connectVesselPositionStream } from '../sk-resources';
   import { analyseRouteWeather } from '../route-weather';
   import * as dataLayer from '../data-layer';
-  import { setupGraphTooltip } from '../graph-tooltip';
   import { loadConfig as _loadConfig } from '../config';
   import maplibregl from 'maplibre-gl';
   import { MapLibre } from 'svelte-maplibre-gl';
@@ -227,20 +226,13 @@
   let nowMarkerLeft = $state<string | null>(null);
   let showRangeToggle = $state(false);
   let rangeToggleLabel = $state('Full range');
-  let showRightSpacer = $state(false);
   let scrubberVisible = $state(false);
 
   // Conditions panel reactive state
   let conditionsVisible = $state(false);
   let conditionsExpanded = $state(true);
-  let conditionsFullscreen = $state(false);
-  let conditionsSvgContent = $state('');
-  let conditionsSvgViewBox = $state('0 0 820 200');
-  let conditionsHasWave = $state(false);
 
   // Bind:this refs for graph tooltip
-  let graphTooltipEl = $state<HTMLDivElement | undefined>();
-  let conditionsPanelRef: { getSvgEl(): SVGSVGElement | undefined } | undefined;
 
   // Subscribe to overlay data stores (forecast-fetcher writes to these)
   windPointsStore.subscribe(v => { windPointsData = v; });
@@ -377,9 +369,6 @@
     conditionsExpanded = !conditionsExpanded;
   }
 
-  function handleConditionsFullscreenToggle() {
-    conditionsFullscreen = !conditionsFullscreen;
-  }
 
   // ── Waypoint Handlers ─────────────────────────────────────────────────────
 
@@ -618,10 +607,6 @@
       getPolarCsv: () => polarCsv ?? undefined,
       setConditionsGraph: (data) => {
         if (data) {
-          conditionsSvgContent = data.svgContent;
-          conditionsSvgViewBox = data.viewBox;
-          conditionsHasWave = data.hasWave;
-          showRightSpacer = data.hasWave;
           calcState.graphLayout = data.layout;
         }
       },
@@ -751,14 +736,6 @@
       if (dataLayer.dilatedLandDataReady()) { dilatedIndexReady = true; clearInterval(dilatedPoll); }
     }, 5000);
 
-    // Conditions graph tooltip — deferred until bind:this refs are available
-    const tooltipPoll = setInterval(() => {
-      const svgEl = conditionsPanelRef?.getSvgEl();
-      if (svgEl && graphTooltipEl) {
-        clearInterval(tooltipPoll);
-        setupGraphTooltip(svgEl, graphTooltipEl, () => ({ graphMeta: calcState.graphMeta, graphLayout: calcState.graphLayout, windSpeedMs: configState.windSpeedMs }));
-      }
-    }, 200);
   });
 
 </script>
@@ -887,7 +864,6 @@
     {nowMarkerLeft}
     {showRangeToggle}
     {rangeToggleLabel}
-    showRightSpacer={showRightSpacer}
     visible={scrubberVisible}
     onIndexChange={handleScrubberChange}
     onJumpToNow={handleJumpToNow}
@@ -898,14 +874,8 @@
   <ConditionsPanel
     visible={conditionsVisible}
     expanded={conditionsExpanded}
-    fullscreen={conditionsFullscreen}
-    graphHeight={configState.conditionsGraphHeight}
-    svgContent={conditionsSvgContent}
-    svgViewBox={conditionsSvgViewBox}
-    hasWave={conditionsHasWave}
+    meta={calcState.graphMeta ?? []}
     onToggle={handleConditionsToggle}
-    onFullscreenToggle={handleConditionsFullscreenToggle}
-    bind:this={conditionsPanelRef}
   />
 
   {#if analyseResults.length > 0}
@@ -915,7 +885,6 @@
   {/if}
 </div>
 
-<div bind:this={graphTooltipEl} class="graph-tooltip"></div>
 
 <!-- Renderless overlay components -->
 <WindOverlay map={mapRef ?? null} points={windPointsData} visible={windOverlayVisible} />
@@ -1046,17 +1015,4 @@
     font-size: 9px;
   }
 
-  /* Graph tooltip */
-  .graph-tooltip {
-    position: fixed;
-    background: #313244;
-    color: #cdd6f4;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    pointer-events: none;
-    z-index: 9000;
-    display: none;
-    white-space: nowrap;
-  }
 </style>

@@ -209,10 +209,17 @@ export class TileWindProvider implements WindProvider {
       for (const si of windIdxs) {
         const step = this.windSteps[si];
         if (!step) continue;
-        const key = tileKey(this.windModel, 'wind', step.compact, this.zoom, t.x, t.y);
-        if (!this.cache.has(key)) {
+        // Wind tiles
+        const windKey = tileKey(this.windModel, 'wind', step.compact, this.zoom, t.x, t.y);
+        if (!this.cache.has(windKey)) {
           const url = buildTileUrl(this.windModel, this.windModelRun, step.compact, this.zoom, t.x, t.y, 'wind');
-          fetches.push(fetchAndDecode(url).then((tile) => { this.cache.set(key, tile); }));
+          fetches.push(fetchAndDecode(url).then((tile) => { this.cache.set(windKey, tile); }));
+        }
+        // Gust tiles (same model/steps as wind)
+        const gustKey = tileKey(this.windModel, 'gust', step.compact, this.zoom, t.x, t.y);
+        if (!this.cache.has(gustKey)) {
+          const url = buildTileUrl(this.windModel, this.windModelRun, step.compact, this.zoom, t.x, t.y, 'gust');
+          fetches.push(fetchAndDecode(url).then((tile) => { this.cache.set(gustKey, tile); }).catch(() => { /* gust tiles may 404 */ }));
         }
       }
       for (const si of waveIdxs) {
@@ -332,6 +339,39 @@ export class TileWindProvider implements WindProvider {
     if (w0 === undefined) return w1;
     if (w1 === undefined) return w0;
     return w0 * (1 - f) + w1 * f;
+  }
+
+  /** Sample gust speed (m/s) at a specific valid time. Gust is a scalar (R channel). */
+  private sampleGust(lat: number, lon: number, validTime: string): number | undefined {
+    const { x, y } = latLonToTile(lat, lon, this.zoom);
+    const key = tileKey(this.windModel, 'gust', validTime, this.zoom, x, y);
+    const tile = this.cache.get(key);
+    if (tile === undefined) return undefined;
+    const { px, py } = latLonToPixelFrac(lat, lon, this.zoom, x, y);
+    const val = sampleTileBilinear(tile.rgba, tile.header, px, py, false);
+    return val.hasData ? val.u : undefined; // scalar: R channel only
+  }
+
+  getGustAtTime(lat: number, lon: number, timeMs: number): number | undefined {
+    if (this.windSteps.length === 0) return undefined;
+    const i = closestStepIdx(this.windSteps, timeMs, this.windStepsMs);
+    const t0ms = this.windStepsMs[i];
+    if (t0ms === undefined) return undefined;
+    const step0 = this.windSteps[i];
+    if (!step0) return undefined;
+    if (i >= this.windSteps.length - 1) return this.sampleGust(lat, lon, step0.compact);
+    const t1ms = this.windStepsMs[i + 1];
+    if (t1ms === undefined || t1ms === t0ms) return this.sampleGust(lat, lon, step0.compact);
+    const f = Math.max(0, Math.min(1, (timeMs - t0ms) / (t1ms - t0ms)));
+    if (f < 0.01) return this.sampleGust(lat, lon, step0.compact);
+    const step1 = this.windSteps[i + 1];
+    if (!step1) return this.sampleGust(lat, lon, step0.compact);
+    if (f > 0.99) return this.sampleGust(lat, lon, step1.compact);
+    const g0 = this.sampleGust(lat, lon, step0.compact);
+    const g1 = this.sampleGust(lat, lon, step1.compact);
+    if (g0 === undefined) return g1;
+    if (g1 === undefined) return g0;
+    return g0 * (1 - f) + g1 * f;
   }
 
   /** Compute optimal zoom level so the route area fits within maxTilesPerDim tiles.

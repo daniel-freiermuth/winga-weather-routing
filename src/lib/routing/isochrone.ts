@@ -413,7 +413,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           const closest = closestTo(lastFrontier, end);
           const dist = Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon));
           return {
-            route: backtrack(closest, wind, false),
+            route: backtrack(closest, wind, current, false),
             warning: `No reachable positions at step ${String(stepsCompleted + 1)} (${reasonText(reason)}) ${counts} — partial route shown (${String(dist)} nm from destination)`,
           };
         }
@@ -454,7 +454,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         const closest = closestTo(isochrone, end);
         const dist = Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon));
         return {
-          route: backtrack(closest, wind, false),
+          route: backtrack(closest, wind, current, false),
           warning: `Route extends past forecast coverage after ${String(stepsCompleted)} steps — partial route shown (${String(dist)} nm from destination)`,
         };
       }
@@ -464,7 +464,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       );
     }
 
-    return { route: backtrack(arrived, wind, true, end) };
+    return { route: backtrack(arrived, wind, current, true, end) };
   }
 }
 
@@ -534,12 +534,16 @@ function pruneToFrontier<T extends { lat: number; lon: number }>(
 function backtrack(
   arrived: IsochronePoint,
   wind: WindProvider,
+  current: CurrentProvider | null,
   includeEnd: boolean,
   end?: { lat: number; lon: number },
 ): RoutePoint[] {
   const route: RoutePoint[] = [];
 
   if (includeEnd && end) {
+    const timeMs = arrived.time.getTime();
+    const gustMs = wind.getGustAtTime ? wind.getGustAtTime(end.lat, end.lon, timeMs) : undefined;
+    const cur = current ? current.getCurrent(end.lat, end.lon, arrived.time) : undefined;
     route.unshift({
       lat: end.lat,
       lon: end.lon,
@@ -550,32 +554,37 @@ function backtrack(
       boatSpeed: arrived.boatSpeed,
       windDir: arrived.windDir,
       legCalcMs: 0,
-      waveHeight: wind.getWaveAtTime ? wind.getWaveAtTime(end.lat, end.lon, arrived.time.getTime()) : wind.getWave(end.lat, end.lon, arrived.time),
+      waveHeight: wind.getWaveAtTime ? wind.getWaveAtTime(end.lat, end.lon, timeMs) : wind.getWave(end.lat, end.lon, arrived.time),
       gribFilePath: arrived.gribFilePath,
+      gustKn: gustMs != null ? gustMs * 1.94384 : undefined,
+      currentU: cur?.u,
+      currentV: cur?.v,
     });
   }
 
-  let cur: IsochronePoint | undefined = arrived;
-  while (cur) {
-    // Resample wind at each waypoint's own position and time (BUG-134).
-    // The stored tws/windDir come from the parent point's position at the
-    // current step — one position and one time step earlier. Resampling
-    // gives the actual wind at the displayed waypoint position.
-    const resampled = wind.getWindAtTime(cur.lat, cur.lon, cur.time.getTime());
+  let p: IsochronePoint | undefined = arrived;
+  while (p) {
+    const timeMs = p.time.getTime();
+    const resampled = wind.getWindAtTime(p.lat, p.lon, timeMs);
+    const gustMs = wind.getGustAtTime ? wind.getGustAtTime(p.lat, p.lon, timeMs) : undefined;
+    const cur = current ? current.getCurrent(p.lat, p.lon, p.time) : undefined;
     route.unshift({
-      lat: cur.lat,
-      lon: cur.lon,
-      time: cur.time,
-      heading: cur.heading,
-      twa: cur.twa,
+      lat: p.lat,
+      lon: p.lon,
+      time: p.time,
+      heading: p.heading,
+      twa: p.twa,
       tws: windSpeedKnots(resampled.u, resampled.v),
-      boatSpeed: cur.boatSpeed,
+      boatSpeed: p.boatSpeed,
       windDir: windDirection(resampled.u, resampled.v),
-      legCalcMs: cur.stepCalcMs,
-      waveHeight: wind.getWaveAtTime ? wind.getWaveAtTime(cur.lat, cur.lon, cur.time.getTime()) : wind.getWave(cur.lat, cur.lon, cur.time),
-      gribFilePath: cur.gribFilePath,
+      legCalcMs: p.stepCalcMs,
+      waveHeight: wind.getWaveAtTime ? wind.getWaveAtTime(p.lat, p.lon, timeMs) : wind.getWave(p.lat, p.lon, p.time),
+      gribFilePath: p.gribFilePath,
+      gustKn: gustMs != null ? gustMs * 1.94384 : undefined,
+      currentU: cur?.u,
+      currentV: cur?.v,
     });
-    cur = cur.parent;
+    p = p.parent;
   }
 
   return route;

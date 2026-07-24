@@ -77,6 +77,8 @@ export interface WindProvider {
   getWave(lat: number, lon: number, t: Date): number | undefined;
   /** Wave height at continuous time (ms) */
   getWaveAtTime?(lat: number, lon: number, timeMs: number): number | undefined;
+  /** Gust speed at continuous time (ms) with temporal interpolation, in m/s */
+  getGustAtTime?(lat: number, lon: number, timeMs: number): number | undefined;
   coversPoint(lat: number, lon: number): boolean;
   coversPointAtTime(lat: number, lon: number, timeIdx: number): boolean;
   /** Check if a point is covered at a specific time in ms */
@@ -156,6 +158,9 @@ export interface RoutePoint {
   legCalcMs: number; // wall-clock ms the algorithm spent computing this leg; 0 for start and destination
   waveHeight?: number | undefined; // significant wave height (m), present when swh data available in GRIB
   gribFilePath?: string | undefined; // path of the GRIB file that supplied weather data at this waypoint
+  gustKn?: number | undefined; // gust speed (knots), present when gust data available
+  currentU?: number | undefined; // ocean current east component (m/s)
+  currentV?: number | undefined; // ocean current north component (m/s)
 }
 
 export interface CalculationRequest {
