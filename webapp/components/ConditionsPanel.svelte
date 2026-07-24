@@ -278,9 +278,13 @@
               'Wind over Water direction — true wind adjusted for current (FROM convention)')}
           {/if}
           {@render dataRow('TWA', '°',
-            meta.map(m => `${Math.round(m.twa)}`),
+            meta.map(m => {
+              const relWind = (m.windDir - m.heading + 360) % 360;
+              const side = relWind <= 180 ? '▶' : '◀';
+              return `${Math.round(m.twa)}${side}`;
+            }),
             undefined, undefined,
-            'True Wind Angle — |CTW − WoW direction|, the angle the boat sails relative to the wind-over-water')}
+            'True Wind Angle — ◀ port tack (wind from left), ▶ starboard tack (wind from right)')}
           {@render dataRow('CTW', '°',
             meta.map(m => `${Math.round(m.heading)}`),
             undefined, undefined,
