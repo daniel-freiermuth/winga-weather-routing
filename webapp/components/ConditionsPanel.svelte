@@ -27,8 +27,31 @@
     return chars[Math.round(dir / 45) % 8] ?? '↓';
   }
 
-  // Windy-style wind speed color ramp (knots → background color).
-  const WIND_STOPS: [number, number, number, number][] = [
+  // ── Color ramps (Windy-style) ──────────────────────────────────────────────
+  type ColorStops = [number, number, number, number][];
+
+  function colorRamp(stops: ColorStops, val: number): string {
+    if (val <= stops[0]![0]) {
+      const [, r, g, b] = stops[0]!;
+      return `rgb(${String(r)},${String(g)},${String(b)})`;
+    }
+    for (let i = 1; i < stops.length; i++) {
+      const [k1, r1, g1, b1] = stops[i]!;
+      if (val <= k1) {
+        const [k0, r0, g0, b0] = stops[i - 1]!;
+        const f = (val - k0) / (k1 - k0);
+        const r = Math.round(r0 + (r1 - r0) * f);
+        const g = Math.round(g0 + (g1 - g0) * f);
+        const b = Math.round(b0 + (b1 - b0) * f);
+        return `rgb(${String(r)},${String(g)},${String(b)})`;
+      }
+    }
+    const last = stops[stops.length - 1]!;
+    return `rgb(${String(last[1])},${String(last[2])},${String(last[3])})`;
+  }
+
+  // Wind speed (knots)
+  const WIND_STOPS: ColorStops = [
     [  0,   98, 113, 183],
     [  5,   57, 163, 171],
     [ 10,   75, 178, 101],
@@ -41,26 +64,36 @@
     [ 60,  113,  31, 106],
     [ 80,   80,  10,  80],
   ];
+  function windColor(kn: number): string { return colorRamp(WIND_STOPS, kn); }
 
-  function windColor(kn: number): string {
-    if (kn <= WIND_STOPS[0]![0]) {
-      const [, r, g, b] = WIND_STOPS[0]!;
-      return `rgb(${String(r)},${String(g)},${String(b)})`;
-    }
-    for (let i = 1; i < WIND_STOPS.length; i++) {
-      const [k1, r1, g1, b1] = WIND_STOPS[i]!;
-      if (kn <= k1) {
-        const [k0, r0, g0, b0] = WIND_STOPS[i - 1]!;
-        const f = (kn - k0) / (k1 - k0);
-        const r = Math.round(r0 + (r1 - r0) * f);
-        const g = Math.round(g0 + (g1 - g0) * f);
-        const b = Math.round(b0 + (b1 - b0) * f);
-        return `rgb(${String(r)},${String(g)},${String(b)})`;
-      }
-    }
-    const last = WIND_STOPS[WIND_STOPS.length - 1]!;
-    return `rgb(${String(last[1])},${String(last[2])},${String(last[3])})`;
-  }
+  // Wave height (metres)
+  const WAVE_STOPS: ColorStops = [
+    [ 0.0,   70,  90, 170],   // calm — muted blue
+    [ 0.5,   60, 140, 195],   // slight — blue
+    [ 1.0,   55, 175, 160],   // smooth — teal
+    [ 1.5,   70, 190, 100],   // moderate — green
+    [ 2.0,  150, 205,  60],   // rough — yellow-green
+    [ 3.0,  230, 210,  55],   // very rough — yellow
+    [ 4.0,  235, 160,  40],   // high — orange
+    [ 6.0,  230, 100,  40],   // very high — dark orange
+    [ 9.0,  195,  50,  60],   // phenomenal — red
+    [14.0,  140,  40, 115],   // extreme — purple
+  ];
+  function waveColor(m: number): string { return colorRamp(WAVE_STOPS, m); }
+
+  // Current speed (knots)
+  const CURRENT_STOPS: ColorStops = [
+    [ 0.0,   70,  80, 160],   // still — muted blue
+    [ 0.2,   55, 130, 185],   // very weak
+    [ 0.5,   50, 170, 165],   // weak — teal
+    [ 1.0,   70, 190,  95],   // moderate — green
+    [ 1.5,  155, 205,  55],   // fresh — yellow-green
+    [ 2.0,  235, 210,  50],   // strong — yellow
+    [ 3.0,  235, 155,  40],   // very strong — orange
+    [ 4.0,  230,  95,  40],   // extreme — red-orange
+    [ 6.0,  190,  45,  60],   // dangerous — red
+  ];
+  function currentColor(kn: number): string { return colorRamp(CURRENT_STOPS, kn); }
 
   const hasWave = $derived(meta.some(m => m.waveHeight != null));
   const hasWavePeriod = $derived(meta.some(m => m.wavePeriod != null || m.waveDir != null));
@@ -264,7 +297,8 @@
           {#if hasWave}
             {@render dataRow('Wave', 'm',
               meta.map(m => m.waveHeight != null ? m.waveHeight.toFixed(1) : null),
-              undefined, undefined,
+              (i) => { const h = meta[i]!.waveHeight; return h != null ? waveColor(h) : null; },
+              undefined,
               'Significant Wave Height — average height of the highest ⅓ of waves (Hs)')}
           {/if}
           {#if hasWavePeriod}
@@ -284,7 +318,8 @@
           {#if hasCurrent}
             {@render dataRow('Current', 'kn',
               meta.map(m => m.currentSpeedKn != null ? m.currentSpeedKn.toFixed(1) : null),
-              undefined, undefined,
+              (i) => { const c = meta[i]!.currentSpeedKn; return c != null ? currentColor(c) : null; },
+              undefined,
               'Ocean Current Speed — from CMEMS forecast')}
             {@render dataRow('Cur dir', '°',
               meta.map(m => m.currentDir != null ? `${windArrow((m.currentDir + 180) % 360)}${Math.round(m.currentDir)}` : null),
