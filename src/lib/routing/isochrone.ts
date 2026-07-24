@@ -9,6 +9,7 @@ import type {
   CalculationRequest,
   IsochronePoint,
   RoutePoint,
+  LatLon,
 } from '../../types';
 import type { RoutingAlgorithm } from './algorithm';
 import { interpolateBoatSpeed } from '../polar';
@@ -105,23 +106,9 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     edgeIndex: LandEdgeIndex | null,
     regionIndex: RegionIndex | null,
     request: CalculationRequest,
-    onProgress: (pct: number, frontier: [number, number][]) => void,
+    onProgress: (pct: number, frontier: [number, number][], legOrigin?: { lat: number; lon: number }, clearIsochrones?: boolean) => void,
     options?: Record<string, unknown>,
   ): Promise<{ route: RoutePoint[]; warning?: string }> {
-    const headingStep = Number(options?.['headingStep'] ?? DEFAULT_HEADING_STEP);
-    const sectorSize = Number(options?.['sectorSize'] ?? DEFAULT_SECTOR_SIZE);
-    const minBoatSpeed = Number(options?.['minBoatSpeed'] ?? DEFAULT_MIN_BOAT_SPEED);
-    const maxWindKn = Number(options?.['maxWindKn'] ?? 0); // 0 = no limit
-    const maxWaveM = Number(options?.['maxWaveM'] ?? 0); // 0 = no limit
-    const motorSpeedKn = Number(options?.['motorSpeedKn'] ?? 0); // 0 = no motor
-    const motorBelowKn = Number(options?.['motorBelowKn'] ?? 0); // 0 = disabled
-    const waitForWind = Boolean(options?.['waitForWind'] ?? false);
-    const tackPenaltySec = Number(options?.['tackPenaltySec'] ?? 30); // seconds lost per tack/gybe
-    const tackThresholdDeg = Number(options?.['tackThresholdDeg'] ?? 60); // heading change that counts as a tack
-    const configuredConeHalfAngle = Number(options?.['coneHalfAngle'] ?? FINE_PASS_CONE_HALF_ANGLE);
-    const coneDisableLookaheadNm = Number(options?.['coneDisableLookaheadNm'] ?? CONE_DISABLE_LOOKAHEAD_NM);
-    const maxHeadingChangeDeg = Number(options?.['maxHeadingChange'] ?? MAX_HEADING_CHANGE);
-
     const { start, end } = request;
     const departureTime = new Date(request.departureTime);
 
@@ -131,23 +118,6 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     const forecastEndMs = forecastEnd.getTime();
     const departureMs = departureTime.getTime();
     if (departureMs >= forecastEndMs) throw new Error('Departure time is at or after the end of the forecast data');
-
-    // ── Adaptive timestep ───────────────────────────────────────────────────
-    const directDistNm = haversineNM(start.lat, start.lon, end.lat, end.lon);
-    const estimatedSpeedKn = 5; // reasonable sailing average
-    const forecastDurationH = (forecastEndMs - departureMs) / 3_600_000;
-    const estimatedDurationH = Math.min(directDistNm / estimatedSpeedKn, forecastDurationH);
-    const targetSteps = 100;
-    const stepDurationH = Math.max(0.25, estimatedDurationH / targetSteps); // at least 15 min
-    const stepDurationMs = stepDurationH * 3_600_000;
-    const estimatedTotalSteps = Math.ceil(estimatedDurationH / stepDurationH);
-
-    // ── Dynamic arrival radius ──────────────────────────────────────────────
-    const configuredArrivalRadius = options?.['arrivalRadiusNm'];
-    const dynamicRadius = Math.max(0.1, Math.min(directDistNm / 100, DEFAULT_ARRIVAL_RADIUS_NM));
-    const arrivalRadiusNm = configuredArrivalRadius != null && Number(configuredArrivalRadius) > 0
-      ? Number(configuredArrivalRadius)
-      : dynamicRadius;
 
     const avoidIds = new Set(request.avoidRegionIds ?? []);
 
@@ -174,6 +144,108 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       }
     }
 
+    // ── Build leg list: start → wp1 → wp2 → … → end ────────────────────────
+    const waypoints = request.waypoints ?? [];
+    const legPoints = [start, ...waypoints, end];
+    const totalLegs = legPoints.length - 1;
+
+    let fullRoute: RoutePoint[] = [];
+    let warning: string | undefined;
+    let legDepartureMs = departureMs;
+
+    for (let legIdx = 0; legIdx < totalLegs; legIdx++) {
+      const legStart = legPoints[legIdx];
+      const legEnd = legPoints[legIdx + 1];
+      if (!legStart || !legEnd) break;
+
+      // Clear isochrones from previous leg
+      if (legIdx > 0) {
+        onProgress(0, [], legStart, true);
+      }
+
+      const legResult = await this.calculateLeg(
+        legStart, legEnd, legDepartureMs, forecastEndMs,
+        wind, current, polar, edgeIndex, regionIndex, avoidIds,
+        options,
+        (pct, frontier) => {
+          const overallPct = Math.round((legIdx / totalLegs + pct / 100 / totalLegs) * 100);
+          onProgress(Math.min(overallPct, 99), frontier, legStart);
+        },
+      );
+
+      // Append leg route (skip first point of subsequent legs — it's the same as the last of the previous)
+      const legRoute = legResult.route;
+      if (legIdx === 0) {
+        fullRoute = legRoute;
+      } else if (legRoute.length > 0) {
+        fullRoute.push(...legRoute.slice(1));
+      }
+
+      if (legResult.warning !== undefined) {
+        warning = `Leg ${String(legIdx + 1)}: ${legResult.warning}`;
+        break; // partial route — don't continue to next leg
+      }
+
+      // Next leg departs from where this one arrived
+      if (legRoute.length > 0) {
+        const lastPoint = legRoute[legRoute.length - 1];
+        if (lastPoint) legDepartureMs = lastPoint.time.getTime();
+      }
+    }
+
+    return warning !== undefined ? { route: fullRoute, warning } : { route: fullRoute };
+  }
+
+  /** Route a single leg from legStart to legEnd. */
+  private async calculateLeg(
+    legStart: LatLon,
+    legEnd: LatLon,
+    departureMs: number,
+    forecastEndMs: number,
+    wind: WindProvider,
+    current: CurrentProvider | null,
+    polar: PolarData,
+    edgeIndex: LandEdgeIndex | null,
+    regionIndex: RegionIndex | null,
+    avoidIds: Set<string>,
+    options: Record<string, unknown> | undefined,
+    onProgress: (pct: number, frontier: [number, number][]) => void,
+  ): Promise<{ route: RoutePoint[]; warning?: string }> {
+    const headingStep = Number(options?.['headingStep'] ?? DEFAULT_HEADING_STEP);
+    const sectorSize = Number(options?.['sectorSize'] ?? DEFAULT_SECTOR_SIZE);
+    const minBoatSpeed = Number(options?.['minBoatSpeed'] ?? DEFAULT_MIN_BOAT_SPEED);
+    const maxWindKn = Number(options?.['maxWindKn'] ?? 0);
+    const maxWaveM = Number(options?.['maxWaveM'] ?? 0);
+    const motorSpeedKn = Number(options?.['motorSpeedKn'] ?? 0);
+    const motorBelowKn = Number(options?.['motorBelowKn'] ?? 0);
+    const waitForWind = Boolean(options?.['waitForWind'] ?? false);
+    const tackPenaltySec = Number(options?.['tackPenaltySec'] ?? 30);
+    const tackThresholdDeg = Number(options?.['tackThresholdDeg'] ?? 60);
+    const configuredConeHalfAngle = Number(options?.['coneHalfAngle'] ?? FINE_PASS_CONE_HALF_ANGLE);
+    const coneDisableLookaheadNm = Number(options?.['coneDisableLookaheadNm'] ?? CONE_DISABLE_LOOKAHEAD_NM);
+    const maxHeadingChangeDeg = Number(options?.['maxHeadingChange'] ?? MAX_HEADING_CHANGE);
+
+    const start = legStart;
+    const end = legEnd;
+    const departureTime = new Date(departureMs);
+
+    // ── Adaptive timestep ───────────────────────────────────────────────────
+    const directDistNm = haversineNM(start.lat, start.lon, end.lat, end.lon);
+    const estimatedSpeedKn = 5;
+    const forecastDurationH = (forecastEndMs - departureMs) / 3_600_000;
+    const estimatedDurationH = Math.min(directDistNm / estimatedSpeedKn, forecastDurationH);
+    const targetSteps = 100;
+    const stepDurationH = Math.max(0.25, estimatedDurationH / targetSteps);
+    const stepDurationMs = stepDurationH * 3_600_000;
+    const estimatedTotalSteps = Math.ceil(estimatedDurationH / stepDurationH);
+
+    // ── Dynamic arrival radius ──────────────────────────────────────────────
+    const configuredArrivalRadius = options?.['arrivalRadiusNm'];
+    const dynamicRadius = Math.max(0.1, Math.min(directDistNm / 100, DEFAULT_ARRIVAL_RADIUS_NM));
+    const arrivalRadiusNm = configuredArrivalRadius != null && Number(configuredArrivalRadius) > 0
+      ? Number(configuredArrivalRadius)
+      : dynamicRadius;
+
     const seedVec = wind.getWindAtTime(start.lat, start.lon, departureMs);
     let isochrone: IsochronePoint[] = [
       {
@@ -197,17 +269,14 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
 
     let currentTimeMs = departureMs;
 
-    for (let step = 0; step < 500; step++) { // hard cap at 500 steps
+    for (let step = 0; step < 500; step++) {
       const nextTimeMs = currentTimeMs + stepDurationMs;
-      if (nextTimeMs > forecastEndMs) break; // past forecast
+      if (nextTimeMs > forecastEndMs) break;
 
-      // On-demand tile fetch for this time step (and neighbor for interpolation)
       if (wind.prefetchForTime) await wind.prefetchForTime(currentTimeMs);
 
       const nextTime = new Date(nextTimeMs);
       const dtHours = stepDurationH;
-
-      // Compute nearest time index for backward-compat APIs (getFilePathForPoint, coversPointAtTime)
       const nearestTimeIdx = nearestIdx(wind.times, new Date(currentTimeMs));
 
       const stepStart = performance.now();
@@ -228,9 +297,6 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         if (edgeIndex && isPointOnLand(edgeIndex, point.lat, point.lon)) continue;
         if (regionIndex && avoidIds.size > 0 && isPointInRegion(regionIndex, avoidIds, point.lat, point.lon)) continue;
 
-        // Per-position bearing: cone axis points from this frontier point toward the destination,
-        // not from the original start. A fixed start→end axis blocked Öresund transit headings
-        // that were within 100° of the current-position bearing but >100° off the initial bearing.
         const pointToDestBearing = bearingTo(point.lat, point.lon, end.lat, end.lon);
 
         const t0wind = performance.now();
@@ -238,11 +304,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
         const gribFilePath = wind.getFilePathForPoint(point.lat, point.lon, nearestTimeIdx);
         windLookupMs += performance.now() - t0wind;
 
-        // Compute wind-over-water: subtract current from true wind.
-        // The polar diagram is defined relative to the water the boat moves through,
-        // not relative to the ground. When current flows with the wind, the boat
-        // experiences less wind; when against, more.
-        const trueWindDir = windDirection(windVec.u, windVec.v); // for display in route output
+        const trueWindDir = windDirection(windVec.u, windVec.v);
         let wowU = windVec.u;
         let wowV = windVec.v;
         if (current) {
@@ -250,10 +312,9 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           wowU -= cur.u;
           wowV -= cur.v;
         }
-        const tws = windSpeedKnots(wowU, wowV); // wind speed over water (for polar lookup)
-        const wdir = windDirection(wowU, wowV);   // wind direction over water (for TWA calc)
+        const tws = windSpeedKnots(wowU, wowV);
+        const wdir = windDirection(wowU, wowV);
 
-        // Max wind check uses true wind (what forecasts report), not wind-over-water
         if (maxWindKn > 0 && windSpeedKnots(windVec.u, windVec.v) > maxWindKn) {
           rejectedByPolar++;
           continue;
@@ -283,8 +344,6 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           const deviation = Math.abs(((hdg - pointToDestBearing + 180 + 360) % 360) - 180);
           if (deviation > coneHalfAngle) continue;
 
-          // Seed point (parent===undefined) has no meaningful prior heading — allow all cone-valid
-          // headings unconditionally on step 1 (BUG-44).
           if (point.parent !== undefined) {
             const delta = Math.abs(((hdg - point.heading + 180 + 360) % 360) - 180);
             if (delta > maxHeadingChangeDeg) continue;
@@ -294,12 +353,9 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           if (twa > 180) twa = 360 - twa;
 
           const polarSpeed = interpolateBoatSpeed(polar, twa, tws);
-          // REQ-84: motor fires when polarSpeed < motorBelowKn threshold.
           const effectiveSpeed =
             motorBelowKn > 0 && motorSpeedKn > 0 && polarSpeed < motorBelowKn ? motorSpeedKn : polarSpeed;
-          // REQ-82: below minimum → zero-speed gate before discard.
           if (effectiveSpeed < minBoatSpeed) {
-            // REQ-83: stay in place for one candidate per frontier point; advancing time only.
             if (waitForWind && !waitCandidateAdded) {
               candidates.push({
                 lat: point.lat,
@@ -321,7 +377,6 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           }
 
           candidatesEvaluated++;
-          // Tack/gybe penalty: if heading changes more than threshold, reduce sailing time
           let penaltyH = 0;
           if (tackPenaltySec > 0 && point.parent !== undefined) {
             const hdgChange = Math.abs(((hdg - point.heading + 180 + 360) % 360) - 180);
@@ -332,10 +387,6 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           let newLat = wt.lat;
           let newLon = wt.lon;
 
-          // Apply ocean current drift: water-track endpoint + current displacement over dtHours.
-          // Current is sampled at the frontier point (start of the step) in m/s.
-          // Cosine correction uses point.lat (original latitude) — not newLat which is
-          // already modified by the latitude drift (BUG-94).
           if (current) {
             const cur = current.getCurrent(point.lat, point.lon, nextTime);
             const dtS = dtHours * 3600;
@@ -343,7 +394,6 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
             newLon += (cur.u * dtS) / (1852 * 60 * Math.cos(point.lat * DEG_TO_RAD));
           }
 
-          // Domain check: prefer ms-based check, fall back to index-based
           const covered = wind.coversPointAtTimeMs
             ? wind.coversPointAtTimeMs(newLat, newLon, nextTimeMs)
             : wind.coversPointAtTime(newLat, newLon, nearestTimeIdx);
@@ -385,13 +435,9 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
             parent: point,
           };
           candidates.push(newPoint);
-
         }
       }
 
-      // Scan candidates for the closest arrival within the radius. Using a fresh
-      // variable avoids TypeScript's loop fixed-point narrowing that would flag a
-      // direct `arrived !== null` check as an always-false condition.
       const arrivedCandidate = candidates.reduce<IsochronePoint | null>((best, c) => {
         const d = haversineNM(c.lat, c.lon, end.lat, end.lon);
         if (d > arrivalRadiusNm) return best;
@@ -400,7 +446,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       }, null);
       if (arrivedCandidate !== null) {
         arrived = arrivedCandidate;
-        break; // exit before frontier bookkeeping — original semantics
+        break;
       }
       const frontierLoopMs = performance.now() - t0frontier;
       const polarMs = Math.max(0, frontierLoopMs - windLookupMs - landCheckMs);
@@ -466,14 +512,13 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
       const progressPct = Math.min(Math.round(((stepsCompleted + 1) / estimatedTotalSteps) * 100), 99);
       onProgress(progressPct, frontier);
       currentTimeMs = nextTimeMs;
-      await new Promise<void>((resolve) => { setTimeout(resolve, 0); }); // yield event loop for progress updates
+      await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
     }
 
     logTimingSummary(stepTimings);
 
     if (!arrived) {
       if (isochrone.length > 0) {
-        // Time steps exhausted with a live frontier — route extends past forecast coverage.
         const closest = closestTo(isochrone, end);
         const dist = Math.round(haversineNM(closest.lat, closest.lon, end.lat, end.lon));
         return {

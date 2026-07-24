@@ -42,7 +42,7 @@ interface CalculatePayload {
 type InMessage = { type: 'calculate'; payload: CalculatePayload };
 
 type OutMessage =
-  | { type: 'progress'; pct: number; frontier: [number, number][] }
+  | { type: 'progress'; pct: number; frontier: [number, number][]; legOrigin?: [number, number]; clearIsochrones?: boolean }
   | { type: 'result'; route: RoutePoint[]; warning?: string }
   | { type: 'error'; message: string };
 
@@ -143,9 +143,14 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
     activeIndex,
     null, // no region avoidance in browser (could be added later)
     request,
-    (pct, frontier) => {
-      // Map 0-100 from algorithm to 10-100 for the worker (0-10 is loading)
-      post({ type: 'progress', pct: 10 + pct * 0.9, frontier });
+    (pct, frontier, legOrigin, clearIsochrones) => {
+      post({
+        type: 'progress',
+        pct: 10 + pct * 0.9,
+        frontier,
+        ...(legOrigin ? { legOrigin: [legOrigin.lat, legOrigin.lon] as [number, number] } : {}),
+        ...(clearIsochrones ? { clearIsochrones: true } : {}),
+      });
     },
     request.options,
   );

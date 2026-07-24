@@ -276,13 +276,19 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
 
   // Wire worker message handler
   routingWorker.addEventListener('message', (e) => {
-    const j = e.data as { type: string; pct?: number; progress?: number; frontier?: number[][]; route?: { lat: number; lon: number; time: string; heading: number; twa: number; tws: number; boatSpeed?: number; windDir: number; waveHeight?: number; gribFilePath?: string; gustKn?: number; currentU?: number; currentV?: number; wavePeriod?: number; waveDir?: number; wowTws?: number; wowDir?: number }[]; warning?: string; error?: string };
+    const j = e.data as { type: string; pct?: number; progress?: number; frontier?: number[][]; legOrigin?: [number, number]; clearIsochrones?: boolean; route?: { lat: number; lon: number; time: string; heading: number; twa: number; tws: number; boatSpeed?: number; windDir: number; waveHeight?: number; gribFilePath?: string; gustKn?: number; currentU?: number; currentV?: number; wavePeriod?: number; waveDir?: number; wowTws?: number; wowDir?: number }[]; warning?: string; error?: string };
     if (j.type === 'progress') {
       const pct = Math.round(j.pct ?? j.progress ?? 0);
       ctx.setProgress(pct);
       ctx.setStatus('', `Calculating… ${String(pct)}%`);
+      if (j.clearIsochrones === true) {
+        clearIsochrones(isochroneState);
+      }
       if (j.frontier?.length && ctx.getIsochroneEnabled()) {
-        renderIsochrone(j.frontier, ctx.getStartLatLon()!, isochroneState);
+        const origin = j.legOrigin
+          ? { lat: j.legOrigin[0], lon: j.legOrigin[1] }
+          : ctx.getStartLatLon();
+        if (origin) renderIsochrone(j.frontier, origin, isochroneState);
       }
     } else if (j.type === 'result') {
       ctx.setShowProgress(false);

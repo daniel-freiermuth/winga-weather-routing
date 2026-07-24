@@ -20,7 +20,7 @@ export interface RoutingAlgorithm {
     edgeIndex: LandEdgeIndex | null,
     regionIndex: RegionIndex | null,
     request: CalculationRequest,
-    onProgress: (pct: number, frontier: [number, number][]) => void,
+    onProgress: (pct: number, frontier: [number, number][], legOrigin?: { lat: number; lon: number }, clearIsochrones?: boolean) => void,
     options?: Record<string, unknown>,
   ): Promise<{ route: RoutePoint[]; warning?: string }>;
 }
