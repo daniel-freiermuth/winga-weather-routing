@@ -162,6 +162,27 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
         ctx.fetchWindPointsAt(i0);
         ctx.fetchWavePointsAt(i0);
       }
+      // Fit map to route AFTER Svelte renders the conditions panel and the map
+      // container resizes. Two rAF frames: first for Svelte DOM update, second
+      // for MapLibre to process the container resize.
+      const coords = route.feature?.geometry?.coordinates;
+      if (coords && coords.length > 0) {
+        const lngs = coords.map((c: number[]) => c[0] ?? 0);
+        const lats = coords.map((c: number[]) => c[1] ?? 0);
+        const lngMin = Math.min(...lngs), lngMax = Math.max(...lngs);
+        const latMin = Math.min(...lats), latMax = Math.max(...lats);
+        const lngPad = (lngMax - lngMin) * 0.5 || 0.5;
+        const latPad = (latMax - latMin) * 0.5 || 0.5;
+        requestAnimationFrame(() => {
+          map.resize();
+          requestAnimationFrame(() => {
+            map.fitBounds(
+              [[lngMin - lngPad, latMin - latPad], [lngMax + lngPad, latMax + latPad]],
+              { padding: 20 },
+            );
+          });
+        });
+      }
     } catch (e) {
       ctx.setStatus('error', `Draw failed: ${String(e)}`);
     }

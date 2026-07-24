@@ -54,18 +54,6 @@ export function drawRoute(route: RouteData, ctx: RouteDisplayCtx): RouteDisplayR
   });
   const routeLayer = { sourceId: ROUTE_SOURCE, layerId: ROUTE_LAYER };
 
-  // Fit bounds — expand bbox by 50% on each side (doubles the visible area)
-  const lngs = coords.map((c: number[]) => c[0]!);
-  const lats = coords.map((c: number[]) => c[1]!);
-  const lngMin = Math.min(...lngs), lngMax = Math.max(...lngs);
-  const latMin = Math.min(...lats), latMax = Math.max(...lats);
-  const lngPad = (lngMax - lngMin) * 0.5 || 0.5;
-  const latPad = (latMax - latMin) * 0.5 || 0.5;
-  ctx.map.fitBounds(
-    [[lngMin - lngPad, latMin - latPad], [lngMax + lngPad, latMax + latPad]],
-    { padding: 20 },
-  );
-
   const meta = route.feature?.properties?.coordinatesMeta ?? [];
 
   // ── Leg coordinates for highlighting ────────────────────────────────────────
