@@ -5,6 +5,7 @@
   import SetupPanel from './SetupPanel.svelte';
   import RouteSummary from './RouteSummary.svelte';
   import SettingsModal from './SettingsModal.svelte';
+  import PolarEditor from './PolarEditor.svelte';
   import MapLayerControl from './MapLayerControl.svelte';
   import Toast from './Toast.svelte';
   import TimeScrubber from './TimeScrubber.svelte';
@@ -101,6 +102,7 @@
   let sidebarView = $state<'setup' | 'summary'>('setup');
   let routeMode = $state<'route' | 'evaluate'>('route');
   let showSettings = $state(false);
+  let showPolarEditor = $state(false);
   let toastMessage = $state('');
   let toastType = $state<'error' | 'warning' | 'info'>('info');
   let toastVisible = $state(false);
@@ -910,6 +912,7 @@
   <SettingsModal
     visible={showSettings}
     onPolarChange={(csv) => { polarCsv = csv; }}
+    onOpenPolarEditor={() => { showSettings = false; showPolarEditor = true; }}
     {polarLoaded}
     map={mapRef ?? null}
     skConnected={skConnectedState}
@@ -918,6 +921,15 @@
     {buildVersion}
     onClose={() => { showSettings = false; }}
     bind:this={settingsModalRef}
+  />
+{/if}
+
+{#if showPolarEditor}
+  <PolarEditor
+    visible={showPolarEditor}
+    {polarCsv}
+    onPolarChange={(csv) => { polarCsv = csv; }}
+    onClose={() => { showPolarEditor = false; }}
   />
 {/if}
 

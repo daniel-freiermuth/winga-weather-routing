@@ -4,6 +4,7 @@
   interface Props {
     visible: boolean;
     onPolarChange: (csv: string) => void;
+    onOpenPolarEditor?: () => void;
     polarLoaded: boolean;
     map: Map | null;
     skConnected: boolean;
@@ -16,6 +17,7 @@
   let {
     visible,
     onPolarChange,
+    onOpenPolarEditor,
     polarLoaded,
     map,
     skConnected,
@@ -25,63 +27,15 @@
     onClose,
   }: Props = $props();
 
-  // ── Polar state ──
+  // ── Polar status ──
   let polarStatus = $state(
     localStorage.getItem('wr-polar-csv') ? 'Polar loaded from previous session' : 'No polar loaded',
   );
   let polarStatusColor = $state(localStorage.getItem('wr-polar-csv') ? '#a6e3a1' : '#6c7086');
-  let upwind = $state('');
-  let beam = $state('');
-  let downwind = $state('');
 
   // Restore polar from localStorage on init
   const savedPolar = localStorage.getItem('wr-polar-csv');
   if (savedPolar) onPolarChange?.(savedPolar);
-
-  async function handleFileUpload(e: Event) {
-    const input = e.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
-    const csv = await file.text();
-    localStorage.setItem('wr-polar-csv', csv);
-    polarStatus = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
-    polarStatusColor = '#a6e3a1';
-    onPolarChange?.(csv);
-  }
-
-  function generatePolar() {
-    const u = parseFloat(upwind);
-    const b = parseFloat(beam);
-    const d = parseFloat(downwind);
-    if (isNaN(u) || isNaN(b) || isNaN(d)) {
-      polarStatus = 'Enter all three speeds';
-      polarStatusColor = '#f38ba8';
-      return;
-    }
-
-    const refTws = 12;
-    const twsValues = [6, 8, 10, 12, 14, 16, 20, 25];
-    const twaValues = [30, 45, 60, 75, 90, 110, 130, 150, 170, 180];
-
-    const speedAtTwa = (twa: number): number => {
-      if (twa <= 45) return u * Math.max(0, (twa - 30) / 15);
-      if (twa <= 90) return u + (b - u) * (1 - Math.cos(((twa - 45) / 45) * Math.PI)) / 2;
-      if (twa <= 150) return b + (d - b) * (1 - Math.cos(((twa - 90) / 60) * Math.PI)) / 2;
-      return d * (1 - 0.15 * ((twa - 150) / 30));
-    };
-
-    let csv = 'twa/tws;' + twsValues.join(';') + '\n';
-    for (const twa of twaValues) {
-      const base = speedAtTwa(twa);
-      const row = twsValues.map((tws) => (base * Math.min(1.3, Math.sqrt(tws / refTws))).toFixed(1));
-      csv += String(twa) + ';' + row.join(';') + '\n';
-    }
-
-    localStorage.setItem('wr-polar-csv', csv);
-    polarStatus = `Generated: ${String(u)}/${String(b)}/${String(d)} kn (upwind/beam/downwind)`;
-    polarStatusColor = '#a6e3a1';
-    onPolarChange?.(csv);
-  }
 
   // ── Routing options state ──
   let coastAvoidance = $state(true);
@@ -245,21 +199,10 @@
         <!-- POLAR DIAGRAM -->
         <section>
           <div class="section-title">Polar Diagram</div>
-          <input type="file" accept=".csv,.pol,.txt" onchange={handleFileUpload} />
           <span class="status" style:color={polarStatusColor}>{polarStatus}</span>
-          <div class="estimate-label">Or estimate from typical speeds:</div>
-          <div class="speed-grid">
-            <span>Upwind</span>
-            <input type="number" step="0.1" min="0" placeholder="kn" bind:value={upwind} />
-            <span class="unit">kn</span>
-            <span>Beam</span>
-            <input type="number" step="0.1" min="0" placeholder="kn" bind:value={beam} />
-            <span class="unit">kn</span>
-            <span>Downwind</span>
-            <input type="number" step="0.1" min="0" placeholder="kn" bind:value={downwind} />
-            <span class="unit">kn</span>
-          </div>
-          <button class="action-btn" onclick={generatePolar}>Generate polar</button>
+          <button class="action-btn polar-editor-btn" onclick={onOpenPolarEditor}>
+            {polarLoaded ? 'Edit Polar Diagram' : 'Set Up Polar Diagram'}
+          </button>
         </section>
 
         <!-- ROUTING -->
@@ -468,25 +411,6 @@
     display: block;
   }
 
-  .estimate-label {
-    margin-top: 4px;
-    font-size: 11px;
-    color: #6c7086;
-  }
-
-  .speed-grid {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    gap: 3px 6px;
-    align-items: center;
-    font-size: 12px;
-    color: #cdd6f4;
-  }
-
-  .unit {
-    color: #6c7086;
-    font-size: 11px;
-  }
 
   .action-btn {
     margin-top: 4px;
@@ -501,6 +425,13 @@
   }
   .action-btn:hover {
     background: #6c7086;
+  }
+  .polar-editor-btn {
+    background: #89b4fa;
+    color: #1e1e2e;
+  }
+  .polar-editor-btn:hover {
+    background: #a6c8ff;
   }
 
   /* Routing */
