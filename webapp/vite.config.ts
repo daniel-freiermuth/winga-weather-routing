@@ -28,6 +28,8 @@ export default defineConfig(({ command }) => ({
     outDir: '../dist/webapp',
     emptyOutDir: true,
     sourcemap: true,
+    // Include .wasm files as assets so wasm-bindgen can fetch them
+    assetsInlineLimit: 0,
   },
 
   worker: {

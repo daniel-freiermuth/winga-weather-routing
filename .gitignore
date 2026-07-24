@@ -20,3 +20,7 @@ packages/*/binding/
 # Local build server info (infrastructure-specific, not for the repo)
 .local-build-server.md
 windy-lib/ts/dist/
+
+# WASM build artifacts
+webapp/wasm-pkg/
+wasm-router/target/

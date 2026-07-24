@@ -1,4 +1,5 @@
-// Routing Web Worker — runs the isochrone algorithm off the main thread.
+// Routing Web Worker — loads wind/wave/current/land data, then runs the
+// isochrone algorithm via WASM (wasm-router).
 //
 // PROTOCOL
 // ─────────
@@ -9,33 +10,23 @@
 //   { type: 'progress', pct: number, frontier: [number,number][] }
 //   { type: 'result', route: RoutePoint[], warning?: string }
 //   { type: 'error', message: string }
-//
-// The worker pre-loads wind/wave/current tiles and the land index before
-// starting the isochrone. Polar data and route parameters are passed inline.
 
 import { TileWindProvider, TileCurrentProvider } from '../src/lib/tile-provider';
 import { parsePolarCsv } from '../src/lib/polar';
 import { parseIndexFromArrayBuffer } from '../src/lib/land-index-loader';
-import { buildLandIndex } from '../src/lib/landmask';
-import { IsochroneAlgorithm } from '../src/lib/routing/isochrone';
-import type { BoundingBox, CalculationRequest, RoutePoint } from '../src/types';
+import { segmentCrossesLandFast, isPointOnLand } from '../src/lib/landmask';
+import { windSpeedKnots, windDirection } from '../src/lib/geo';
+import type { BoundingBox, CalculationRequest, RoutePoint, LandEdgeIndex } from '../src/types';
 
 // ── Message types ─────────────────────────────────────────────────────────────
 
 interface CalculatePayload {
-  /** Route start, end, waypoints, departure, options — same as CalculationRequest */
   request: CalculationRequest;
-  /** Polar diagram CSV content (not a file path). */
   polarCsv: string;
-  /** Bounding box for tile pre-fetch — should cover the full route area with margin. */
   tileBbox: BoundingBox;
-  /** URL to the gzipped edge-index binary (served from the same host or a CDN). */
   landIndexUrl: string;
-  /** URL to the gzipped dilated edge-index binary (for safety margin). */
   dilatedIndexUrl?: string;
-  /** Windy model for wind tiles. Default: 'ecmwf'. */
   windModel?: 'ecmwf' | 'gfs' | 'icon';
-  /** Whether to use the safety margin (dilated coastline). */
   useSafetyMargin?: boolean;
 }
 
@@ -50,6 +41,109 @@ function post(msg: OutMessage): void {
   postMessage(msg);
 }
 
+// ── WASM callback globals ─────────────────────────────────────────────────────
+// Called by the WASM module during routing. They capture the current
+// wind/current/land providers via module-level variables.
+
+let windProvider: TileWindProvider;
+let currentProvider: TileCurrentProvider;
+let activeIndex: LandEdgeIndex;
+let hasCurrent = false;
+
+const _self = globalThis as Record<string, unknown>;
+
+_self['js_get_wind'] = (lat: number, lon: number, time_ms: number): Float64Array => {
+  const v = windProvider.getWindAtTime(lat, lon, time_ms);
+  return new Float64Array([v.u, v.v]);
+};
+
+_self['js_get_current'] = (lat: number, lon: number, time_ms: number): Float64Array => {
+  if (!hasCurrent) return new Float64Array([0, 0]);
+  const v = currentProvider.getCurrent(lat, lon, new Date(time_ms));
+  return new Float64Array([v.u, v.v]);
+};
+
+_self['js_crosses_land'] = (lat1: number, lon1: number, lat2: number, lon2: number): boolean => {
+  return segmentCrossesLandFast(activeIndex, lat1, lon1, lat2, lon2);
+};
+
+_self['js_is_on_land'] = (lat: number, lon: number): boolean => {
+  return isPointOnLand(activeIndex, lat, lon);
+};
+
+_self['js_get_wave'] = (lat: number, lon: number, time_ms: number): number => {
+  const w = windProvider.getWaveAtTime(lat, lon, time_ms);
+  return w ?? -1;
+};
+
+_self['js_covers_point'] = (lat: number, lon: number, time_ms: number): boolean => {
+  return windProvider.coversPointAtTimeMs
+    ? windProvider.coversPointAtTimeMs(lat, lon, time_ms)
+    : true;
+};
+
+_self['js_on_progress'] = (pct: number, frontier: Float64Array): void => {
+  const pts: [number, number][] = [];
+  for (let i = 0; i < frontier.length; i += 2) {
+    pts.push([frontier[i]!, frontier[i + 1]!]);
+  }
+  post({ type: 'progress', pct: 10 + pct * 0.9, frontier: pts });
+};
+
+_self['js_prefetch'] = (_time_ms: number): void => {
+  // Tiles are prefetched upfront before WASM runs (see handleCalculate).
+};
+
+// ── WASM loading ──────────────────────────────────────────────────────────────
+
+type WasmModule = {
+  calculate_route(
+    polar_twa: Float64Array, polar_tws: Float64Array, polar_speeds: Float64Array,
+    legs: Float64Array, departure_ms: number, forecast_end_ms: number,
+    options: Float64Array,
+  ): Float64Array;
+};
+
+let wasmModule: WasmModule | null = null;
+
+async function loadWasm(): Promise<WasmModule> {
+  if (wasmModule) return wasmModule;
+  // Dynamic import: WASM module is a build artifact that may not exist on all platforms.
+  const mod = await import('./wasm-pkg/wasm_router.js');
+  await mod.default();
+  wasmModule = mod as unknown as WasmModule;
+  console.log('[routing] WASM module loaded');
+  return wasmModule;
+}
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+async function fetchGzBinary(url: string): Promise<ArrayBuffer> {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${String(r.status)}: ${url}`);
+  const buf = await r.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const isGzipped = bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+  if (!isGzipped) return buf;
+  const ds = new DecompressionStream('gzip');
+  const writer = ds.writable.getWriter();
+  void writer.write(bytes).then(() => writer.close());
+  const reader = ds.readable.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const result = await reader.read();
+    if (result.done) break;
+    const chunk: Uint8Array = result.value;
+    chunks.push(chunk);
+    total += chunk.length;
+  }
+  const combined = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { combined.set(c, off); off += c.length; }
+  return combined.buffer;
+}
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 async function handleCalculate(payload: CalculatePayload): Promise<void> {
@@ -58,53 +152,16 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
   const departureMs = new Date(request.departureTime).getTime();
   post({ type: 'progress', pct: 0, frontier: [] });
 
-  // 1. Load polar (synchronous — just CSV parsing)
+  // 1. Parse polar
   const polar = parsePolarCsv(polarCsv);
-  console.log('[routing] Polar TWS:', polar.tws, 'TWA:', polar.twa, 'Speeds:', polar.speeds);
-  // Helper: fetch a .bin.gz URL, auto-detecting whether the server already
-  // decompressed it (Content-Encoding: gzip) or we need to decompress manually.
-  async function fetchGzBinary(url: string): Promise<ArrayBuffer> {
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`HTTP ${String(r.status)}: ${url}`);
 
-    const buf = await r.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-
-    // Gzip magic: 1f 8b. If present, the server did NOT auto-decompress.
-    const isGzipped = bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
-    if (!isGzipped) return buf; // already decompressed by the browser
-
-    // Manually decompress
-    const ds = new DecompressionStream('gzip');
-    const writer = ds.writable.getWriter();
-    void writer.write(bytes).then(() => writer.close());
-    const reader = ds.readable.getReader();
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    for (;;) {
-      const result = await reader.read();
-      if (result.done) break;
-      const chunk: Uint8Array = result.value;
-      chunks.push(chunk);
-      total += chunk.length;
-    }
-    const combined = new Uint8Array(total);
-    let off = 0;
-    for (const c of chunks) { combined.set(c, off); off += c.length; }
-    return combined.buffer;
-  }
-
-  // 2. Pre-fetch wind + wave + current tiles and land index in parallel
+  // 2. Pre-fetch everything in parallel (including WASM)
   const landFetch = fetchGzBinary(landIndexUrl).then(buf => parseIndexFromArrayBuffer(buf));
-
   let dilatedFetch: Promise<ReturnType<typeof parseIndexFromArrayBuffer> | null> = Promise.resolve(null);
   if (useSafetyMargin === true && dilatedIndexUrl !== undefined) {
-    dilatedFetch = fetchGzBinary(dilatedIndexUrl)
-      .then(buf => parseIndexFromArrayBuffer(buf))
-      .catch(() => null);
+    dilatedFetch = fetchGzBinary(dilatedIndexUrl).then(buf => parseIndexFromArrayBuffer(buf)).catch(() => null);
   }
 
-  // Best available zoom that fits in max 2×2 tiles (Windy serves zoom 3–4)
   const routePoints = [request.start, request.end, ...(request.waypoints ?? [])];
   const routeBbox = {
     latMin: Math.min(...routePoints.map(p => p.lat)) - 1,
@@ -113,53 +170,122 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
     lonMax: Math.max(...routePoints.map(p => p.lon)) + 1,
   };
   const zoom = TileWindProvider.computeZoom(routeBbox, 2);
-  const windProvider = new TileWindProvider({
-    windModel: windModel ?? 'ecmwf',
-    zoom,
-  });
-  const currentProvider = new TileCurrentProvider(zoom);
+  windProvider = new TileWindProvider({ windModel: windModel ?? 'ecmwf', zoom });
+  currentProvider = new TileCurrentProvider(zoom);
 
-  // All loading in parallel
   const [edgeIndex, dilatedEdgeIndex] = await Promise.all([
     landFetch,
     dilatedFetch,
     windProvider.load(tileBbox),
     currentProvider.load(tileBbox, departureMs, departureMs + 72 * 3_600_000),
+    loadWasm(),
   ]);
+
+  activeIndex = useSafetyMargin === true && dilatedEdgeIndex !== null ? dilatedEdgeIndex : edgeIndex;
+  hasCurrent = currentProvider.times.length > 0;
 
   post({ type: 'progress', pct: 10, frontier: [] });
 
-  // 3. Build land index from polygons (for overlay — landmask uses edge grid directly)
-  const activeIndex = useSafetyMargin === true && dilatedEdgeIndex !== null
-    ? dilatedEdgeIndex
-    : edgeIndex;
+  // 3. Prefetch all wind tiles for the route duration upfront
+  // (WASM loop is synchronous — can't do async prefetch mid-step)
+  const forecastEnd = windProvider.times[windProvider.times.length - 1];
+  const forecastEndMs = forecastEnd ? forecastEnd.getTime() : departureMs + 7 * 24 * 3_600_000;
+  const directDist = Math.sqrt(
+    (request.end.lat - request.start.lat) ** 2 + (request.end.lon - request.start.lon) ** 2,
+  ) * 60;
+  const estDurationMs = Math.min(directDist / 5 * 3_600_000, forecastEndMs - departureMs);
+  const stepMs = Math.max(900_000, estDurationMs / 100);
+  const prefetches: Promise<void>[] = [];
+  for (let t = departureMs; t <= departureMs + estDurationMs + stepMs; t += stepMs) {
+    if (windProvider.prefetchForTime) {
+      prefetches.push(windProvider.prefetchForTime(t));
+    }
+  }
+  await Promise.all(prefetches);
 
-  // 4. Run isochrone
-  const algorithm = new IsochroneAlgorithm();
-  const result = await algorithm.calculate(
-    windProvider,
-    currentProvider.times.length > 0 ? currentProvider : null,
-    polar,
-    activeIndex,
-    null, // no region avoidance in browser (could be added later)
-    request,
-    (pct, frontier, legOrigin, clearIsochrones) => {
-      post({
-        type: 'progress',
-        pct: 10 + pct * 0.9,
-        frontier,
-        ...(legOrigin ? { legOrigin: [legOrigin.lat, legOrigin.lon] as [number, number] } : {}),
-        ...(clearIsochrones ? { clearIsochrones: true } : {}),
-      });
-    },
-    request.options,
+  // 4. Run WASM routing
+  const wasm = wasmModule;
+  if (!wasm) throw new Error('WASM module not loaded');
+
+  const waypoints = request.waypoints ?? [];
+  const allPoints = [request.start, ...waypoints, request.end];
+  const legs = new Float64Array(allPoints.length * 2);
+  for (let i = 0; i < allPoints.length; i++) {
+    legs[i * 2] = allPoints[i]!.lat;
+    legs[i * 2 + 1] = allPoints[i]!.lon;
+  }
+
+  const opts = request.options ?? {};
+  const options = new Float64Array([
+    Number(opts['headingStep'] ?? 5),
+    Number(opts['sectorSize'] ?? 1),
+    Number(opts['minBoatSpeed'] ?? 0.3),
+    Number(opts['maxWindKn'] ?? 0),
+    Number(opts['maxWaveM'] ?? 0),
+    Number(opts['motorSpeedKn'] ?? 0),
+    Number(opts['motorBelowKn'] ?? 0),
+    opts['waitForWind'] ? 1 : 0,
+    Number(opts['tackPenaltySec'] ?? 30),
+    Number(opts['tackThresholdDeg'] ?? 60),
+    100, // coneHalfAngle
+    100, // coneDisableLookaheadNm
+    120, // maxHeadingChange
+    0,   // arrivalRadiusNm (0 = dynamic)
+  ]);
+
+  const flat = wasm.calculate_route(
+    new Float64Array(polar.twa),
+    new Float64Array(polar.tws),
+    new Float64Array(polar.speeds.flat()),
+    legs,
+    departureMs,
+    forecastEndMs,
+    options,
   );
 
-  post({
-    type: 'result',
-    route: result.route,
-    ...(result.warning !== undefined && { warning: result.warning }),
-  });
+  // Decode flat array → RoutePoint[] and enrich with weather data
+  // (WASM returns only core routing fields; gust/wave/current/WoW are display-only)
+  const nPoints = flat[0]!;
+  const route: RoutePoint[] = [];
+  for (let i = 0; i < nPoints; i++) {
+    const base = 1 + i * 9;
+    const lat = flat[base]!;
+    const lon = flat[base + 1]!;
+    const timeMs = flat[base + 2]!;
+    const time = new Date(timeMs);
+
+    // Resample weather at each waypoint position and time
+    const gustMs = windProvider.getGustAtTime ? windProvider.getGustAtTime(lat, lon, timeMs) : undefined;
+    const cur = hasCurrent ? currentProvider.getCurrent(lat, lon, time) : undefined;
+    const resampled = windProvider.getWindAtTime(lat, lon, timeMs);
+
+    // Wind-over-water
+    const wowU = resampled.u - (cur?.u ?? 0);
+    const wowV = resampled.v - (cur?.v ?? 0);
+
+    const pt: RoutePoint = {
+      lat,
+      lon,
+      time,
+      heading: flat[base + 3]!,
+      twa: flat[base + 4]!,
+      tws: flat[base + 5]!,
+      boatSpeed: flat[base + 6]! > 0 ? flat[base + 6]! : undefined,
+      windDir: flat[base + 7]!,
+      legCalcMs: flat[base + 8]!,
+      waveHeight: windProvider.getWaveAtTime ? windProvider.getWaveAtTime(lat, lon, timeMs) : undefined,
+      wavePeriod: windProvider.getWavePeriodAtTime ? windProvider.getWavePeriodAtTime(lat, lon, timeMs) : undefined,
+      waveDir: windProvider.getWaveDirAtTime ? windProvider.getWaveDirAtTime(lat, lon, timeMs) : undefined,
+      gustKn: gustMs != null ? gustMs * 1.94384 : undefined,
+      currentU: cur?.u,
+      currentV: cur?.v,
+      wowTws: cur ? windSpeedKnots(wowU, wowV) : undefined,
+      wowDir: cur ? windDirection(wowU, wowV) : undefined,
+    };
+    route.push(pt);
+  }
+
+  post({ type: 'result', route });
 }
 
 // ── Message listener ──────────────────────────────────────────────────────────

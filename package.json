@@ -26,7 +26,9 @@
   "scripts": {
     "build": "tsc && vite build webapp",
     "build:server": "tsc",
+    "build:wasm": "cd wasm-router && $HOME/.cargo/bin/wasm-pack build --target web --out-dir ../webapp/wasm-pkg",
     "build:webapp": "vite build webapp",
+    "dev": "pnpm build:wasm && vite -c webapp/vite.config.ts",
     "dev:webapp": "vite -c webapp/vite.config.ts",
     "prepublishOnly": "tsc",
     "prepare-land-data": "python3 scripts/prepare-land-data.py",
