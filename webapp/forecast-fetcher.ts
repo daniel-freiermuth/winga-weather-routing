@@ -26,12 +26,11 @@ export async function fetchWindPoints(
 ): Promise<void> {
   if (!timeAxis.windTimesLoaded) return;
   const timeStr = timeAxis.windTimes[timeIdx];
-  if (!timeStr || !timeAxis.windNativeTimes.includes(timeStr)) {
+  if (!timeStr) {
     allWindPoints = [];
     windPoints.set([]);
     return;
   }
-  const nativeIdx = timeAxis.windNativeTimes.indexOf(timeStr);
   if (!map) return;
   const bounds = map.getBounds();
   const bbox = {
@@ -39,7 +38,15 @@ export async function fetchWindPoints(
     lonMin: bounds.getWest(), lonMax: bounds.getEast(),
   };
   try {
-    allWindPoints = await dataLayer.fetchWindGrid(nativeIdx, bbox, signal);
+    if (timeAxis.windNativeTimes.includes(timeStr)) {
+      // Native forecast step — fetch directly (no interpolation overhead)
+      const nativeIdx = timeAxis.windNativeTimes.indexOf(timeStr);
+      allWindPoints = await dataLayer.fetchWindGrid(nativeIdx, bbox, signal);
+    } else {
+      // Non-native time — interpolate between bracketing steps
+      const timeMs = new Date(timeStr).getTime();
+      allWindPoints = await dataLayer.fetchWindGridAtTime(timeMs, bbox, signal);
+    }
     windPoints.set(allWindPoints);
   } catch (e: unknown) {
     if (e instanceof Error && e.name === 'AbortError') return;
@@ -52,12 +59,11 @@ export async function fetchWavePoints(
 ): Promise<void> {
   if (!timeAxis.windTimesLoaded) return;
   const timeStr = timeAxis.windTimes[timeIdx];
-  if (!timeStr || !timeAxis.windNativeTimes.includes(timeStr)) {
+  if (!timeStr) {
     allWavePoints = [];
     wavePoints.set([]);
     return;
   }
-  const nativeIdx = timeAxis.windNativeTimes.indexOf(timeStr);
   if (!map) return;
   const bounds = map.getBounds();
   const bbox = {
@@ -65,7 +71,14 @@ export async function fetchWavePoints(
     lonMin: bounds.getWest(), lonMax: bounds.getEast(),
   };
   try {
-    const result = await dataLayer.fetchWaveGrid(nativeIdx, bbox, signal);
+    let result: { points: { lat: number; lon: number; waveHeight: number }[]; timeMs: number };
+    if (timeAxis.windNativeTimes.includes(timeStr)) {
+      const nativeIdx = timeAxis.windNativeTimes.indexOf(timeStr);
+      result = await dataLayer.fetchWaveGrid(nativeIdx, bbox, signal);
+    } else {
+      const timeMs = new Date(timeStr).getTime();
+      result = await dataLayer.fetchWaveGridAtTime(timeMs, bbox, signal);
+    }
     allWavePoints = result.points;
     wavePoints.set(allWavePoints);
     if (allWavePoints.length > 0) {

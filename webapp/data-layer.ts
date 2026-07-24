@@ -128,7 +128,7 @@ function closestStep(steps: ForecastStep[], targetMs: number) {
  * @param {AbortSignal} [signal]
  * @returns {Promise<Array<{lat:number, lon:number, u:number, v:number, speed:number}>>}
  */
-async function sampleOverlayGrid(model: string, modelRun: string, validTime: string, overlay: string, isOcean: boolean, bbox: BoundingBox, step: number, signal?: AbortSignal) {
+async function sampleOverlayGrid(model: string, modelRun: string, validTime: string, overlay: string, isOcean: boolean, bbox: BoundingBox, step: number, signal?: AbortSignal, isPng = false) {
   // Determine which tiles cover the bbox
   const tl = latLonToTile(bbox.latMax, bbox.lonMin, ZOOM);
   const br = latLonToTile(bbox.latMin, bbox.lonMax, ZOOM);
@@ -137,7 +137,7 @@ async function sampleOverlayGrid(model: string, modelRun: string, validTime: str
   const tilePromises = new Map();
   for (let tx = tl.x; tx <= br.x; tx++) {
     for (let ty = tl.y; ty <= br.y; ty++) {
-      const url = buildTileUrl(model, modelRun, validTime, ZOOM, tx, ty, overlay);
+      const url = buildTileUrl(model, modelRun, validTime, ZOOM, tx, ty, overlay, 'surface', isPng ? 'png' : 'jpg');
       if (!tilePromises.has(`${tx}/${ty}`)) {
         tilePromises.set(`${tx}/${ty}`, fetchTile(url).catch(() => null));
       }
@@ -161,7 +161,7 @@ async function sampleOverlayGrid(model: string, modelRun: string, validTime: str
       const tile = tiles.get(`${x}/${y}`);
       if (!tile) continue;
       const { px, py } = latLonToPixel(lat, lon, ZOOM, x, y);
-      const val = sampleTilePixel(tile.rgba, tile.header, px, py, isOcean);
+      const val = sampleTilePixel(tile.rgba, tile.header, px, py, isOcean, isPng);
       if (val.hasData) {
         points.push({
           lat: Math.round(lat * 10000) / 10000,
@@ -169,6 +169,7 @@ async function sampleOverlayGrid(model: string, modelRun: string, validTime: str
           u: val.u,
           v: val.v,
           speed: val.speed,
+          height: val.height,
         });
       }
     }
@@ -192,6 +193,51 @@ export async function fetchWindGrid(timeIdx: number, bbox: BoundingBox, signal?:
 }
 
 /**
+ * Fetch wind grid interpolated at an arbitrary time (ms).
+ * Finds the two bracketing native forecast steps and linearly interpolates u/v.
+ */
+export async function fetchWindGridAtTime(timeMs: number, bbox: BoundingBox, signal?: AbortSignal) {
+  if (windSteps.length === 0) return [];
+  // Find bracketing steps
+  let lo = 0;
+  for (let i = 1; i < windSteps.length; i++) {
+    if (new Date(windSteps[i]!.iso).getTime() <= timeMs) lo = i;
+    else break;
+  }
+  const t0ms = new Date(windSteps[lo]!.iso).getTime();
+  // Exact match or at/past last step → no interpolation needed
+  if (lo >= windSteps.length - 1 || t0ms === timeMs) {
+    return sampleOverlayGrid(windModel, windModelRun, windSteps[lo]!.compact, 'wind', false, bbox, 0.5, signal);
+  }
+  const t1ms = new Date(windSteps[lo + 1]!.iso).getTime();
+  const f = (timeMs - t0ms) / (t1ms - t0ms);
+  if (f < 0.01) return sampleOverlayGrid(windModel, windModelRun, windSteps[lo]!.compact, 'wind', false, bbox, 0.5, signal);
+  if (f > 0.99) return sampleOverlayGrid(windModel, windModelRun, windSteps[lo + 1]!.compact, 'wind', false, bbox, 0.5, signal);
+  // Fetch both grids and interpolate
+  const [g0, g1] = await Promise.all([
+    sampleOverlayGrid(windModel, windModelRun, windSteps[lo]!.compact, 'wind', false, bbox, 0.5, signal),
+    sampleOverlayGrid(windModel, windModelRun, windSteps[lo + 1]!.compact, 'wind', false, bbox, 0.5, signal),
+  ]);
+  if (signal?.aborted) return [];
+  // Build lookup for g1 by position
+  const g1Map = new Map<string, { u: number; v: number }>();
+  for (const p of g1) g1Map.set(`${String(p.lat)},${String(p.lon)}`, p);
+  // Interpolate
+  const result = [];
+  for (const p0 of g0) {
+    const p1 = g1Map.get(`${String(p0.lat)},${String(p0.lon)}`);
+    if (p1) {
+      const u = p0.u * (1 - f) + p1.u * f;
+      const v = p0.v * (1 - f) + p1.v * f;
+      result.push({ lat: p0.lat, lon: p0.lon, u, v, speed: Math.sqrt(u * u + v * v) });
+    } else {
+      result.push(p0);
+    }
+  }
+  return result;
+}
+
+/**
  * Fetch wave grid for a time step within a bounding box.
  * @param {number} timeIdx   index into windSteps
  * @param {{latMin:number,latMax:number,lonMin:number,lonMax:number}} bbox
@@ -205,11 +251,54 @@ export async function fetchWaveGrid(timeIdx: number, bbox: BoundingBox, signal?:
   const waveStep = closestStep(waveSteps, windTimeMs);
   if (!waveStep) return { points: [], timeMs: 0 };
 
-  const raw = await sampleOverlayGrid('ecmwf-wam', waveModelRun, waveStep.compact, 'waves', false, bbox, 0.5, signal);
+  const raw = await sampleOverlayGrid('ecmwf-wam', waveModelRun, waveStep.compact, 'waves', true, bbox, 0.5, signal, true);
   const points = raw
-    .filter((p) => p.speed > 0.1)
-    .map((p) => ({ lat: p.lat, lon: p.lon, waveHeight: Math.round(p.speed * 1000) / 1000 }));
+    .filter((p) => p.height > 0.1)
+    .map((p) => ({ lat: p.lat, lon: p.lon, waveHeight: Math.round(p.height * 1000) / 1000 }));
   return { points, timeMs: windTimeMs };
+}
+
+/**
+ * Fetch wave grid interpolated at an arbitrary time (ms).
+ */
+export async function fetchWaveGridAtTime(timeMs: number, bbox: BoundingBox, signal?: AbortSignal) {
+  if (waveSteps.length === 0) return { points: [] as { lat: number; lon: number; waveHeight: number }[], timeMs };
+  let lo = 0;
+  for (let i = 1; i < waveSteps.length; i++) {
+    if (new Date(waveSteps[i]!.iso).getTime() <= timeMs) lo = i;
+    else break;
+  }
+  const t0ms = new Date(waveSteps[lo]!.iso).getTime();
+
+  const sampleWave = async (step: { compact: string }) => {
+    const raw = await sampleOverlayGrid('ecmwf-wam', waveModelRun, step.compact, 'waves', true, bbox, 0.5, signal, true);
+    return raw.filter((p) => p.height > 0.1);
+  };
+
+  if (lo >= waveSteps.length - 1 || t0ms === timeMs) {
+    const raw = await sampleWave(waveSteps[lo]!);
+    return { points: raw.map(p => ({ lat: p.lat, lon: p.lon, waveHeight: Math.round(p.height * 1000) / 1000 })), timeMs };
+  }
+  const t1ms = new Date(waveSteps[lo + 1]!.iso).getTime();
+  const f = (timeMs - t0ms) / (t1ms - t0ms);
+  if (f < 0.01) {
+    const raw = await sampleWave(waveSteps[lo]!);
+    return { points: raw.map(p => ({ lat: p.lat, lon: p.lon, waveHeight: Math.round(p.height * 1000) / 1000 })), timeMs };
+  }
+  if (f > 0.99) {
+    const raw = await sampleWave(waveSteps[lo + 1]!);
+    return { points: raw.map(p => ({ lat: p.lat, lon: p.lon, waveHeight: Math.round(p.height * 1000) / 1000 })), timeMs };
+  }
+  const [g0, g1] = await Promise.all([sampleWave(waveSteps[lo]!), sampleWave(waveSteps[lo + 1]!)]);
+  if (signal?.aborted) return { points: [], timeMs };
+  const g1Map = new Map<string, number>();
+  for (const p of g1) g1Map.set(`${String(p.lat)},${String(p.lon)}`, p.height);
+  const points = g0.map(p => {
+    const h1 = g1Map.get(`${String(p.lat)},${String(p.lon)}`);
+    const h = h1 != null ? p.height * (1 - f) + h1 * f : p.height;
+    return { lat: p.lat, lon: p.lon, waveHeight: Math.round(h * 1000) / 1000 };
+  });
+  return { points, timeMs };
 }
 
 /**
@@ -271,10 +360,10 @@ export async function queryPointWeather(lat: number, lon: number, timeMs: number
   const waveStep = closestStep(waveSteps, timeMs);
   if (waveStep) {
     try {
-      const url = buildTileUrl('ecmwf-wam', waveModelRun, waveStep.compact, ZOOM, x, y, 'waves');
+      const url = buildTileUrl('ecmwf-wam', waveModelRun, waveStep.compact, ZOOM, x, y, 'waves', 'surface', 'png');
       const tile = await fetchTile(url);
-      const val = sampleTilePixel(tile.rgba, tile.header, px, py, false);
-      if (val.hasData && val.speed > 0.05) result.waveHeightM = val.speed;
+      const val = sampleTilePixel(tile.rgba, tile.header, px, py, false, true);
+      if (val.hasData && val.height > 0.05) result.waveHeightM = val.height;
     } catch { /* tile unavailable */ }
   }
 
