@@ -116,6 +116,8 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
     const motorSpeedKn = Number(options?.['motorSpeedKn'] ?? 0); // 0 = no motor
     const motorBelowKn = Number(options?.['motorBelowKn'] ?? 0); // 0 = disabled
     const waitForWind = Boolean(options?.['waitForWind'] ?? false);
+    const tackPenaltySec = Number(options?.['tackPenaltySec'] ?? 30); // seconds lost per tack/gybe
+    const tackThresholdDeg = Number(options?.['tackThresholdDeg'] ?? 60); // heading change that counts as a tack
     const configuredConeHalfAngle = Number(options?.['coneHalfAngle'] ?? FINE_PASS_CONE_HALF_ANGLE);
     const coneDisableLookaheadNm = Number(options?.['coneDisableLookaheadNm'] ?? CONE_DISABLE_LOOKAHEAD_NM);
     const maxHeadingChangeDeg = Number(options?.['maxHeadingChange'] ?? MAX_HEADING_CHANGE);
@@ -319,7 +321,13 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           }
 
           candidatesEvaluated++;
-          const distNM = effectiveSpeed * dtHours;
+          // Tack/gybe penalty: if heading changes more than threshold, reduce sailing time
+          let penaltyH = 0;
+          if (tackPenaltySec > 0 && point.parent !== undefined) {
+            const hdgChange = Math.abs(((hdg - point.heading + 180 + 360) % 360) - 180);
+            if (hdgChange > tackThresholdDeg) penaltyH = tackPenaltySec / 3600;
+          }
+          const distNM = effectiveSpeed * Math.max(0, dtHours - penaltyH);
           const wt = destinationPoint(point.lat, point.lon, distNM, hdg);
           let newLat = wt.lat;
           let newLon = wt.lon;

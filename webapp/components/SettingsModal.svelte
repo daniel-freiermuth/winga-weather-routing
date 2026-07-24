@@ -45,6 +45,8 @@
   let waitForWind = $state(false);
   let maxWindKn = $state('');
   let maxWaveM = $state('');
+  let tackPenaltySec = $state('30');
+  let tackThresholdDeg = $state('60');
   let waypointLabels = $state(true);
   let waypointLabelInterval = $state('0');
 
@@ -57,6 +59,8 @@
       waitForWind: waitForWind || undefined,
       maxWindKn: parseFloat(maxWindKn) || undefined,
       maxWaveM: parseFloat(maxWaveM) || undefined,
+      tackPenaltySec: parseFloat(tackPenaltySec) || 0,
+      tackThresholdDeg: parseFloat(tackThresholdDeg) || 60,
       waypointLabels,
       waypointLabelInterval: parseFloat(waypointLabelInterval) || 0,
     };
@@ -241,6 +245,18 @@
             <span class="field-label">Max wave (m, empty = no limit)</span>
             <input type="number" min="0" max="30" step="0.5" bind:value={maxWaveM} />
           </label>
+
+          <div class="group">
+            <span class="group-label">Tack/gybe penalty</span>
+            <label class="field inline">
+              <input type="number" min="0" max="300" step="5" class="narrow-input" bind:value={tackPenaltySec} />
+              <span class="field-label">s when heading changes &gt;</span>
+            </label>
+            <label class="field inline">
+              <input type="number" min="10" max="180" step="5" class="narrow-input" bind:value={tackThresholdDeg} />
+              <span class="field-label">°</span>
+            </label>
+          </div>
 
           <div class="labels-row">
             <label class="toggle">
@@ -466,6 +482,16 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+  }
+
+  .field.inline {
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .narrow-input {
+    width: 50px !important;
   }
 
   .labels-row {

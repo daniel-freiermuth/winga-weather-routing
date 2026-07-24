@@ -27,6 +27,8 @@ export interface RoutingOptionsLike {
     waitForWind: boolean | undefined;
     maxWindKn: number | undefined;
     maxWaveM: number | undefined;
+    tackPenaltySec: number;
+    tackThresholdDeg: number;
     waypointLabels: boolean;
     waypointLabelInterval: number;
   };
@@ -278,6 +280,8 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
         waitForWind: opts?.waitForWind,
         maxWindKn: opts?.maxWindKn,
         maxWaveM: opts?.maxWaveM,
+        tackPenaltySec: opts?.tackPenaltySec ?? 30,
+        tackThresholdDeg: opts?.tackThresholdDeg ?? 60,
       },
     }));
 

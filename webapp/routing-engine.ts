@@ -24,6 +24,8 @@ export interface RoutingRequest {
     waitForWind?: boolean | undefined;
     maxWindKn?: number | undefined;
     maxWaveM?: number | undefined;
+    tackPenaltySec?: number | undefined;
+    tackThresholdDeg?: number | undefined;
   };
 }
 
