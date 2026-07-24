@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Map } from 'maplibre-gl';
   import { prefs, savePrefs } from '../prefs';
+  import { authState } from '../auth-state.svelte';
 
   interface Props {
     visible: boolean;
@@ -12,6 +13,8 @@
     skFetch: (path: string, opts?: RequestInit) => Promise<Response>;
     currentSkUrl: string;
     buildVersion: string;
+    onLogin: (username: string, password: string) => Promise<void>;
+    onLogout: () => void;
     onClose: () => void;
   }
 
@@ -25,6 +28,8 @@
     skFetch,
     currentSkUrl,
     buildVersion,
+    onLogin,
+    onLogout,
     onClose,
   }: Props = $props();
 
@@ -205,6 +210,30 @@
   function handleOverlayClick(e: MouseEvent) {
     if (e.target === e.currentTarget) onClose();
   }
+
+  // ── Auth form state ──
+  let loginUsername = $state('');
+  let loginPassword = $state('');
+  let loginBusy = $state(false);
+  let loginError = $state('');
+
+  async function handleLogin(): Promise<void> {
+    loginBusy = true;
+    loginError = '';
+    try {
+      await onLogin(loginUsername, loginPassword);
+      loginUsername = '';
+      loginPassword = '';
+    } catch (e: unknown) {
+      loginError = e instanceof Error ? e.message : String(e);
+    } finally {
+      loginBusy = false;
+    }
+  }
+
+  function handleLogout(): void {
+    onLogout();
+  }
 </script>
 
 {#if visible}
@@ -318,6 +347,30 @@
             Leave empty when installed as SK webapp. Set to e.g.
             <code>http://192.168.1.100:3000</code> for standalone use.
           </span>
+
+          {#if authState.status === 'authenticated'}
+            <div class="auth-row">
+              <span class="auth-label">Logged in as <strong>{authState.username}</strong></span>
+              <button class="action-btn" onclick={handleLogout}>Logout</button>
+            </div>
+          {:else if authState.status === 'unauthenticated'}
+            <div class="auth-form">
+              <input type="text" placeholder="Username" bind:value={loginUsername} />
+              <input type="password" placeholder="Password" bind:value={loginPassword} />
+              <div class="auth-actions">
+                <button class="action-btn login-btn" disabled={loginBusy} onclick={handleLogin}>
+                  {loginBusy ? 'Logging in…' : 'Login'}
+                </button>
+                {#if loginError !== ''}
+                  <span class="auth-error">{loginError}</span>
+                {/if}
+              </div>
+            </div>
+          {:else if authState.status === 'no-server'}
+            <span class="auth-label">No server connected</span>
+          {:else}
+            <span class="auth-label">Checking…</span>
+          {/if}
         </section>
 
         <!-- ABOUT -->
@@ -596,6 +649,59 @@
     padding: 1px 3px;
     border-radius: 2px;
     font-size: 10px;
+  }
+
+  /* Auth */
+  .auth-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .auth-label {
+    font-size: 11px;
+    color: #a6adc8;
+  }
+
+  .auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+  }
+
+  .auth-form input[type='text'],
+  .auth-form input[type='password'] {
+    font-size: 11px;
+    padding: 4px 6px;
+    background: #313244;
+    color: #cdd6f4;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+  }
+
+  .auth-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .login-btn {
+    background: #89b4fa;
+    color: #1e1e2e;
+  }
+  .login-btn:hover {
+    background: #a6c8ff;
+  }
+  .login-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  .auth-error {
+    font-size: 11px;
+    color: #f38ba8;
   }
 
   /* About */

@@ -51,9 +51,11 @@
   interface Props {
     skFetch: (path: string, options?: RequestInit) => Promise<Response>;
     skWebSocketUrl: (path: string) => string;
+    skLogin: (username: string, password: string) => Promise<void>;
+    skLogout: () => void;
   }
 
-  let { skFetch, skWebSocketUrl }: Props = $props();
+  let { skFetch, skWebSocketUrl, skLogin, skLogout }: Props = $props();
 
   // ── Reactive State ─────────────────────────────────────────────────────────
 
@@ -949,6 +951,8 @@
     {skFetch}
     currentSkUrl={localStorage.getItem('wr-signalk-url') ?? ''}
     {buildVersion}
+    onLogin={skLogin}
+    onLogout={skLogout}
     onClose={() => { showSettings = false; }}
     bind:this={settingsModalRef}
   />

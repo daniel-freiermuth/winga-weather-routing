@@ -21,6 +21,8 @@ export interface Prefs {
   tackThresholdDeg: string;
   waypointLabels: boolean;
   waypointLabelInterval: string;
+  // SignalK auth token
+  skToken: string;
 }
 
 const DEFAULTS: Prefs = {
@@ -38,6 +40,7 @@ const DEFAULTS: Prefs = {
   tackThresholdDeg: '60',
   waypointLabels: true,
   waypointLabelInterval: '0',
+  skToken: '',
 };
 
 function load(): Prefs {

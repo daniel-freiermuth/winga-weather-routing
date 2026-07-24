@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { authState } from '../auth-state.svelte';
+
   interface Waypoint {
     lat: number;
     lon: number;
@@ -91,7 +93,7 @@
   </div>
 
   <div class="actions">
-    <button class="save-btn" disabled={!canSave} onclick={onSave}>Save to SignalK</button>
+    <button class="save-btn" disabled={!canSave || authState.status !== 'authenticated'} title={authState.status !== 'authenticated' ? 'Login required to save routes' : undefined} onclick={onSave}>Save to SignalK</button>
     <button class="edit-btn" onclick={onEdit}>Edit</button>
   </div>
 
