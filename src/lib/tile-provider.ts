@@ -315,7 +315,23 @@ export class TileWindProvider implements WindProvider {
   }
 
   getWaveAtTime(lat: number, lon: number, timeMs: number): number | undefined {
-    return this.getWave(lat, lon, new Date(timeMs));
+    if (this.waveSteps.length === 0) return undefined;
+    // Find bracketing wave steps
+    const i = closestStepIdx(this.waveSteps, timeMs, this.waveStepsMs);
+    const t0ms = this.waveStepsMs[i];
+    if (t0ms === undefined) return this.getWave(lat, lon, new Date(timeMs));
+    // If at or past last step, or only one step, use nearest
+    if (i >= this.waveSteps.length - 1) return this.getWave(lat, lon, new Date(timeMs));
+    const t1ms = this.waveStepsMs[i + 1];
+    if (t1ms === undefined || t1ms === t0ms) return this.getWave(lat, lon, new Date(timeMs));
+    const f = Math.max(0, Math.min(1, (timeMs - t0ms) / (t1ms - t0ms)));
+    if (f < 0.01) return this.getWave(lat, lon, new Date(t0ms));
+    if (f > 0.99) return this.getWave(lat, lon, new Date(t1ms));
+    const w0 = this.getWave(lat, lon, new Date(t0ms));
+    const w1 = this.getWave(lat, lon, new Date(t1ms));
+    if (w0 === undefined) return w1;
+    if (w1 === undefined) return w0;
+    return w0 * (1 - f) + w1 * f;
   }
 
   /** Compute optimal zoom level so the route area fits within maxTilesPerDim tiles.
@@ -375,6 +391,7 @@ export class TileCurrentProvider implements CurrentProvider {
   private readonly zoom: number;
   private readonly cache = new Map<string, CachedTile>();
   private steps: { iso: string; compact: string }[] = [];
+  private stepsMs: number[] = [];
   private modelRun = '';
   private tiles: { x: number; y: number }[] = [];
   private loaded = false;
@@ -401,6 +418,7 @@ export class TileCurrentProvider implements CurrentProvider {
     const mf = await fetchMinifest('cmems');
     this.modelRun = refToCompact(mf.ref);
     this.steps = getValidTimes(mf);
+    this.stepsMs = this.steps.map(s => new Date(s.iso).getTime());
     this.tiles = tilesForBbox(bbox, this.zoom);
 
     const horizonMs = new Date(mf.end).getTime();
@@ -442,12 +460,29 @@ export class TileCurrentProvider implements CurrentProvider {
   }
 
   getCurrent(lat: number, lon: number, t: Date): WindVector {
-    if (!this.loaded) return { u: 0, v: 0 };
-    const idx = closestStepIdx(this.steps, t.getTime());
-    const step = this.steps[idx];
-    if (step === undefined) return { u: 0, v: 0 };
+    if (!this.loaded || this.steps.length === 0) return { u: 0, v: 0 };
+    const timeMs = t.getTime();
+    const i = closestStepIdx(this.steps, timeMs, this.stepsMs);
+
+    // Temporal interpolation between bracketing steps
+    if (i < this.steps.length - 1) {
+      const t0 = this.stepsMs[i]!;
+      const t1 = this.stepsMs[i + 1]!;
+      if (t1 > t0) {
+        const f = Math.max(0, Math.min(1, (timeMs - t0) / (t1 - t0)));
+        if (f > 0.01 && f < 0.99) {
+          const c0 = this.sampleCurrent(lat, lon, this.steps[i]!.compact);
+          const c1 = this.sampleCurrent(lat, lon, this.steps[i + 1]!.compact);
+          return { u: c0.u * (1 - f) + c1.u * f, v: c0.v * (1 - f) + c1.v * f };
+        }
+      }
+    }
+    return this.sampleCurrent(lat, lon, this.steps[i]!.compact);
+  }
+
+  private sampleCurrent(lat: number, lon: number, validTime: string): WindVector {
     const { x, y } = latLonToTile(lat, lon, this.zoom);
-    const key = tileKey('cmems', 'seacurrents', step.compact, this.zoom, x, y);
+    const key = tileKey('cmems', 'seacurrents', validTime, this.zoom, x, y);
     const tile = this.cache.get(key);
     if (tile === undefined) return { u: 0, v: 0 };
     const { px, py } = latLonToPixelFrac(lat, lon, this.zoom, x, y);

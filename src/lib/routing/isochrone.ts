@@ -242,7 +242,7 @@ export class IsochroneAlgorithm implements RoutingAlgorithm {
           continue;
         }
         if (maxWaveM > 0) {
-          const wh = wind.getWave(point.lat, point.lon, new Date(currentTimeMs));
+          const wh = wind.getWaveAtTime ? wind.getWaveAtTime(point.lat, point.lon, currentTimeMs) : wind.getWave(point.lat, point.lon, new Date(currentTimeMs));
           if (wh != null && wh > maxWaveM) continue;
         }
 
@@ -550,7 +550,7 @@ function backtrack(
       boatSpeed: arrived.boatSpeed,
       windDir: arrived.windDir,
       legCalcMs: 0,
-      waveHeight: wind.getWave(end.lat, end.lon, arrived.time),
+      waveHeight: wind.getWaveAtTime ? wind.getWaveAtTime(end.lat, end.lon, arrived.time.getTime()) : wind.getWave(end.lat, end.lon, arrived.time),
       gribFilePath: arrived.gribFilePath,
     });
   }
@@ -561,7 +561,7 @@ function backtrack(
     // The stored tws/windDir come from the parent point's position at the
     // current step — one position and one time step earlier. Resampling
     // gives the actual wind at the displayed waypoint position.
-    const resampled = wind.getWind(cur.lat, cur.lon, nearestIdx(wind.times, cur.time));
+    const resampled = wind.getWindAtTime(cur.lat, cur.lon, cur.time.getTime());
     route.unshift({
       lat: cur.lat,
       lon: cur.lon,
@@ -572,7 +572,7 @@ function backtrack(
       boatSpeed: cur.boatSpeed,
       windDir: windDirection(resampled.u, resampled.v),
       legCalcMs: cur.stepCalcMs,
-      waveHeight: wind.getWave(cur.lat, cur.lon, cur.time),
+      waveHeight: wind.getWaveAtTime ? wind.getWaveAtTime(cur.lat, cur.lon, cur.time.getTime()) : wind.getWave(cur.lat, cur.lon, cur.time),
       gribFilePath: cur.gribFilePath,
     });
     cur = cur.parent;
