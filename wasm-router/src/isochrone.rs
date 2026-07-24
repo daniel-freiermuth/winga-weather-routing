@@ -340,48 +340,65 @@ pub fn calculate_leg(
         current_time_ms = next_time_ms;
     }
 
-    // Backtrack
-    match arrived {
-        Some(idx) => {
-            let mut route = Vec::new();
-            // Add destination
-            let arr = &arena[idx];
-            route.push(RoutePoint {
-                lat: end_lat,
-                lon: end_lon,
-                time_ms: arr.time_ms,
-                heading: arr.heading,
-                twa: arr.twa,
-                tws: arr.tws,
-                boat_speed: arr.boat_speed,
-                wind_dir: arr.wind_dir,
-                step_calc_ms: 0.0,
-            });
-            // Walk parent chain
-            let mut cur_idx = Some(idx);
-            while let Some(i) = cur_idx {
-                let p = &arena[i];
-                route.push(RoutePoint {
-                    lat: p.lat,
-                    lon: p.lon,
-                    time_ms: p.time_ms,
-                    heading: p.heading,
-                    twa: p.twa,
-                    tws: p.tws,
-                    boat_speed: p.boat_speed,
-                    wind_dir: p.wind_dir,
-                    step_calc_ms: p.step_calc_ms,
-                });
-                cur_idx = p.parent;
+    // Backtrack from arrival or closest frontier point
+    let backtrack_idx = if let Some(idx) = arrived {
+        idx
+    } else if !frontier.is_empty() {
+        // Partial route: find frontier point closest to destination
+        let mut best_idx = frontier[0];
+        let mut best_dist = haversine_nm(arena[best_idx].lat, arena[best_idx].lon, end_lat, end_lon);
+        for &idx in &frontier[1..] {
+            let d = haversine_nm(arena[idx].lat, arena[idx].lon, end_lat, end_lon);
+            if d < best_dist {
+                best_dist = d;
+                best_idx = idx;
             }
-            route.reverse();
-            Ok(route)
         }
-        None => Err(format!(
-            "Destination not reached within forecast period after {} steps",
+        best_idx
+    } else {
+        return Err(format!(
+            "No reachable positions after {} steps",
             steps_completed
-        )),
+        ));
+    };
+
+    let mut route = Vec::new();
+
+    // Add destination as final point only if we actually arrived
+    if arrived.is_some() {
+        let arr = &arena[backtrack_idx];
+        route.push(RoutePoint {
+            lat: end_lat,
+            lon: end_lon,
+            time_ms: arr.time_ms,
+            heading: arr.heading,
+            twa: arr.twa,
+            tws: arr.tws,
+            boat_speed: arr.boat_speed,
+            wind_dir: arr.wind_dir,
+            step_calc_ms: 0.0,
+        });
     }
+
+    // Walk parent chain
+    let mut cur_idx = Some(backtrack_idx);
+    while let Some(i) = cur_idx {
+        let p = &arena[i];
+        route.push(RoutePoint {
+            lat: p.lat,
+            lon: p.lon,
+            time_ms: p.time_ms,
+            heading: p.heading,
+            twa: p.twa,
+            tws: p.tws,
+            boat_speed: p.boat_speed,
+            wind_dir: p.wind_dir,
+            step_calc_ms: p.step_calc_ms,
+        });
+        cur_idx = p.parent;
+    }
+    route.reverse();
+    Ok(route)
 }
 
 /// Sector-based frontier pruning: keep the two farthest-from-start candidates per bearing sector.

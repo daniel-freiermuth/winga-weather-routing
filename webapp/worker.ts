@@ -52,15 +52,27 @@ let hasCurrent = false;
 
 const _self = globalThis as Record<string, unknown>;
 
+// Pre-allocated buffers — reused on every call to avoid GC pressure
+// (millions of calls during a single route calculation)
+const _windBuf = new Float64Array(2);
+const _curBuf = new Float64Array(2);
+const _zeroBuf = new Float64Array(2); // constant [0, 0]
+const _reusableDate = new Date(0);    // reused to avoid Date allocation in hot loop
+
 _self['js_get_wind'] = (lat: number, lon: number, time_ms: number): Float64Array => {
   const v = windProvider.getWindAtTime(lat, lon, time_ms);
-  return new Float64Array([v.u, v.v]);
+  _windBuf[0] = v.u;
+  _windBuf[1] = v.v;
+  return _windBuf;
 };
 
 _self['js_get_current'] = (lat: number, lon: number, time_ms: number): Float64Array => {
-  if (!hasCurrent) return new Float64Array([0, 0]);
-  const v = currentProvider.getCurrent(lat, lon, new Date(time_ms));
-  return new Float64Array([v.u, v.v]);
+  if (!hasCurrent) return _zeroBuf;
+  _reusableDate.setTime(time_ms);
+  const v = currentProvider.getCurrent(lat, lon, _reusableDate);
+  _curBuf[0] = v.u;
+  _curBuf[1] = v.v;
+  return _curBuf;
 };
 
 _self['js_crosses_land'] = (lat1: number, lon1: number, lat2: number, lon2: number): boolean => {
