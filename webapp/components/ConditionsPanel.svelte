@@ -101,9 +101,8 @@
     if (T < 0.5) return undefined;
     const V = m.boatSpeed * 0.514444; // knots → m/s
     // μ = angle between heading (CTW) and wave propagation direction
-    // waveDir = FROM convention; propagation = waveDir + 180
-    const wavePropDir = (m.waveDir + 180) % 360;
-    const mu = Math.abs(((m.heading - wavePropDir + 540) % 360) - 180); // 0=following, 180=head
+    // waveDir is already the propagation direction (TOWARDS convention from Windy tiles)
+    const mu = Math.abs(((m.heading - m.waveDir + 540) % 360) - 180); // 0=following, 180=head
     const omega0 = 2 * Math.PI / T;
     const g = 9.81;
     const omegaE = omega0 * (1 - (omega0 / g) * V * Math.cos(mu * Math.PI / 180));
@@ -278,9 +277,9 @@
               undefined, undefined,
               'Encounter Period — wave period as felt by the moving boat (deep-water approximation; less accurate in shallow water < ~30 m for 6 s waves)')}
             {@render dataRow('Wave dir', '°',
-              meta.map(m => m.waveDir != null ? `${windArrow(m.waveDir)}${Math.round(m.waveDir)}` : null),
+              meta.map(m => m.waveDir != null ? `${windArrow((m.waveDir + 180) % 360)}${Math.round(m.waveDir)}` : null),
               undefined, undefined,
-              'Wave Direction — where waves propagate FROM')}
+              'Wave propagation direction — arrow shows where waves travel TOWARDS')}
           {/if}
           {#if hasCurrent}
             {@render dataRow('Current', 'kn',
