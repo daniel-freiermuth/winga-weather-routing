@@ -67,6 +67,31 @@
   const hasGust = $derived(meta.some(m => m.gustKn != null));
   const hasCurrent = $derived(meta.some(m => m.currentSpeedKn != null));
 
+  // Wind speed unit cycling: kn → m/s → km/h → Bft
+  const WIND_UNITS = ['kn', 'm/s', 'km/h', 'Bft'] as const;
+  type WindUnit = typeof WIND_UNITS[number];
+  let windUnit = $state<WindUnit>('kn');
+
+  function cycleWindUnit() {
+    const idx = WIND_UNITS.indexOf(windUnit);
+    windUnit = WIND_UNITS[(idx + 1) % WIND_UNITS.length]!;
+  }
+
+  /** Convert knots to the active wind unit. */
+  function convertWind(kn: number): string {
+    switch (windUnit) {
+      case 'kn': return kn.toFixed(1);
+      case 'm/s': return (kn * 0.514444).toFixed(1);
+      case 'km/h': return (kn * 1.852).toFixed(1);
+      case 'Bft': {
+        const bft = [1, 4, 7, 11, 17, 22, 28, 34, 41, 48, 56, 64];
+        let b = 0;
+        for (b = 0; b < bft.length; b++) { if (kn < bft[b]!) break; }
+        return String(b);
+      }
+    }
+  }
+
   const dateGroups = $derived.by(() => {
     const groups: { date: string; count: number }[] = [];
     for (const m of meta) {
@@ -154,11 +179,11 @@
           </tr>
         </thead>
         <tbody>
-          {#snippet dataRow(label: string, unit: string, values: (string | null)[], colorFn?: (i: number) => string | null)}
+          {#snippet dataRow(label: string, unit: string, values: (string | null)[], colorFn?: (i: number) => string | null, onUnitClick?: () => void, tip?: string)}
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <tr>
-              <td class="label-cell">{label}{#if unit} <span class="unit">{unit}</span>{/if}</td>
+              <td class="label-cell" title={tip}>{#if unit}<span class="unit" class:unit-clickable={onUnitClick != null} onclick={onUnitClick}>{unit}</span> {/if}{label}</td>
               {#each values as v, i}
                 <td
                   class="data-cell"
@@ -171,41 +196,67 @@
             </tr>
           {/snippet}
 
-          {@render dataRow('TWS', 'kn',
-            meta.map(m => m.tws.toFixed(1)),
-            (i) => windColor(meta[i]!.tws))}
+          {@render dataRow('TWS', windUnit,
+            meta.map(m => convertWind(m.tws)),
+            (i) => windColor(meta[i]!.tws),
+            cycleWindUnit,
+            'True Wind Speed — forecast wind speed (not adjusted for current)')}
           {#if hasGust}
-            {@render dataRow('Gust', 'kn',
-              meta.map(m => m.gustKn != null ? m.gustKn.toFixed(1) : null),
-              (i) => { const g = meta[i]!.gustKn; return g != null ? windColor(g) : null; })}
+            {@render dataRow('Gust', windUnit,
+              meta.map(m => m.gustKn != null ? convertWind(m.gustKn) : null),
+              (i) => { const g = meta[i]!.gustKn; return g != null ? windColor(g) : null; },
+              cycleWindUnit,
+              'Gust speed — peak wind speed from the forecast model')}
           {/if}
-          {@render dataRow('Wind', '',
-            meta.map(m => `${windArrow(m.windDir)}${Math.round(m.windDir)}°`))}
-          {@render dataRow('TWA', '',
-            meta.map(m => `${Math.round(m.twa)}°`))}
-          {@render dataRow('CTW', '',
-            meta.map(m => `${Math.round(m.heading)}°`))}
+          {@render dataRow('Wind', '°',
+            meta.map(m => `${windArrow(m.windDir)}${Math.round(m.windDir)}`),
+            undefined, undefined,
+            'True wind direction — where the wind blows FROM (meteorological convention)')}
+          {@render dataRow('TWA', '°',
+            meta.map(m => `${Math.round(m.twa)}`),
+            undefined, undefined,
+            'True Wind Angle — angle between CTW and wind-over-water direction (used for polar lookup)')}
+          {@render dataRow('CTW', '°',
+            meta.map(m => `${Math.round(m.heading)}`),
+            undefined, undefined,
+            'Course Through Water — direction the boat moves through the water (before current drift)')}
           {@render dataRow('STW', 'kn',
-            meta.map(m => m.boatSpeed != null ? m.boatSpeed.toFixed(1) : null))}
-          {@render dataRow('COG', '',
-            meta.map(m => m.cogDeg != null ? `${Math.round(m.cogDeg)}°` : null))}
+            meta.map(m => m.boatSpeed != null ? m.boatSpeed.toFixed(1) : null),
+            undefined, undefined,
+            'Speed Through Water — boat speed from the polar diagram at this TWS/TWA')}
+          {@render dataRow('COG', '°',
+            meta.map(m => m.cogDeg != null ? `${Math.round(m.cogDeg)}` : null),
+            undefined, undefined,
+            'Course Over Ground — actual track direction including current drift')}
           {@render dataRow('SOG', 'kn',
-            meta.map(m => m.sogKn != null ? m.sogKn.toFixed(1) : null))}
+            meta.map(m => m.sogKn != null ? m.sogKn.toFixed(1) : null),
+            undefined, undefined,
+            'Speed Over Ground — actual speed including current (distance / time between waypoints)')}
           {#if hasWave}
             {@render dataRow('Wave', 'm',
-              meta.map(m => m.waveHeight != null ? m.waveHeight.toFixed(1) : null))}
+              meta.map(m => m.waveHeight != null ? m.waveHeight.toFixed(1) : null),
+              undefined, undefined,
+              'Significant Wave Height — average height of the highest ⅓ of waves (Hs)')}
           {/if}
           {#if hasWavePeriod}
             {@render dataRow('Period', 's',
-              meta.map(m => m.wavePeriod != null ? m.wavePeriod.toFixed(1) : null))}
-            {@render dataRow('Wave dir', '',
-              meta.map(m => m.waveDir != null ? `${windArrow(m.waveDir)}${Math.round(m.waveDir)}°` : null))}
+              meta.map(m => m.wavePeriod != null ? m.wavePeriod.toFixed(1) : null),
+              undefined, undefined,
+              'Mean Wave Period — average time between successive wave crests')}
+            {@render dataRow('Wave dir', '°',
+              meta.map(m => m.waveDir != null ? `${windArrow(m.waveDir)}${Math.round(m.waveDir)}` : null),
+              undefined, undefined,
+              'Wave Direction — where waves propagate FROM')}
           {/if}
           {#if hasCurrent}
             {@render dataRow('Current', 'kn',
-              meta.map(m => m.currentSpeedKn != null ? m.currentSpeedKn.toFixed(1) : null))}
-            {@render dataRow('Cur dir', '',
-              meta.map(m => m.currentDir != null ? `${windArrow((m.currentDir + 180) % 360)}${Math.round(m.currentDir)}°` : null))}
+              meta.map(m => m.currentSpeedKn != null ? m.currentSpeedKn.toFixed(1) : null),
+              undefined, undefined,
+              'Ocean Current Speed — from CMEMS forecast')}
+            {@render dataRow('Cur dir', '°',
+              meta.map(m => m.currentDir != null ? `${windArrow((m.currentDir + 180) % 360)}${Math.round(m.currentDir)}` : null),
+              undefined, undefined,
+              'Current Direction — where the current flows TOWARDS (arrow shows flow direction)')}
           {/if}
         </tbody>
       </table>
@@ -264,6 +315,14 @@
   .unit {
     font-weight: 400;
     color: #585b70;
+  }
+  .unit-clickable {
+    cursor: pointer;
+    text-decoration: underline dotted;
+    color: #89b4fa;
+  }
+  .unit-clickable:hover {
+    color: #b4d0fb;
   }
   .date-cell {
     font-size: 9px;
