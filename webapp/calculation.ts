@@ -53,7 +53,6 @@ export interface CalculationContext {
 
   // Conditions graph callbacks (replace getElementById)
   setConditionsGraph(data: { svgContent: string; viewBox: string; hasWave: boolean; layout: GraphLayout } | null): void;
-  setConditionsVisible(v: boolean): void;
   lockScrubberToRoute(i0: number, iN: number): void;
   setRouteWaypointTimes(times: string[]): void;
   setShowRangeToggle(v: boolean): void;
@@ -104,11 +103,10 @@ function drawConditionsGraph(ctx: CalculationContext, meta: WaypointMeta[], inte
     c64Palette: C64_PALETTE, forecastSkillHorizonHours: ctx.getForecastSkillHorizonHours(),
     toDisplay: _toDisplay, fmt: _fmt,
   });
-  if (!result) { ctx.setConditionsVisible(false); return; }
+  if (!result) return;
   calcState.graphMeta = meta;
   calcState.graphLayout = result.layout;
   ctx.setConditionsGraph({ svgContent: result.svgContent, viewBox: result.viewBox, hasWave: result.hasWave, layout: result.layout });
-  ctx.setConditionsVisible(true);
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -174,6 +172,8 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
   }
 
   function updateScrubberHighlight(windTimeIdx: number) {
+    // No-op when route isn't being displayed (e.g. user is back in planning mode)
+    if (!calcState.pendingRouteData) return;
     if (!calcState.graphMeta || calcState.graphMeta.length < 2 || !calcState.graphLayout) return;
     const windTimes = ctx.getWindTimes();
     const t = windTimes[windTimeIdx];

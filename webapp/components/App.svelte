@@ -27,7 +27,7 @@
   import type { WaypointWeather } from '../route-weather';
   import type { WindPoint, WavePoint, CurrentPoint, WaveGridMeta } from '../stores';
   import { forecastLoaded, windPoints as windPointsStore, wavePoints as wavePointsStore, currentPoints as currentPointsStore, waveGridMetaStore as waveGridMetaStoreRef } from '../stores';
-  import { calcState } from '../calc-state.svelte';
+  import { calcState, resetCalcState } from '../calc-state.svelte';
   import { skState } from '../sk-state.svelte';
   import { configState } from '../config-state.svelte';
   import { fmt as _fmt } from '../units';
@@ -228,8 +228,8 @@
   let rangeToggleLabel = $state('Full range');
   let scrubberVisible = $state(false);
 
-  // Conditions panel reactive state
-  let conditionsVisible = $state(false);
+  // Conditions panel: visible when route results exist in summary view
+  const conditionsVisible = $derived(sidebarView === 'summary' && calcState.graphMeta != null && calcState.graphMeta.length > 0);
   let conditionsExpanded = $state(true);
 
   // Bind:this refs for graph tooltip
@@ -480,23 +480,33 @@
 
   // ── Context Menu Handlers ─────────────────────────────────────────────────
 
+  /** Transition to planning mode — hides route results and clears stale route state
+   *  so scrubber/highlight callbacks don't act on old data. */
+  function enterPlanningMode() {
+    sidebarView = 'setup';
+    resetCalcState();
+    showRangeToggle = false;
+    timeAxis = { ...timeAxis, routeWaypointTimes: [] };
+    rebuildScrubberTimes();
+  }
+
   function handleContextSetStart() {
     handleWaypointChange(0, { lat: contextMenu.lat, lon: contextMenu.lng });
     contextMenu = { ...contextMenu, visible: false };
-    sidebarView = 'setup'; conditionsVisible = false;
+    enterPlanningMode();
   }
 
   function handleContextSetEnd() {
     handleWaypointChange(waypoints.length - 1, { lat: contextMenu.lat, lon: contextMenu.lng });
     contextMenu = { ...contextMenu, visible: false };
-    sidebarView = 'setup'; conditionsVisible = false;
+    enterPlanningMode();
   }
 
   function handleContextAddWaypoint() {
     handleWaypointAdd();
     handleWaypointChange(waypoints.length - 2, { lat: contextMenu.lat, lon: contextMenu.lng });
     contextMenu = { ...contextMenu, visible: false };
-    sidebarView = 'setup'; conditionsVisible = false;
+    enterPlanningMode();
   }
 
   // ── Event Handlers ─────────────────────────────────────────────────────────
@@ -610,7 +620,6 @@
           calcState.graphLayout = data.layout;
         }
       },
-      setConditionsVisible: (v) => { conditionsVisible = v; },
       lockScrubberToRoute: (i0, iN) => {
         calcState.routeScrubberRange = { i0, iN };
         calcState.scrubberLockedToRoute = true;
@@ -792,7 +801,7 @@
       {statusText}
       {statusType}
       canSave={calcState.pendingRouteData !== null}
-      onEdit={() => { sidebarView = 'setup'; conditionsVisible = false; }}
+      onEdit={enterPlanningMode}
       onSave={handleSaveRoute}
     />
   {/if}
