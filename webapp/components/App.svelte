@@ -483,20 +483,20 @@
   function handleContextSetStart() {
     handleWaypointChange(0, { lat: contextMenu.lat, lon: contextMenu.lng });
     contextMenu = { ...contextMenu, visible: false };
-    sidebarView = 'setup';
+    sidebarView = 'setup'; conditionsVisible = false;
   }
 
   function handleContextSetEnd() {
     handleWaypointChange(waypoints.length - 1, { lat: contextMenu.lat, lon: contextMenu.lng });
     contextMenu = { ...contextMenu, visible: false };
-    sidebarView = 'setup';
+    sidebarView = 'setup'; conditionsVisible = false;
   }
 
   function handleContextAddWaypoint() {
     handleWaypointAdd();
     handleWaypointChange(waypoints.length - 2, { lat: contextMenu.lat, lon: contextMenu.lng });
     contextMenu = { ...contextMenu, visible: false };
-    sidebarView = 'setup';
+    sidebarView = 'setup'; conditionsVisible = false;
   }
 
   // ── Event Handlers ─────────────────────────────────────────────────────────
@@ -792,7 +792,7 @@
       {statusText}
       {statusType}
       canSave={calcState.pendingRouteData !== null}
-      onEdit={() => { sidebarView = 'setup'; }}
+      onEdit={() => { sidebarView = 'setup'; conditionsVisible = false; }}
       onSave={handleSaveRoute}
     />
   {/if}
