@@ -136,9 +136,9 @@
     const T = m.wavePeriod;
     if (T < 0.5) return undefined;
     const V = m.boatSpeed * 0.514444; // knots → m/s
-    // μ = angle between heading (CTW) and wave propagation direction
+    // μ = angle between CTW and wave propagation direction
     // waveDir is already the propagation direction (TOWARDS convention from Windy tiles)
-    const mu = Math.abs(((m.heading - m.waveDir + 540) % 360) - 180); // 0=following, 180=head
+    const mu = Math.abs(((m.ctw - m.waveDir + 540) % 360) - 180); // 0=following, 180=head
     const omega0 = 2 * Math.PI / T;
     const g = 9.81;
     const omegaE = omega0 * (1 - (omega0 / g) * V * Math.cos(mu * Math.PI / 180));
@@ -279,14 +279,14 @@
           {/if}
           {@render dataRow('TWA', '°',
             meta.map(m => {
-              const relWind = (m.windDir - m.heading + 360) % 360;
+              const relWind = (m.windDir - m.ctw + 360) % 360;
               const side = relWind <= 180 ? '▶' : '◀';
               return `${Math.round(m.twa)}${side}`;
             }),
             undefined, undefined,
             'True Wind Angle — ◀ port tack (wind from left), ▶ starboard tack (wind from right)')}
           {@render dataRow('CTW', '°',
-            meta.map(m => `${Math.round(m.heading)}`),
+            meta.map(m => `${Math.round(m.ctw)}`),
             undefined, undefined,
             'Course Through Water — direction the boat moves through the water (before current drift)')}
           {@render dataRow('STW', 'kn',

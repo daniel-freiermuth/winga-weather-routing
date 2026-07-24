@@ -4,7 +4,7 @@ export interface WaypointMeta {
   name: string;
   time: string;
   windDir: number;
-  heading: number;
+  ctw: number;
   twa: number;
   tws: number;
   boatSpeed?: number;

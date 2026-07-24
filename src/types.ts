@@ -140,9 +140,9 @@ export interface RoutePoint {
   lat: number;
   lon: number;
   time: Date;
-  heading: number;
+  ctw: number; // course through water (degrees), before current drift
   twa: number; // degrees, 0–180
-  tws: number; // knots
+  tws: number; // true wind speed (knots), resampled at this waypoint's position and time
   boatSpeed?: number | undefined; // knots; undefined on the departure waypoint
   windDir: number; // meteorological: degrees FROM which wind blows, 0–360
   legCalcMs: number; // wall-clock ms the algorithm spent computing this leg; 0 for start and destination

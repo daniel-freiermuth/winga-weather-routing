@@ -272,7 +272,7 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
   const nPoints = flat[0]!;
   const route: RoutePoint[] = [];
   for (let i = 0; i < nPoints; i++) {
-    const base = 1 + i * 9;
+    const base = 1 + i * 7;
     const lat = flat[base]!;
     const lon = flat[base + 1]!;
     const timeMs = flat[base + 2]!;
@@ -291,12 +291,12 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
       lat,
       lon,
       time,
-      heading: flat[base + 3]!,
+      ctw: flat[base + 3]!,
       twa: flat[base + 4]!,
-      tws: flat[base + 5]!,
-      boatSpeed: flat[base + 6]! > 0 ? flat[base + 6]! : undefined,
-      windDir: flat[base + 7]!,
-      legCalcMs: flat[base + 8]!,
+      tws: windSpeedKnots(resampled.u, resampled.v),
+      boatSpeed: flat[base + 5]! > 0 ? flat[base + 5]! : undefined,
+      windDir: windDirection(resampled.u, resampled.v),
+      legCalcMs: flat[base + 6]!,
       waveHeight: windProvider.getWaveAtTime ? windProvider.getWaveAtTime(lat, lon, timeMs) : undefined,
       wavePeriod: windProvider.getWavePeriodAtTime ? windProvider.getWavePeriodAtTime(lat, lon, timeMs) : undefined,
       waveDir: windProvider.getWaveDirAtTime ? windProvider.getWaveDirAtTime(lat, lon, timeMs) : undefined,

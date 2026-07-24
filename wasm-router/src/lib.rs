@@ -85,8 +85,8 @@ impl DataProvider for JsDataProvider {
 ///              max_heading_change, arrival_radius_nm]
 ///
 /// # Returns
-/// Flat Float64Array: [n_points, lat, lon, time_ms, heading, twa, tws, boat_speed, wind_dir, ...]
-/// 9 fields per point, prefixed with point count.
+/// Flat Float64Array: [n_points, lat, lon, time_ms, ctw, twa, boat_speed, step_calc_ms, ...]
+/// 7 fields per point, prefixed with point count.
 #[wasm_bindgen]
 pub fn calculate_route(
     polar_twa: &[f64],
@@ -168,19 +168,17 @@ pub fn calculate_route(
         }
     }
 
-    // Flatten to Float64Array: [n_points, lat, lon, time_ms, heading, twa, tws, boat_speed, wind_dir, step_calc_ms, ...]
-    let fields_per_point = 9;
+    // Flatten to Float64Array: [n_points, lat, lon, time_ms, ctw, twa, boat_speed, step_calc_ms, ...]
+    let fields_per_point = 7;
     let mut flat = Vec::with_capacity(1 + full_route.len() * fields_per_point);
     flat.push(full_route.len() as f64);
     for p in &full_route {
         flat.push(p.lat);
         flat.push(p.lon);
         flat.push(p.time_ms);
-        flat.push(p.heading);
+        flat.push(p.ctw);
         flat.push(p.twa);
-        flat.push(p.tws);
         flat.push(p.boat_speed);
-        flat.push(p.wind_dir);
         flat.push(p.step_calc_ms);
     }
 

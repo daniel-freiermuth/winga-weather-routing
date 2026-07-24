@@ -13,11 +13,9 @@ pub struct RoutePoint {
     pub lat: f64,
     pub lon: f64,
     pub time_ms: f64,
-    pub heading: f64,
+    pub ctw: f64,
     pub twa: f64,
-    pub tws: f64,        // knots
     pub boat_speed: f64, // knots, 0.0 for departure
-    pub wind_dir: f64,
     pub step_calc_ms: f64,
 }
 
@@ -26,11 +24,9 @@ struct IsoPoint {
     lat: f64,
     lon: f64,
     time_ms: f64,
-    heading: f64,
+    ctw: f64,
     twa: f64,
-    tws: f64,
     boat_speed: f64,
-    wind_dir: f64,
     step_calc_ms: f64,
     parent: Option<usize>, // index into the points arena
 }
@@ -127,16 +123,13 @@ pub fn calculate_leg(
     let mut arena: Vec<IsoPoint> = Vec::with_capacity(est_total_steps as usize * 500);
 
     // Seed
-    let seed_wind = data.get_wind(start_lat, start_lon, departure_ms);
     arena.push(IsoPoint {
         lat: start_lat,
         lon: start_lon,
         time_ms: departure_ms,
-        heading: 0.0,
+        ctw: 0.0,
         twa: 0.0,
-        tws: wind_speed_knots(seed_wind.0, seed_wind.1),
         boat_speed: 0.0,
-        wind_dir: wind_direction(seed_wind.0, seed_wind.1),
         step_calc_ms: 0.0,
         parent: None,
     });
@@ -161,7 +154,7 @@ pub fn calculate_leg(
             // Copy fields from the frontier point to avoid borrow conflict with arena.push
             let pt_lat = arena[pt_idx].lat;
             let pt_lon = arena[pt_idx].lon;
-            let pt_heading = arena[pt_idx].heading;
+            let pt_ctw = arena[pt_idx].ctw;
             let pt_twa = arena[pt_idx].twa;
             let pt_has_parent = arena[pt_idx].parent.is_some();
 
@@ -171,14 +164,13 @@ pub fn calculate_leg(
 
             let pt_to_dest = bearing_to(pt_lat, pt_lon, end_lat, end_lon);
             let wind_vec = data.get_wind(pt_lat, pt_lon, current_time_ms);
-            let true_wind_dir = wind_direction(wind_vec.0, wind_vec.1);
 
             // Wind over water
             let cur = data.get_current(pt_lat, pt_lon, current_time_ms);
             let wow_u = wind_vec.0 - cur.0;
             let wow_v = wind_vec.1 - cur.1;
-            let tws = wind_speed_knots(wow_u, wow_v);
-            let wdir = wind_direction(wow_u, wow_v);
+            let wow_speed = wind_speed_knots(wow_u, wow_v);
+            let wow_dir = wind_direction(wow_u, wow_v);
 
             // Max wind check (true wind)
             if config.max_wind_kn > 0.0
@@ -211,29 +203,29 @@ pub fn calculate_leg(
             };
 
             let mut wait_added = false;
-            let mut hdg = 0.0f64;
-            while hdg < 360.0 {
-                let deviation = ((hdg - pt_to_dest + 180.0 + 360.0) % 360.0 - 180.0).abs();
+            let mut ctw = 0.0f64;
+            while ctw < 360.0 {
+                let deviation = ((ctw - pt_to_dest + 180.0 + 360.0) % 360.0 - 180.0).abs();
                 if deviation > cone_half {
-                    hdg += config.heading_step;
+                    ctw += config.heading_step;
                     continue;
                 }
 
-                // Heading change constraint (skip for seed points)
+                // CTW change constraint (skip for seed points)
                 if pt_has_parent {
-                    let delta = ((hdg - pt_heading + 180.0 + 360.0) % 360.0 - 180.0).abs();
+                    let delta = ((ctw - pt_ctw + 180.0 + 360.0) % 360.0 - 180.0).abs();
                     if delta > config.max_heading_change {
-                        hdg += config.heading_step;
+                        ctw += config.heading_step;
                         continue;
                     }
                 }
 
-                let mut twa = (hdg - wdir + 360.0) % 360.0;
+                let mut twa = (ctw - wow_dir + 360.0) % 360.0;
                 if twa > 180.0 {
                     twa = 360.0 - twa;
                 }
 
-                let polar_speed = polar.interpolate(twa, tws);
+                let polar_speed = polar.interpolate(twa, wow_speed);
                 let effective_speed = if config.motor_below_kn > 0.0
                     && config.motor_speed_kn > 0.0
                     && polar_speed < config.motor_below_kn
@@ -250,32 +242,30 @@ pub fn calculate_leg(
                             lat: pt_lat,
                             lon: pt_lon,
                             time_ms: next_time_ms,
-                            heading: pt_heading,
+                            ctw: pt_ctw,
                             twa: pt_twa,
-                            tws,
                             boat_speed: 0.0,
-                            wind_dir: true_wind_dir,
                             step_calc_ms: 0.0,
                             parent: Some(pt_idx),
                         });
                         candidates.push(wait_idx);
                         wait_added = true;
                     }
-                    hdg += config.heading_step;
+                    ctw += config.heading_step;
                     continue;
                 }
 
                 // Tack penalty
                 let mut penalty_h = 0.0;
                 if config.tack_penalty_sec > 0.0 && pt_has_parent {
-                    let hdg_change = ((hdg - pt_heading + 180.0 + 360.0) % 360.0 - 180.0).abs();
-                    if hdg_change > config.tack_threshold_deg {
+                    let ctw_change = ((ctw - pt_ctw + 180.0 + 360.0) % 360.0 - 180.0).abs();
+                    if ctw_change > config.tack_threshold_deg {
                         penalty_h = config.tack_penalty_sec / 3600.0;
                     }
                 }
 
                 let dist_nm = effective_speed * (dt_hours - penalty_h).max(0.0);
-                let (mut new_lat, mut new_lon) = destination_point(pt_lat, pt_lon, dist_nm, hdg);
+                let (mut new_lat, mut new_lon) = destination_point(pt_lat, pt_lon, dist_nm, ctw);
 
                 // Current drift
                 if cur.0 != 0.0 || cur.1 != 0.0 {
@@ -286,13 +276,13 @@ pub fn calculate_leg(
 
                 // Coverage check
                 if !data.covers_point(new_lat, new_lon, next_time_ms) {
-                    hdg += config.heading_step;
+                    ctw += config.heading_step;
                     continue;
                 }
 
                 // Land check
                 if data.crosses_land(pt_lat, pt_lon, new_lat, new_lon) {
-                    hdg += config.heading_step;
+                    ctw += config.heading_step;
                     continue;
                 }
 
@@ -301,17 +291,15 @@ pub fn calculate_leg(
                     lat: new_lat,
                     lon: new_lon,
                     time_ms: next_time_ms,
-                    heading: hdg,
+                    ctw,
                     twa,
-                    tws,
                     boat_speed: effective_speed,
-                    wind_dir: true_wind_dir,
                     step_calc_ms: 0.0,
                     parent: Some(pt_idx),
                 });
                 candidates.push(new_idx);
 
-                hdg += config.heading_step;
+                ctw += config.heading_step;
             }
         }
 
@@ -381,40 +369,44 @@ pub fn calculate_leg(
 
     let mut route = Vec::new();
 
-    // Add destination as final point only if we actually arrived
-    if arrived.is_some() {
-        let arr = &arena[backtrack_idx];
-        route.push(RoutePoint {
-            lat: end_lat,
-            lon: end_lon,
-            time_ms: arr.time_ms,
-            heading: arr.heading,
-            twa: arr.twa,
-            tws: arr.tws,
-            boat_speed: arr.boat_speed,
-            wind_dir: arr.wind_dir,
-            step_calc_ms: 0.0,
-        });
-    }
-
-    // Walk parent chain
-    let mut cur_idx = Some(backtrack_idx);
+    // Walk parent chain — skip the arrival point when we snap to the exact destination
+    let start_idx = if arrived.is_some() {
+        arena[backtrack_idx].parent
+    } else {
+        Some(backtrack_idx)
+    };
+    let mut cur_idx = start_idx;
     while let Some(i) = cur_idx {
         let p = &arena[i];
         route.push(RoutePoint {
             lat: p.lat,
             lon: p.lon,
             time_ms: p.time_ms,
-            heading: p.heading,
+            ctw: p.ctw,
             twa: p.twa,
-            tws: p.tws,
             boat_speed: p.boat_speed,
-            wind_dir: p.wind_dir,
             step_calc_ms: p.step_calc_ms,
         });
         cur_idx = p.parent;
     }
     route.reverse();
+
+    // Snap to exact destination with estimated extra travel time
+    if arrived.is_some() {
+        let arr = &arena[backtrack_idx];
+        let extra_dist = haversine_nm(arr.lat, arr.lon, end_lat, end_lon);
+        let extra_h = if arr.boat_speed > 0.1 { extra_dist / arr.boat_speed } else { 0.0 };
+        route.push(RoutePoint {
+            lat: end_lat,
+            lon: end_lon,
+            time_ms: arr.time_ms + extra_h * 3_600_000.0,
+            ctw: arr.ctw,
+            twa: arr.twa,
+            boat_speed: arr.boat_speed,
+            step_calc_ms: 0.0,
+        });
+    }
+
     Ok(route)
 }
 

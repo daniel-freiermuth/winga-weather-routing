@@ -367,7 +367,7 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
         lat: number;
         lon: number;
         time: string;
-        heading: number;
+        ctw: number;
         twa: number;
         tws: number;
         boatSpeed?: number;
@@ -414,7 +414,7 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
                   name: '',
                   time: typeof p.time === 'string' ? p.time : new Date(p.time as unknown as number).toISOString(),
                   windDir: p.windDir,
-                  heading: p.heading,
+                  ctw: p.ctw,
                   twa: p.twa,
                   tws: p.tws,
                 };
