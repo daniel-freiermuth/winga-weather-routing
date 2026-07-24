@@ -1,6 +1,6 @@
-# signalk-weather-routing
+# winga-weather-routing
 
-A SignalK plugin that calculates optimal sailing routes using GRIB2 weather forecasts and the isochrone method. Meteorolical data from GRIB2 files. Polar diagrams in ORC/OpenCPN semicolon-delimited CSV format. Land avoidance via GSHHG. Result stored in SignalK `resources/routes` for use in other applications. Leaflet-based UI.
+A SignalK webapp that calculates time-optimal sailing routes using live weather forecasts (ECMWF wind, ECMWF-WAM waves, CMEMS currents via Windy tiles) and the isochrone method. Polar diagrams in ORC/OpenCPN semicolon-delimited CSV format. Land avoidance via GSHHG. All computation runs client-side (Web Worker). Svelte 5 + MapLibre GL JS UI.
 
 ## Code Quality Principles
 
@@ -18,17 +18,15 @@ All code is TypeScript. Use strict type checking; avoid `any`. Validate external
 
 ## Performance
 
-The plugin is intended to run on a Raspberry Pi 3–5, often on battery. The isochrone inner loop (per-point × per-heading × per-time-step) is the hot path — keep it allocation-free. Rules:
+All routing computation runs client-side in a Web Worker. The isochrone inner loop (per-point x per-heading x per-time-step) is the hot path. Rules:
 
-- Guard `debug()` arguments — wrap with `debug.enabled &&` to avoid eager evaluation.
 - Build objects in their final shape on hot paths (consistent key order for V8 hidden classes).
 - Minimize allocations in the isochrone loop: hoist constants to module scope, prefer `for...of` over `.forEach`.
-- Use `structuredClone`, not `JSON.parse(JSON.stringify(...))`, for deep cloning.
 - Prefer `Set` over `Array.includes` for repeated membership checks.
 
 ## Testing
 
-All new code requires tests. Test behaviour, not implementation. Unit tests for business logic (polar interpolation, geo math, isochrone pruning); integration tests for GRIB loading and route output.
+All new code requires tests. Test behaviour, not implementation. Unit tests for business logic (polar interpolation, geo math, isochrone pruning); integration tests for route output.
 
 ## Git Commit Conventions
 
@@ -67,18 +65,11 @@ Before performing any build, deploy, install, or test operation, read `DEVELOPME
 
 All requirements and design decisions must be recorded in `SPEC.md` at the repo root before any code is written. If it is not in SPEC.md, it is not decided.
 
-## Session Start Rule
-
-At the start of every session, read and apply all rules in:
-- `~/.claude/CLAUDE.md` (global rules)
-- `~/src/weather-routing/CLAUDE.md` (project rules)
-- All memory files listed in `~/.claude/projects/-home-kw-src-weather-routing/memory/MEMORY.md`
-
 ## Nautical Safety Rule
 
 This plugin produces routes that sailors may follow at sea. Any silent fallback, soft failure, or substitution that causes the route to be calculated with different inputs than the user specified is a safety hazard — the sailor will act on a route they believe reflects their intended parameters.
 
-Never implement silent fallbacks for mismatched or out-of-range inputs. If the user's input cannot be honoured exactly (wrong date, outside GRIB coverage, start on land, etc.), return a hard error that requires the user to correct the input. Do not substitute nearest available values, clamp silently, or proceed with a warning that can be missed. Fail loudly, fail early, fail clearly.
+Never implement silent fallbacks for mismatched or out-of-range inputs. If the user's input cannot be honoured exactly (wrong date, start on land, etc.), return a hard error that requires the user to correct the input. Do not substitute nearest available values, clamp silently, or proceed with a warning that can be missed. Fail loudly, fail early, fail clearly.
 
 See also: **No Assumptions Rule** — assumptions about equivalent inputs (e.g. using nearest available data as a proxy for requested data) are both an assumption violation and a safety violation.
 
@@ -89,10 +80,8 @@ Do not assume things, and do not simplify things on your own. If a decision has 
 Before using any value, dataset, or boundary as a proxy for something else, ask: is this explicitly required, or am I assuming it's equivalent? This applies to algorithms, data filters, display choices, query boundaries, and any other design decision. In a nautical routing context, assuming two inputs are equivalent can be a safety hazard — see also: **Nautical Safety Rule**.
 
 Examples of assumptions that caused real bugs in this project:
-- Using the GRIB bbox as the land overlay query boundary (BUG-14) — violated REQ-17
 - Stride sampling and size filtering on land polygons (BUG-12) — violated REQ-17
 - Assuming the package was published to npm — caused wrong installation instructions in README
-- Assuming that the grib data was incorrect (BUG-65)
 
 ## Bug During Implementation Rule
 
@@ -104,7 +93,7 @@ Before acting on any user message, ask: does this describe behavior that differs
 
 When a bug is reported: write one entry to BUGS.md and stop. No code reads, no root cause analysis, no proposed fix, no troubleshooting of any kind. There are no exceptions — even if the code was just written, even if the cause seems obvious.
 
-This rule is a focus/scope guardrail, not a format preference: investigating "why" is a rabbit hole that pulls effort off what the user is working on. Before writing any BUGS.md entry, re-read this rule and the worked example in `things-opencode-will-not-do-again.md`, then apply the self-check: the entry must be **symptom-only**. If you are writing "because", naming a function/class/file, or explaining a mechanism, stop and delete it — the entry records what was observed, nothing more. Investigation/root-cause notes are added to the entry only later, when explicitly authorised, and are documented as they happen.
+This rule is a focus/scope guardrail, not a format preference: investigating "why" is a rabbit hole that pulls effort off what the user is working on. Before writing any BUGS.md entry, apply the self-check: the entry must be **symptom-only**. If you are writing "because", naming a function/class/file, or explaining a mechanism, stop and delete it — the entry records what was observed, nothing more. Investigation/root-cause notes are added to the entry only later, when explicitly authorised, and are documented as they happen.
 
 ## New Requirements Rule
 
@@ -147,4 +136,4 @@ Deliver exactly what was asked, including any required follow-ups (e.g. creating
 
 ## Test-Result Triage Rule
 
-Before coding any test-result fix, classify it: **(1) in-scope defect** of the feature currently being built → fix it; **(2) anything else** — a different subsystem, new or pre-existing behaviour, or a risky change to shared code → log to `BUGS.md`/`SPEC.md` + a GitHub issue and **ask before coding**. Fix the class-1 items; only log/ask the class-2 ones. Never replace a reported class-1 bug with a class-2 change. (Worked example: the 2026-06-20 scrubber incident in `things-opencode-will-not-do-again.md`.)
+Before coding any test-result fix, classify it: **(1) in-scope defect** of the feature currently being built → fix it; **(2) anything else** — a different subsystem, new or pre-existing behaviour, or a risky change to shared code → log to `BUGS.md`/`SPEC.md` + a GitHub issue and **ask before coding**. Fix the class-1 items; only log/ask the class-2 ones. Never replace a reported class-1 bug with a class-2 change.

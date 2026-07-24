@@ -1,5 +1,5 @@
 {
-  "name": "@signalk-weather-routing/windy-lib",
+  "name": "@winga-weather-routing/windy-lib",
   "version": "0.1.0",
   "description": "Reverse-engineered Windy.com internal API client — tiles, point forecasts, auth",
   "type": "module",

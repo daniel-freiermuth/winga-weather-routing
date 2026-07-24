@@ -14,7 +14,7 @@ Items 1-6 are a **hard gate**. The agent must NOT:
 
 **Workflow:**
 1. Implement (items 1-4: build, lint, format, test)
-2. Deploy (item 5: copy to container + restart)
+2. Deploy (item 5: build succeeds, dev server verified)
 3. Ask user to test — **STOP HERE. Do not proceed to Phase 2. Do not create a PR. Do not ask for merge.**
 4. Only after explicit user confirmation: Phase 2 docs (items 7-9)
 5. Phase 2 commit (items 10-11)
@@ -30,7 +30,7 @@ DoD Checklist:
   [ ] 2. Linting passes (npm run lint)
   [ ] 3. Formatting passes (npm run format:check)
   [ ] 4. Tests pass (npm test)
-  [ ] 5. Deployed to test container (if applicable)
+  [ ] 5. Deployed and verified (if applicable)
   [ ] 6. User confirmed it works
   [ ] 7. BUGS.md / SPEC.md updated (row moved to correct table)
   [ ] 8. CHANGELOG.md updated under ## Upcoming
@@ -54,7 +54,7 @@ Before reporting implementation complete to the user:
 - **Linting passes:** `npm run lint` passes (eslint, no warnings)
 - **Formatting passes:** `npm run format:check` passes (prettier)
 - **Tests pass:** `npm test` passes (node:test)
-- **Deployed:** Changes deployed to the test container and verified
+- **Deployed:** Changes built and verified working
 - **User confirmed:** The user has explicitly confirmed the implementation works
 
 ---

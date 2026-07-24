@@ -25,7 +25,7 @@ function detectSkBase(): string {
     }
     return stored;
   }
-  if (location.pathname.includes('signalk-weather-routing') || location.port === '3000') return '';
+  if (location.pathname.includes('winga-weather-routing') || location.pathname.includes('signalk-weather-routing') || location.port === '3000') return '';
   return '';
 }
 

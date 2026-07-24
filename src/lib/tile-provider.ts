@@ -31,11 +31,11 @@ import {
   getValidTimes,
   fetchMinifest,
   browserRgbaDecoder,
-} from '@signalk-weather-routing/windy-lib';
+} from '@winga-weather-routing/windy-lib';
 import type {
   WindyModelKey,
   WindyTileHeader,
-} from '@signalk-weather-routing/windy-lib';
+} from '@winga-weather-routing/windy-lib';
 import type { BoundingBox, CurrentProvider, GribFileMeta, WindProvider, WindVector } from '../types';
 
 // ── Cached tile ───────────────────────────────────────────────────────────────

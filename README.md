@@ -34,7 +34,7 @@ Install from the **SignalK App Store** (Server -> Appstore -> Available) and res
 
 ## Usage
 
-Open the webapp at `http://<your-signalk-host>:3000/signalk-weather-routing/`.
+Open the webapp at `http://<your-signalk-host>:3000/winga-weather-routing/`.
 
 ### Workflow
 

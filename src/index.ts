@@ -24,7 +24,7 @@ interface Plugin {
 
 module.exports = (app: SignalKApp): Plugin => {
   return {
-    id: 'signalk-weather-routing',
+    id: 'winga-weather-routing',
     name: 'Weather Routing',
     description:
       'Weather routing plugin for Signal K using GRIB2 forecasts and isochrone algorithm.',

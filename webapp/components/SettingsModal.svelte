@@ -325,7 +325,7 @@
           <div class="section-title">About</div>
           <span class="about-text">
             v{buildVersion}&ensp;·&ensp;<a
-              href="https://github.com/kristianwiklund/signalk-weather-routing"
+              href="https://github.com/daniel-freiermuth/winga-weather-routing"
               target="_blank"
               rel="noopener">GitHub</a>
           </span>

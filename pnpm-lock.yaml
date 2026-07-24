@@ -8,7 +8,7 @@ importers:
 
   .:
     dependencies:
-      '@signalk-weather-routing/windy-lib':
+      '@winga-weather-routing/windy-lib':
         specifier: workspace:*
         version: link:windy-lib/ts
     devDependencies:

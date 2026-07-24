@@ -112,5 +112,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: signalk-weather-routing-tgz
+          name: winga-weather-routing-tgz
           path: "*.tgz"

@@ -15,8 +15,8 @@ import {
   sampleTilePixel,
   latLonToTile,
   latLonToPixel,
-} from '@signalk-weather-routing/windy-lib';
-import type { WindyMinifest, WindyTileHeader } from '@signalk-weather-routing/windy-lib';
+} from '@winga-weather-routing/windy-lib';
+import type { WindyMinifest, WindyTileHeader } from '@winga-weather-routing/windy-lib';
 import type { BoundingBox, LandIndex } from '../src/types';
 
 // ── Tile cache ────────────────────────────────────────────────────────────────
