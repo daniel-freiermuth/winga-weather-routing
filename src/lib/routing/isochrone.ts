@@ -559,6 +559,9 @@ function backtrack(
     const timeMs = arrived.time.getTime();
     const gustMs = wind.getGustAtTime ? wind.getGustAtTime(end.lat, end.lon, timeMs) : undefined;
     const cur = current ? current.getCurrent(end.lat, end.lon, arrived.time) : undefined;
+    const endWind = wind.getWindAtTime(end.lat, end.lon, timeMs);
+    const endWowU = endWind.u - (cur?.u ?? 0);
+    const endWowV = endWind.v - (cur?.v ?? 0);
     route.unshift({
       lat: end.lat,
       lon: end.lon,
@@ -576,6 +579,8 @@ function backtrack(
       currentV: cur?.v,
       wavePeriod: wind.getWavePeriodAtTime ? wind.getWavePeriodAtTime(end.lat, end.lon, timeMs) : undefined,
       waveDir: wind.getWaveDirAtTime ? wind.getWaveDirAtTime(end.lat, end.lon, timeMs) : undefined,
+      wowTws: cur ? windSpeedKnots(endWowU, endWowV) : undefined,
+      wowDir: cur ? windDirection(endWowU, endWowV) : undefined,
     });
   }
 
@@ -585,6 +590,9 @@ function backtrack(
     const resampled = wind.getWindAtTime(p.lat, p.lon, timeMs);
     const gustMs = wind.getGustAtTime ? wind.getGustAtTime(p.lat, p.lon, timeMs) : undefined;
     const cur = current ? current.getCurrent(p.lat, p.lon, p.time) : undefined;
+    // Wind-over-water: true wind minus current
+    const wowU = resampled.u - (cur?.u ?? 0);
+    const wowV = resampled.v - (cur?.v ?? 0);
     route.unshift({
       lat: p.lat,
       lon: p.lon,
@@ -602,6 +610,8 @@ function backtrack(
       currentV: cur?.v,
       wavePeriod: wind.getWavePeriodAtTime ? wind.getWavePeriodAtTime(p.lat, p.lon, timeMs) : undefined,
       waveDir: wind.getWaveDirAtTime ? wind.getWaveDirAtTime(p.lat, p.lon, timeMs) : undefined,
+      wowTws: cur ? windSpeedKnots(wowU, wowV) : undefined,
+      wowDir: cur ? windDirection(wowU, wowV) : undefined,
     });
     p = p.parent;
   }

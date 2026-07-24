@@ -66,6 +66,7 @@
   const hasWavePeriod = $derived(meta.some(m => m.wavePeriod != null || m.waveDir != null));
   const hasGust = $derived(meta.some(m => m.gustKn != null));
   const hasCurrent = $derived(meta.some(m => m.currentSpeedKn != null));
+  const hasWow = $derived(meta.some(m => m.wowTws != null));
 
   // Wind speed unit cycling: kn → m/s → km/h → Bft
   const WIND_UNITS = ['kn', 'm/s', 'km/h', 'Bft'] as const;
@@ -212,10 +213,21 @@
             meta.map(m => `${windArrow(m.windDir)}${Math.round(m.windDir)}`),
             undefined, undefined,
             'True wind direction — where the wind blows FROM (meteorological convention)')}
+          {#if hasWow}
+            {@render dataRow('WoW', windUnit,
+              meta.map(m => m.wowTws != null ? convertWind(m.wowTws) : null),
+              (i) => { const w = meta[i]!.wowTws; return w != null ? windColor(w) : null; },
+              cycleWindUnit,
+              'Wind over Water speed — true wind minus current (what the boat feels)')}
+            {@render dataRow('WoW dir', '°',
+              meta.map(m => m.wowDir != null ? `${windArrow(m.wowDir)}${Math.round(m.wowDir)}` : null),
+              undefined, undefined,
+              'Wind over Water direction — true wind adjusted for current (FROM convention)')}
+          {/if}
           {@render dataRow('TWA', '°',
             meta.map(m => `${Math.round(m.twa)}`),
             undefined, undefined,
-            'True Wind Angle — angle between CTW and wind-over-water direction (used for polar lookup)')}
+            'True Wind Angle — |CTW − WoW direction|, the angle the boat sails relative to the wind-over-water')}
           {@render dataRow('CTW', '°',
             meta.map(m => `${Math.round(m.heading)}`),
             undefined, undefined,

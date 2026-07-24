@@ -167,6 +167,8 @@ export interface RoutePoint {
   currentV?: number | undefined; // ocean current north component (m/s)
   wavePeriod?: number | undefined; // mean wave period (seconds)
   waveDir?: number | undefined; // wave propagation direction (degrees from north)
+  wowTws?: number | undefined; // wind-over-water speed (knots) = true wind - current
+  wowDir?: number | undefined; // wind-over-water direction (degrees, meteorological FROM)
 }
 
 export interface CalculationRequest {

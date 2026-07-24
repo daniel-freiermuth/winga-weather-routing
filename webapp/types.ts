@@ -11,6 +11,8 @@ export interface WaypointMeta {
   sogKn?: number; // speed over ground (knots)
   wavePeriod?: number; // mean wave period (seconds)
   waveDir?: number; // wave propagation direction (degrees from north)
+  wowTws?: number; // wind-over-water speed (knots)
+  wowDir?: number; // wind-over-water direction (degrees, meteorological FROM)
 }
 
 export interface GraphLayout {
