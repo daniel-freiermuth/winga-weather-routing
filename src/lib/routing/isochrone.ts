@@ -559,6 +559,7 @@ function backtrack(
       gustKn: gustMs != null ? gustMs * 1.94384 : undefined,
       currentU: cur?.u,
       currentV: cur?.v,
+      wavePeriod: wind.getWavePeriodAtTime ? wind.getWavePeriodAtTime(end.lat, end.lon, timeMs) : undefined,
     });
   }
 
@@ -583,6 +584,7 @@ function backtrack(
       gustKn: gustMs != null ? gustMs * 1.94384 : undefined,
       currentU: cur?.u,
       currentV: cur?.v,
+      wavePeriod: wind.getWavePeriodAtTime ? wind.getWavePeriodAtTime(p.lat, p.lon, timeMs) : undefined,
     });
     p = p.parent;
   }

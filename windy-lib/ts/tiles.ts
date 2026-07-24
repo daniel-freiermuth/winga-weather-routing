@@ -131,9 +131,10 @@ export function buildTileUrl(
   x: number,
   y: number,
   filename: string,
-  level: WindyLevel = "surface"
+  level: WindyLevel = "surface",
+  format: "jpg" | "png" = "jpg"
 ): string {
-  return `${IMS_BASE}/${model}/${modelRun}/${validTime}/wm_grid_257/${z}/${x}/${y}/${filename}-${level}.jpg`;
+  return `${IMS_BASE}/${model}/${modelRun}/${validTime}/wm_grid_257/${z}/${x}/${y}/${filename}-${level}.${format}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -243,41 +244,56 @@ export function decodeTileHeader(rgba: Uint8Array): WindyTileHeader {
     decoderRstep: ((floats[1] ?? 0) - (floats[0] ?? 0)) / 255,
     decoderGmin:  floats[2] ?? 0,
     decoderGstep: ((floats[3] ?? 0) - (floats[2] ?? 0)) / 255,
+    decoderBmin:  floats[4] ?? 0,
+    decoderBstep: ((floats[5] ?? 0) - (floats[4] ?? 0)) / 255,
   };
 }
 
 /**
  * Sample a single pixel from the data region (rows 8–264) of a decoded tile.
  *
- * @param rgba   Full 265×257 RGBA buffer (same as passed to decodeTileHeader).
- * @param header Decoded from decodeTileHeader().
- * @param px     Pixel column, 0–256.
- * @param py     Pixel row within data region (0 = first data row), 0–256.
- * @param isOceanModel  Set true for CMEMS to enable the B-channel land check.
+ * Works for all overlay types:
+ *   Vector (wind, currents): u/v from R/G, speed = magnitude, height = 0.
+ *   Wave (waves, swell):     period from R/G, height from B.
+ *   Scalar (temp, rain…):    value in u, v = 0, height = 0.
+ *
+ * @param rgba          Full 265×257 RGBA buffer.
+ * @param header        Decoded from decodeTileHeader().
+ * @param px            Pixel column, 0–256.
+ * @param py            Pixel row within data region (0 = first data row), 0–256.
+ * @param isOceanModel  For CMEMS JPEG tiles: checks B < 250 as land sentinel.
+ *                      For PNG tiles (waves): checks alpha > 0 instead.
+ * @param isPng         Set true for PNG tiles (waves, swell, sst) — uses alpha
+ *                      channel for land masking instead of the B-channel sentinel.
  */
 export function sampleTilePixel(
   rgba: Uint8Array,
   header: WindyTileHeader,
   px: number,
   py: number,
-  isOceanModel = false
+  isOceanModel = false,
+  isPng = false
 ): WindyTilePixelValue {
-  const row = py + HEADER_ROWS; // skip header rows
+  const row = py + HEADER_ROWS;
   const offset = (row * TILE_SIZE + px) * 4;
 
   const R = rgba[offset] ?? 0;
   const G = rgba[offset + 1] ?? 0;
   const B = rgba[offset + 2] ?? 0;
+  const A = rgba[offset + 3] ?? 255;
 
-  // CMEMS uses B ≈ 255 as "land / no data" sentinel.
-  const hasData = !isOceanModel || B < 250;
+  // PNG tiles (waves, sst): alpha=0 means land/no-data.
+  // CMEMS JPEG tiles: B ≈ 255 means land (no alpha in JPEG).
+  // JPEG weather tiles: always have data.
+  const hasData = isPng ? A > 0 : !isOceanModel || B < 250;
 
   const u = R * header.decoderRstep + header.decoderRmin;
   const v = G * header.decoderGstep + header.decoderGmin;
+  const height = B * header.decoderBstep + header.decoderBmin;
   const speed = Math.sqrt(u * u + v * v);
   const direction = ((Math.atan2(u, v) * 180) / Math.PI + 360) % 360;
 
-  return { u, v, speed, direction, hasData };
+  return { u, v, speed, direction, height, hasData };
 }
 
 /**
@@ -326,26 +342,29 @@ export function latLonToPixelFrac(
  */
 export function sampleTileBilinear(
   rgba: Uint8Array, header: WindyTileHeader,
-  px: number, py: number, isOceanModel = false
+  px: number, py: number, isOceanModel = false, isPng = false
 ): WindyTilePixelValue {
   const x0 = Math.floor(px), y0 = Math.floor(py);
   const x1 = Math.min(x0 + 1, TILE_SIZE - 1);
   const y1 = Math.min(y0 + 1, TILE_SIZE - 1);
   const fx = px - x0, fy = py - y0;
 
-  const s00 = sampleTilePixel(rgba, header, x0, y0, isOceanModel);
-  const s10 = sampleTilePixel(rgba, header, x1, y0, isOceanModel);
-  const s01 = sampleTilePixel(rgba, header, x0, y1, isOceanModel);
-  const s11 = sampleTilePixel(rgba, header, x1, y1, isOceanModel);
+  const s00 = sampleTilePixel(rgba, header, x0, y0, isOceanModel, isPng);
+  const s10 = sampleTilePixel(rgba, header, x1, y0, isOceanModel, isPng);
+  const s01 = sampleTilePixel(rgba, header, x0, y1, isOceanModel, isPng);
+  const s11 = sampleTilePixel(rgba, header, x1, y1, isOceanModel, isPng);
 
-  // If any corner has no data, fall back to nearest
   if (!s00.hasData || !s10.hasData || !s01.hasData || !s11.hasData) {
-    return sampleTilePixel(rgba, header, Math.round(px), Math.round(py), isOceanModel);
+    return sampleTilePixel(rgba, header, Math.round(px), Math.round(py), isOceanModel, isPng);
   }
 
-  const u = s00.u * (1 - fx) * (1 - fy) + s10.u * fx * (1 - fy) + s01.u * (1 - fx) * fy + s11.u * fx * fy;
-  const v = s00.v * (1 - fx) * (1 - fy) + s10.v * fx * (1 - fy) + s01.v * (1 - fx) * fy + s11.v * fx * fy;
+  const lerp4 = (a: number, b: number, c: number, d: number) =>
+    a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy;
+
+  const u = lerp4(s00.u, s10.u, s01.u, s11.u);
+  const v = lerp4(s00.v, s10.v, s01.v, s11.v);
+  const height = lerp4(s00.height, s10.height, s01.height, s11.height);
   const speed = Math.sqrt(u * u + v * v);
   const direction = ((Math.atan2(u, v) * 180) / Math.PI + 360) % 360;
-  return { u, v, speed, direction, hasData: true };
+  return { u, v, speed, direction, height, hasData: true };
 }

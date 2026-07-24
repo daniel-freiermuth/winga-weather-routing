@@ -213,12 +213,8 @@ export class WindyClient {
     model?: WindyModelKey
   ): Promise<string> {
     const overlayInfo = WINDY_OVERLAYS[overlay];
-    const modelKey = model ?? (overlayInfo.oceanOnly ? "cmems" : "ecmwf");
+    const modelKey: WindyModelKey = model ?? overlayInfo.model;
     const modelInfo = WINDY_MODELS[modelKey];
-
-    if (overlayInfo.oceanOnly && !modelInfo.oceanOnly) {
-      throw new Error(`Overlay "${overlay}" is ocean-only; omit model or pass "cmems".`);
-    }
 
     const minifest = await this.getMinifest(modelKey);
     const modelRun = refToCompact(minifest.ref);
@@ -226,7 +222,7 @@ export class WindyClient {
     const now = Date.now();
     const step = steps.findLast((s) => new Date(s.iso).getTime() <= now) ?? steps[0]!;
 
-    return buildTileUrl(modelInfo.minifestId, modelRun, step.compact, z, x, y, overlayInfo.filename);
+    return buildTileUrl(modelInfo.minifestId, modelRun, step.compact, z, x, y, overlayInfo.filename, "surface", overlayInfo.format);
   }
 
   /**
@@ -252,12 +248,8 @@ export class WindyClient {
     level: WindyLevel = "surface"
   ): Promise<TileInfo> {
     const overlayInfo = WINDY_OVERLAYS[overlay];
-    const modelKey = model ?? (overlayInfo.oceanOnly ? "cmems" : "ecmwf");
+    const modelKey: WindyModelKey = model ?? overlayInfo.model;
     const modelInfo = WINDY_MODELS[modelKey];
-
-    if (overlayInfo.oceanOnly && !modelInfo.oceanOnly) {
-      throw new Error(`Overlay "${overlay}" is ocean-only; omit model or pass "cmems".`);
-    }
 
     const minifest = await this.getMinifest(modelKey);
     const modelRun = refToCompact(minifest.ref);
@@ -268,11 +260,11 @@ export class WindyClient {
     const currentStep = steps.findLast((s) => new Date(s.iso).getTime() <= now) ?? steps[0]!;
 
     const makeTemplate = (validTime: string): string =>
-      buildTileUrl(modelInfo.minifestId, modelRun, validTime, 0, 0, 0, overlayInfo.filename, level)
+      buildTileUrl(modelInfo.minifestId, modelRun, validTime, 0, 0, 0, overlayInfo.filename, level, overlayInfo.format)
         .replace("/0/0/0/", "/{z}/{x}/{y}/");
 
     const tileUrl = (z: number, x: number, y: number): string =>
-      buildTileUrl(modelInfo.minifestId, modelRun, currentStep.compact, z, x, y, overlayInfo.filename, level);
+      buildTileUrl(modelInfo.minifestId, modelRun, currentStep.compact, z, x, y, overlayInfo.filename, level, overlayInfo.format);
 
     return {
       leafletTemplate: makeTemplate(currentStep.compact),
@@ -323,12 +315,8 @@ export class WindyClient {
   ): Promise<WindyTilePixelValue> {
     const { rgbaDecoder, level = "surface", zoom = 3 } = opts;
     const overlayInfo = WINDY_OVERLAYS[overlay];
-    const modelKey = opts.model ?? (overlayInfo.oceanOnly ? "cmems" : "ecmwf");
+    const modelKey: WindyModelKey = opts.model ?? overlayInfo.model;
     const modelInfo = WINDY_MODELS[modelKey];
-
-    if (overlayInfo.oceanOnly && !modelInfo.oceanOnly) {
-      throw new Error(`Overlay "${overlay}" is ocean-only; omit model or pass "cmems".`);
-    }
 
     const minifest = await this.getMinifest(modelKey);
     const modelRun = refToCompact(minifest.ref);
@@ -337,11 +325,12 @@ export class WindyClient {
     const step = steps.findLast((s) => new Date(s.iso).getTime() <= now) ?? steps[0]!;
 
     const { x, y } = latLonToTile(position.lat, position.lon, zoom);
-    const url = buildTileUrl(modelInfo.minifestId, modelRun, step.compact, zoom, x, y, overlayInfo.filename, level);
+    const url = buildTileUrl(modelInfo.minifestId, modelRun, step.compact, zoom, x, y, overlayInfo.filename, level, overlayInfo.format);
 
     const rgba = await rgbaDecoder(url);
     const header = decodeTileHeader(rgba);
     const { px, py } = latLonToPixel(position.lat, position.lon, zoom, x, y);
-    return sampleTilePixel(rgba, header, px, py, modelInfo.oceanOnly);
+    const isPng = overlayInfo.format === "png";
+    return sampleTilePixel(rgba, header, px, py, modelInfo.oceanOnly, isPng);
   }
 }

@@ -139,34 +139,48 @@ export const WINDY_MODELS = {
     hasPointForecast: false,
     oceanOnly: true,
   },
+  ecmwfWam: {
+    name: "ECMWF WAM",
+    minifestId: "ecmwf-wam",
+    forecastId: "ecmwfWaves",
+    resolutionKm: 14,
+    freeTierHours: 141,
+    premiumHours: 360,
+    hasPointForecast: true,
+    oceanOnly: true,
+  },
 } as const satisfies Record<string, WindyModelInfo>;
 
 export type WindyModelKey = keyof typeof WINDY_MODELS;
 
 /**
  * Overlay → tile metadata.
- * Use `WINDY_OVERLAYS[key].filename` for the stem in tile URLs.
- * `vectorField: true` means R=U (east), G=V (north) channels.
- * `oceanOnly: true`  means the overlay requires the cmems model.
+ *
+ *   filename    file stem in tile URL: `{filename}-{level}.{format}`
+ *   format      tile image format: "jpg" (JPEG, weather) or "png" (PNG+alpha, waves/ocean)
+ *   vectorField R=U, G=V two-component vector (wind, currents)
+ *   waveField   R=period_U, G=period_V, B=height — three-component wave encoding
+ *   oceanOnly   overlay only has data over ocean
+ *   model       default model key for this overlay (auto-selected by the client)
  */
 export const WINDY_OVERLAYS = {
-  wind:         { filename: "wind",             vectorField: true,  oceanOnly: false },
-  gust:         { filename: "gust",             vectorField: false, oceanOnly: false },
-  temp:         { filename: "temp",             vectorField: false, oceanOnly: false },
-  rain:         { filename: "rain",             vectorField: false, oceanOnly: false },
-  rainAccu:     { filename: "rainAccu",         vectorField: false, oceanOnly: false },
-  snowAccu:     { filename: "snowAccu",         vectorField: false, oceanOnly: false },
-  clouds:       { filename: "clouds",           vectorField: false, oceanOnly: false },
-  lclouds:      { filename: "lclouds",          vectorField: false, oceanOnly: false },
-  mclouds:      { filename: "mclouds",          vectorField: false, oceanOnly: false },
-  hclouds:      { filename: "hclouds",          vectorField: false, oceanOnly: false },
-  pressure:     { filename: "pressure",         vectorField: false, oceanOnly: false },
-  waves:        { filename: "waves",            vectorField: true,  oceanOnly: false },
-  swell1:       { filename: "swell1",           vectorField: true,  oceanOnly: false },
-  swell2:       { filename: "swell2",           vectorField: true,  oceanOnly: false },
-  currents:     { filename: "seacurrents",      vectorField: true,  oceanOnly: true  },
-  currentsTide: { filename: "seacurrents_tide", vectorField: true,  oceanOnly: true  },
-  sst:          { filename: "sst",              vectorField: false, oceanOnly: true  },
+  wind:         { filename: "wind",             format: "jpg", vectorField: true,  waveField: false, oceanOnly: false, model: "ecmwf"    },
+  gust:         { filename: "gust",             format: "jpg", vectorField: false, waveField: false, oceanOnly: false, model: "ecmwf"    },
+  temp:         { filename: "temp",             format: "jpg", vectorField: false, waveField: false, oceanOnly: false, model: "ecmwf"    },
+  rain:         { filename: "rain",             format: "jpg", vectorField: false, waveField: false, oceanOnly: false, model: "ecmwf"    },
+  rainAccu:     { filename: "rainAccu",         format: "jpg", vectorField: false, waveField: false, oceanOnly: false, model: "ecmwf"    },
+  snowAccu:     { filename: "snowAccu",         format: "jpg", vectorField: false, waveField: false, oceanOnly: false, model: "ecmwf"    },
+  clouds:       { filename: "clouds",           format: "jpg", vectorField: false, waveField: false, oceanOnly: false, model: "ecmwf"    },
+  lclouds:      { filename: "lclouds",          format: "jpg", vectorField: false, waveField: false, oceanOnly: false, model: "ecmwf"    },
+  mclouds:      { filename: "mclouds",          format: "jpg", vectorField: false, waveField: false, oceanOnly: false, model: "ecmwf"    },
+  hclouds:      { filename: "hclouds",          format: "jpg", vectorField: false, waveField: false, oceanOnly: false, model: "ecmwf"    },
+  pressure:     { filename: "pressure",         format: "jpg", vectorField: false, waveField: false, oceanOnly: false, model: "ecmwf"    },
+  waves:        { filename: "waves",            format: "png", vectorField: false, waveField: true,  oceanOnly: true,  model: "ecmwfWam" },
+  swell1:       { filename: "swell1",           format: "png", vectorField: false, waveField: true,  oceanOnly: true,  model: "ecmwfWam" },
+  swell2:       { filename: "swell2",           format: "png", vectorField: false, waveField: true,  oceanOnly: true,  model: "ecmwfWam" },
+  currents:     { filename: "seacurrents",      format: "jpg", vectorField: true,  waveField: false, oceanOnly: true,  model: "cmems"    },
+  currentsTide: { filename: "seacurrents_tide", format: "jpg", vectorField: true,  waveField: false, oceanOnly: true,  model: "cmems"    },
+  sst:          { filename: "sst",              format: "png", vectorField: false, waveField: false, oceanOnly: true,  model: "cmems"    },
 } as const;
 
 export type WindyOverlay = keyof typeof WINDY_OVERLAYS;
@@ -309,37 +323,39 @@ export interface WindyPointForecastResponse {
 
 /**
  * Scale/offset parameters decoded from the 8-row header embedded in each
- * forecast JPEG tile (265×257 pixels total; first 8 rows are metadata).
+ * forecast tile (265×257 pixels; first 8 rows are metadata, both JPEG and PNG).
  *
- * Physical value = pixel_channel / 255 * (255 * step) + min
- *               = pixel_channel * step + min
+ * The header stores 7 float32 values: [Rmin, Rmax, Gmin, Gmax, Bmin, Bmax, ?]
+ * Step = (max - min) / 255. Physical value = pixel * step + min.
  *
- * For vector fields (wind, currents):
- *   U (east)  = R * decoderRstep + decoderRmin
- *   V (north) = G * decoderGstep + decoderGmin
- *   speed     = sqrt(U² + V²)
+ * Channel usage depends on the overlay:
+ *   Vector (wind, currents):  R=U (east),     G=V (north),  B unused
+ *   Wave (waves, swell):      R=period_U,     G=period_V,   B=height (metres)
+ *   Scalar (temp, rain…):     R=value,        G,B unused
  */
 export interface WindyTileHeader {
-  /** Scale factor for the R channel (m/s per DN). */
   decoderRstep: number;
-  /** Offset for the R channel (physical value at pixel=0). */
   decoderRmin: number;
-  /** Scale factor for the G channel (m/s per DN). */
   decoderGstep: number;
-  /** Offset for the G channel. */
   decoderGmin: number;
+  /** B-channel scale (wave height, m per DN). Zero when B is unused. */
+  decoderBstep: number;
+  /** B-channel offset (wave height min). Zero when B is unused. */
+  decoderBmin: number;
 }
 
 /** Decoded meteorological values at a single tile pixel. */
 export interface WindyTilePixelValue {
-  /** East component, m/s (U). Also the scalar value for non-vector fields. */
+  /** R-channel decoded value. Wind: east component (m/s). Wave: period_U. Scalar: the value itself. */
   u: number;
-  /** North component, m/s (V). Zero for scalar fields. */
+  /** G-channel decoded value. Wind: north component (m/s). Wave: period_V. */
   v: number;
-  /** Magnitude. For scalars equals |u|. */
+  /** Magnitude of (u, v). Wind/current speed (m/s). Wave: total period (s). */
   speed: number;
-  /** Bearing from north, degrees true. */
+  /** Bearing from north, degrees true. Wind: direction wind is blowing TO. Wave: propagation direction. */
   direction: number;
-  /** False if the pixel is land or outside model coverage (B channel ≈ 255 for CMEMS). */
+  /** B-channel decoded value. Wave: significant wave height (m). Zero for non-wave overlays. */
+  height: number;
+  /** False if the pixel is land / no data (alpha=0 for PNG, B≈255 for CMEMS JPEG). */
   hasData: boolean;
 }

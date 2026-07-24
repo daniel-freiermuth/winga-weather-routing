@@ -9,6 +9,7 @@ export interface WaypointMeta {
   currentDir?: number; // degrees, direction current flows TOWARDS
   cogDeg?: number; // course over ground (degrees)
   sogKn?: number; // speed over ground (knots)
+  wavePeriod?: number; // mean wave period (seconds)
 }
 
 export interface GraphLayout {
