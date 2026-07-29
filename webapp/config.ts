@@ -6,7 +6,6 @@ import { fmt } from './units';
 import { waveOverlayMaxMStore } from './stores';
 import { configState } from './config-state.svelte';
 
-export type { ConfigState } from './config-state.svelte';
 
 export interface ConfigCallbacks {
   setBuildVersion: (v: string) => void;

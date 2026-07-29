@@ -3,7 +3,7 @@
 
 const STORAGE_KEY = 'wr-prefs';
 
-export interface Prefs {
+interface Prefs {
   // Map position
   mapCenter: [number, number]; // [lng, lat]
   mapZoom: number;

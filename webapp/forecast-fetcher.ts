@@ -7,7 +7,7 @@ import type { WindPoint, WavePoint } from './stores';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 
 /** State tracking for the time axis */
-export interface TimeAxisState {
+interface TimeAxisState {
   windTimes: string[];
   windNativeTimes: string[];
   windTimesLoaded: boolean;

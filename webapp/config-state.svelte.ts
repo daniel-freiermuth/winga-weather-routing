@@ -11,4 +11,4 @@ export const configState = $state({
   unitPrefs: null as Record<string, UnitPref> | null,
 });
 
-export type ConfigState = typeof configState;
+type ConfigState = typeof configState;

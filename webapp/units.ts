@@ -44,9 +44,3 @@ export function fmt(value: number, category: UnitCategory, forceMs = false): { n
   return { num: raw.toFixed(decimals), sym: p.symbol ?? '' };
 }
 
-export function parse(displayVal: number, category: UnitCategory, forceMs = false): number {
-  if (forceMs) return displayVal * 1.94384; // m/s → kn
-  const p = get(unitPrefsStore)?.[category];
-  if (!p?.inverseFormula) return displayVal;
-  return _fromSI[category](_evalFormula(p.inverseFormula, displayVal));
-}

@@ -8,7 +8,7 @@ interface FmtResult {
   sym: string;
 }
 
-export interface RouteDisplayCtx {
+interface RouteDisplayCtx {
   map: maplibregl.Map;
   fmt: (value: number, category: 'speed' | 'depth', forceMs?: boolean) => FmtResult;
   windSpeedMs: boolean;
@@ -17,7 +17,7 @@ export interface RouteDisplayCtx {
   setStatus: (type: string, msg: string) => void;
 }
 
-export interface RouteDisplayResult {
+interface RouteDisplayResult {
   routeLayer: { sourceId: string; layerId: string };
   windBarbLayer: maplibregl.Marker[];
   legLabelLayer: { sourceId: string; layerId: string } | null;

@@ -2,7 +2,7 @@
 
 const R_NM = 3440.065; // Earth radius in nautical miles
 const RAD_TO_DEG = 180 / Math.PI;
-export const DEG_TO_RAD = Math.PI / 180;
+const DEG_TO_RAD = Math.PI / 180;
 
 export function haversineNM(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const dLat = (lat2 - lat1) * DEG_TO_RAD;
@@ -52,19 +52,3 @@ export function windDirection(u: number, v: number): number {
   return (Math.atan2(-u, -v) * RAD_TO_DEG + 360) % 360;
 }
 
-/** Find the index of the Date in `times` closest to `t`. */
-export function nearestIdx(times: Date[], t: Date): number {
-  const ms = t.getTime();
-  let best = 0,
-    bestDiff = Infinity;
-  let i = 0;
-  for (const entry of times) {
-    const diff = Math.abs(entry.getTime() - ms);
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      best = i;
-    }
-    i++;
-  }
-  return best;
-}

@@ -49,27 +49,6 @@ pub struct LegConfig {
     pub arrival_radius_nm: f64,
 }
 
-impl Default for LegConfig {
-    fn default() -> Self {
-        Self {
-            heading_step: 5.0,
-            sector_size: 1.0,
-            min_boat_speed: 0.3,
-            max_wind_kn: 0.0,
-            max_wave_m: 0.0,
-            motor_speed_kn: 0.0,
-            motor_below_kn: 0.0,
-            wait_for_wind: false,
-            tack_penalty_sec: 30.0,
-            tack_threshold_deg: 60.0,
-            cone_half_angle: 100.0,
-            cone_disable_lookahead_nm: 100.0,
-            max_heading_change: 120.0,
-            arrival_radius_nm: 2.0,
-        }
-    }
-}
-
 /// Callbacks into JS for data that lives in browser memory.
 pub trait DataProvider {
     /// Get wind u/v (m/s) at a position and time.

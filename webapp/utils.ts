@@ -1,14 +1,5 @@
 // Pure utility functions shared across the webapp.
 
-/** Escapes HTML special characters for safe insertion into innerHTML. */
-export function escapeHtml(str: string): string {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 /** Converts a Date to a datetime-local input value string. */
 export function toLocalDateTimeInput(d: Date): string {
@@ -16,28 +7,6 @@ export function toLocalDateTimeInput(d: Date): string {
   return `${String(d.getFullYear())}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** Format milliseconds as "Xd Xh Xm". */
-export function gmFormat(ms: number): string {
-  const d = Math.floor(ms / 86400000);
-  const h = Math.floor((ms % 86400000) / 3600000);
-  const m = Math.floor((ms % 3600000) / 60000);
-  return (d > 0 ? `${String(d)}d ` : '') + `${String(h)}h ${String(m)}m`;
-}
-
-/**
- * Returns indices where the time granularity changes (e.g. hourly → 3-hourly).
- * Used for rendering coverage bar segments.
- */
-export function granularityChanges(times: string[]): number[] {
-  if (times.length < 3) return [];
-  const changes: number[] = [];
-  for (let i = 2; i < times.length; i++) {
-    const d1 = new Date(times[i - 1]!).getTime() - new Date(times[i - 2]!).getTime();
-    const d2 = new Date(times[i]!).getTime() - new Date(times[i - 1]!).getTime();
-    if (Math.abs(d2 - d1) > 60000) changes.push(i - 1);
-  }
-  return changes;
-}
 
 /**
  * Sort frontier points by bearing from origin (for isochrone rendering).
