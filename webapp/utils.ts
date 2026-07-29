@@ -8,6 +8,16 @@ export function toLocalDateTimeInput(d: Date): string {
 }
 
 
+const DEG = Math.PI / 180;
+
+/** Geodesic initial bearing (great-circle formula). */
+function geodesicBearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const φ1 = lat1 * DEG, φ2 = lat2 * DEG, dλ = (lon2 - lon1) * DEG;
+  const y = Math.sin(dλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dλ);
+  return Math.atan2(y, x) / DEG; // degrees, -180..+180
+}
+
 /**
  * Sort frontier points by bearing from origin (for isochrone rendering).
  */
@@ -15,7 +25,7 @@ export function sortByBearing(pts: number[][], origin: { lat: number; lon: numbe
   return pts
     .slice()
     .sort(
-      (a, b) => Math.atan2(a[1]! - origin.lon, a[0]! - origin.lat) - Math.atan2(b[1]! - origin.lon, b[0]! - origin.lat),
+      (a, b) => geodesicBearing(origin.lat, origin.lon, a[0]!, a[1]!) - geodesicBearing(origin.lat, origin.lon, b[0]!, b[1]!),
     );
 }
 
@@ -29,7 +39,7 @@ export function splitByAngularGap(
   thresholdDeg: number,
 ): number[][][] {
   if (pts.length < 2) return [pts];
-  const bearing = (p: number[]) => (Math.atan2(p[1]! - origin.lon, p[0]! - origin.lat) * 180) / Math.PI;
+  const bearing = (p: number[]) => geodesicBearing(origin.lat, origin.lon, p[0]!, p[1]!);
   const bearings = pts.map(bearing);
   const angularGap = (a: number, b: number) => ((b - a + 540) % 360) - 180;
   const segments: number[][][] = [];
