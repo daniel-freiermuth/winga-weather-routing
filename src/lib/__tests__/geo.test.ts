@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { haversineNM, bearingTo, destinationPoint, windSpeedKnots, windDirection } from '../geo';
+import { haversineNM, bearingTo, destinationPoint, windSpeedKnots, windDirection, currentDirection } from '../geo';
 
 const EPSILON = 0.01; // 0.01 nm / 0.01 deg tolerance
 
@@ -73,4 +73,27 @@ void test('windDirection: southerly (blowing from south, u=0 v=5)', () => {
 void test('windDirection: westerly (blowing from west, u=5 v=0)', () => {
   const dir = windDirection(5, 0);
   assert.ok(Math.abs(dir - 270) < EPSILON, `expected 270°, got ${String(dir)}`);
+});
+
+void test('currentDirection: northward current (u=0 v=0.5) → 0° toward north', () => {
+  const dir = currentDirection(0, 0.5);
+  assert.ok(Math.abs(dir - 0) < EPSILON || Math.abs(dir - 360) < EPSILON, `expected 0°, got ${String(dir)}`);
+});
+
+void test('currentDirection: eastward current (u=0.5 v=0) → 90° toward east', () => {
+  const dir = currentDirection(0.5, 0);
+  assert.ok(Math.abs(dir - 90) < EPSILON, `expected 90°, got ${String(dir)}`);
+});
+
+void test('currentDirection: southward current (u=0 v=-0.5) → 180° toward south', () => {
+  const dir = currentDirection(0, -0.5);
+  assert.ok(Math.abs(dir - 180) < EPSILON, `expected 180°, got ${String(dir)}`);
+});
+
+void test('currentDirection: differs from windDirection by 180° (toward vs from)', () => {
+  // Northward flow: currentDirection = 0° (toward N), windDirection = 180° (from S)
+  const toward = currentDirection(0, 0.5);
+  const from = windDirection(0, 0.5);
+  assert.ok(Math.abs((toward - from + 360) % 360 - 180) < EPSILON,
+    `expected 180° difference, got toward=${String(toward)} from=${String(from)}`);
 });
