@@ -52,6 +52,11 @@ export function windDirection(u: number, v: number): number {
   return (Math.atan2(-u, -v) * RAD_TO_DEG + 360) % 360;
 }
 
+// Oceanographic current direction: the direction TOWARD which the current flows (0=N, 90=E)
+export function currentDirection(u: number, v: number): number {
+  return (Math.atan2(u, v) * RAD_TO_DEG + 360) % 360;
+}
+
 /** Find the index of the Date in `times` closest to `t`. */
 export function nearestIdx(times: Date[], t: Date): number {
   const ms = t.getTime();

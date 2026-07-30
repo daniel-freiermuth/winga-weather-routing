@@ -11,7 +11,7 @@
 //
 // Returns an array of per-waypoint results for display.
 
-import { haversineNM, bearingTo, windSpeedKnots, windDirection } from '../src/lib/geo';
+import { haversineNM, bearingTo, windSpeedKnots, windDirection, currentDirection } from '../src/lib/geo';
 import { parsePolarCsv, interpolateBoatSpeed } from '../src/lib/polar';
 import * as dataLayer from './data-layer';
 
@@ -69,7 +69,7 @@ export async function analyseRouteWeather(
     const twdDeg = wx.wind ? windDirection(wx.wind.u, wx.wind.v) : null;
 
     const currentSpeedKn = wx.current ? windSpeedKnots(wx.current.u, wx.current.v) : null;
-    const currentDirDeg = wx.current ? windDirection(wx.current.u, wx.current.v) : null;
+    const currentDirDeg = wx.current ? currentDirection(wx.current.u, wx.current.v) : null;
 
     // Compute leg info for the NEXT leg (from this waypoint to the next)
     let twaAbs = null;
