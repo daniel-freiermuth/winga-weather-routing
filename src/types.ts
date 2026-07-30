@@ -41,24 +41,6 @@ export interface GribFileEntry {
   data: GribData | null;
 }
 
-// Raw U/V current grids loaded from an ocean current GRIB (RTOFS, CMEMS).
-export interface CurrentGribData {
-  times: Date[];
-  latMin: number;
-  latStep: number;
-  lonMin: number;
-  lonStep: number;
-  nLat: number;
-  nLon: number;
-  u: Float32Array[]; // [timeIdx][latIdx * nLon + lonIdx], m/s eastward, index 0 = latMin
-  v: Float32Array[]; // [timeIdx][latIdx * nLon + lonIdx], m/s northward
-}
-
-// One entry per ocean current GRIB file.
-export interface CurrentFileEntry {
-  meta: GribFileMeta; // type === 'current'
-  data: CurrentGribData | null;
-}
 
 // Provides ocean current lookups for use by the routing algorithm.
 export interface CurrentProvider {
@@ -167,61 +149,4 @@ export interface CalculationRequest {
   enabledGribPaths?: string[]; // if absent, all files are used
   avoidRegionIds?: string[];
   options?: Record<string, unknown>; // per-algorithm tuning
-}
-
-export interface CalculationStatus {
-  status: 'idle' | 'calculating' | 'done' | 'warning' | 'error';
-  progress: number; // 0–100
-  routeId?: string;
-  error?: string;
-  warning?: string;
-  frontier?: [number, number][]; // [lat, lon] pairs of current isochrone frontier
-}
-
-export interface GribInfoResponse {
-  gribDir: string;
-  files: GribFileMeta[]; // wind GRIB files
-  currentFiles: GribFileMeta[]; // ocean current GRIB files
-  failedFiles: { path: string; error: string }[];
-}
-
-export interface PluginSettings {
-  gribDir: string;
-  polarPath: string;
-  algorithm?: string;
-  hideTestButtons?: boolean;
-  headingStep?: number;
-  sectorSize?: number;
-  minBoatSpeed?: number;
-  arrivalRadiusNm?: number;
-  coneHalfAngle?: number;
-  coneDisableLookaheadNm?: number;
-  maxHeadingChange?: number;
-  conditionsGraphHeight?: number;
-  avoidRegionIds?: string[];
-}
-
-// A user-defined region polygon from SignalK resources/regions.
-export interface RegionRing {
-  bboxLatMin: number;
-  bboxLatMax: number;
-  bboxLonMin: number;
-  bboxLonMax: number;
-  exterior: Float64Array; // interleaved [lon0,lat0, lon1,lat1, ...]
-}
-
-// Simple index: UUID → RegionRing pair.
-export interface RegionIndex {
-  regions: Map<string, RegionRing>;
-}
-
-/** Minimal GeoJSON geometry union covering the polygon types used by region avoidance. */
-export type GeoJsonGeometry =
-  { type: 'Polygon'; coordinates: number[][][] } | { type: 'MultiPolygon'; coordinates: number[][][][] };
-
-export interface SignalKResourceEntry {
-  id?: string;
-  name?: string;
-  feature?: { geometry?: GeoJsonGeometry };
-  [key: string]: unknown;
 }

@@ -6,7 +6,7 @@ import maplibregl from 'maplibre-gl';
 import type { WindPoint, WavePoint, CurrentPoint } from './stores';
 import { fmt as _fmt } from './units';
 
-export type LatLon = { lat: number; lon: number };
+type LatLon = { lat: number; lon: number }
 
 // ── Marker icons ──────────────────────────────────────────────────────────────
 
@@ -26,15 +26,13 @@ export function redIcon(): HTMLDivElement {
 
 // ── Info popup (wind/wave/current on click) ───────────────────────────────────
 
-export interface InfoPopupState {
-  allWindPoints: WindPoint[];
-  allWavePoints: WavePoint[];
-  allCurrentPoints: CurrentPoint[];
-  windSpeedMs: boolean;
-  windVisible: boolean;
-  waveVisible: boolean;
-  currentVisible: boolean;
-}
+interface InfoPopupState { allWindPoints: WindPoint[];
+allWavePoints: WavePoint[];
+allCurrentPoints: CurrentPoint[];
+windSpeedMs: boolean;
+windVisible: boolean;
+waveVisible: boolean;
+currentVisible: boolean; }
 
 /**
  * Register the info-popup click handler. Returns a cleanup function.
@@ -81,14 +79,12 @@ export function setupInfoPopupClick(map: maplibregl.Map, getState: () => InfoPop
 
 // ── Viewport change handler ───────────────────────────────────────────────────
 
-export interface ViewportCallbacks {
-  fetchWindPointsAt(timeIdx: number): void;
-  fetchWavePointsAt(timeIdx: number): void;
-  isWindTimesLoaded(): boolean;
-  isWindVisible(): boolean;
-  isWaveVisible(): boolean;
-  getScrubberIndex(): number;
-}
+interface ViewportCallbacks { fetchWindPointsAt(timeIdx: number): void;
+fetchWavePointsAt(timeIdx: number): void;
+isWindTimesLoaded(): boolean;
+isWindVisible(): boolean;
+isWaveVisible(): boolean;
+getScrubberIndex(): number; }
 
 /**
  * Re-fetch overlay data when the viewport changes. Returns a cleanup function.

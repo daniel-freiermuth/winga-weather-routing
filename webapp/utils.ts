@@ -1,14 +1,5 @@
 // Pure utility functions shared across the webapp.
 
-/** Escapes HTML special characters for safe insertion into innerHTML. */
-export function escapeHtml(str: string): string {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 /** Converts a Date to a datetime-local input value string. */
 export function toLocalDateTimeInput(d: Date): string {
@@ -16,27 +7,15 @@ export function toLocalDateTimeInput(d: Date): string {
   return `${String(d.getFullYear())}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** Format milliseconds as "Xd Xh Xm". */
-export function gmFormat(ms: number): string {
-  const d = Math.floor(ms / 86400000);
-  const h = Math.floor((ms % 86400000) / 3600000);
-  const m = Math.floor((ms % 3600000) / 60000);
-  return (d > 0 ? `${String(d)}d ` : '') + `${String(h)}h ${String(m)}m`;
-}
 
-/**
- * Returns indices where the time granularity changes (e.g. hourly → 3-hourly).
- * Used for rendering coverage bar segments.
- */
-export function granularityChanges(times: string[]): number[] {
-  if (times.length < 3) return [];
-  const changes: number[] = [];
-  for (let i = 2; i < times.length; i++) {
-    const d1 = new Date(times[i - 1]!).getTime() - new Date(times[i - 2]!).getTime();
-    const d2 = new Date(times[i]!).getTime() - new Date(times[i - 1]!).getTime();
-    if (Math.abs(d2 - d1) > 60000) changes.push(i - 1);
-  }
-  return changes;
+const DEG = Math.PI / 180;
+
+/** Geodesic initial bearing (great-circle formula). */
+function geodesicBearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const φ1 = lat1 * DEG, φ2 = lat2 * DEG, dλ = (lon2 - lon1) * DEG;
+  const y = Math.sin(dλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dλ);
+  return Math.atan2(y, x) / DEG; // degrees, -180..+180
 }
 
 /**
@@ -46,7 +25,7 @@ export function sortByBearing(pts: number[][], origin: { lat: number; lon: numbe
   return pts
     .slice()
     .sort(
-      (a, b) => Math.atan2(a[1]! - origin.lon, a[0]! - origin.lat) - Math.atan2(b[1]! - origin.lon, b[0]! - origin.lat),
+      (a, b) => geodesicBearing(origin.lat, origin.lon, a[0]!, a[1]!) - geodesicBearing(origin.lat, origin.lon, b[0]!, b[1]!),
     );
 }
 
@@ -60,7 +39,7 @@ export function splitByAngularGap(
   thresholdDeg: number,
 ): number[][][] {
   if (pts.length < 2) return [pts];
-  const bearing = (p: number[]) => (Math.atan2(p[1]! - origin.lon, p[0]! - origin.lat) * 180) / Math.PI;
+  const bearing = (p: number[]) => geodesicBearing(origin.lat, origin.lon, p[0]!, p[1]!);
   const bearings = pts.map(bearing);
   const angularGap = (a: number, b: number) => ((b - a + 540) % 360) - 180;
   const segments: number[][][] = [];

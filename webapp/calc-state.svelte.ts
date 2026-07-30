@@ -13,7 +13,7 @@ interface SourceAndLayer {
   layerId: string;
 }
 
-export interface CalcState {
+interface CalcState {
   routeScrubberRange: { i0: number; iN: number } | null;
   scrubberLockedToRoute: boolean;
   routeLayer: SourceAndLayer | null;

@@ -26,7 +26,7 @@ const C64_PALETTE = [
   '#574200',
 ];
 
-export interface RoutingOptionsLike {
+interface RoutingOptionsLike {
   getOptions: () => {
     useLandAvoidance: boolean;
     useSafetyMargin: boolean;
@@ -43,7 +43,7 @@ export interface RoutingOptionsLike {
 }
 
 /** All dependencies the calculation module needs from the app shell. */
-export interface CalculationContext {
+interface CalculationContext {
   map: maplibregl.Map;
   routingWorker: Worker;
   isochroneState: IsochroneState;

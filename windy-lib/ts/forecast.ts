@@ -126,16 +126,3 @@ export async function fetchPointForecast(
   const json = Buffer.from(b64Body, "base64").toString("utf8");
   return JSON.parse(json) as WindyPointForecastResponse;
 }
-
-// ---------------------------------------------------------------------------
-// Convenience unit converters
-// ---------------------------------------------------------------------------
-
-/** Kelvin → degrees Celsius */
-export const kelvinToCelsius = (k: number): number => k - 273.15;
-
-/** m/s → knots */
-export const msToKnots = (ms: number): number => ms * 1.944;
-
-/** Pa → hPa */
-export const paToHpa = (pa: number): number => pa / 100;

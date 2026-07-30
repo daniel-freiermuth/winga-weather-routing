@@ -71,10 +71,6 @@ let windModelRun = '';
 let waveModelRun = '';
 let cmemsModelRun = '';
 
-export function setWindModel(model: string) {
-  const models: Record<string, string> = { ecmwf: 'ecmwf-hres', gfs: 'gfs', icon: 'icon' };
-  windModel = models[model] ?? 'ecmwf-hres';
-}
 
 /**
  * Load forecast time axes from Windy minifests.

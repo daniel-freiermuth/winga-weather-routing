@@ -10,30 +10,26 @@ export interface IsochroneState {
   map: maplibregl.Map;
 }
 
-export interface RoutingRequest {
-  start: { lat: number; lon: number };
-  end: { lat: number; lon: number };
-  departureTime: string;
-  waypoints?: { lat: number; lon: number }[] | undefined;
-  polarCsv: string;
-  useLandAvoidance: boolean;
-  useSafetyMargin: boolean;
-  options: {
-    motorBelowKn?: number | undefined;
-    motorSpeedKn?: number | undefined;
-    waitForWind?: boolean | undefined;
-    maxWindKn?: number | undefined;
-    maxWaveM?: number | undefined;
-    tackPenaltySec?: number | undefined;
-    tackThresholdDeg?: number | undefined;
-  };
-}
+interface RoutingRequest { start: { lat: number; lon: number };
+end: { lat: number; lon: number };
+departureTime: string;
+waypoints?: { lat: number; lon: number }[] | undefined;
+polarCsv: string;
+useLandAvoidance: boolean;
+useSafetyMargin: boolean;
+options: {
+  motorBelowKn?: number | undefined;
+  motorSpeedKn?: number | undefined;
+  waitForWind?: boolean | undefined;
+  maxWindKn?: number | undefined;
+  maxWaveM?: number | undefined;
+  tackPenaltySec?: number | undefined;
+  tackThresholdDeg?: number | undefined;
+}; }
 
-export interface RoutingCallbacks {
-  onProgress: (pct: number, frontier?: number[][]) => void;
-  onResult: (route: unknown) => void;
-  onError: (msg: string) => void;
-}
+interface RoutingCallbacks { onProgress: (pct: number, frontier?: number[][]) => void;
+onResult: (route: unknown) => void;
+onError: (msg: string) => void; }
 
 const ISOCHRONE_GAP_THRESHOLD_DEG = 10;
 const ISOCHRONE_COLOURS = ['#000000', '#4477ff', '#8833cc', '#cc3333'];

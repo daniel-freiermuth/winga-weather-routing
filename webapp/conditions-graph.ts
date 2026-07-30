@@ -3,7 +3,7 @@
 
 import type { WaypointMeta, GraphLayout, GribFileMeta } from './types';
 
-export interface ConditionsGraphOpts {
+interface ConditionsGraphOpts {
   meta: WaypointMeta[];
   intermediateIdxs: number[];
   windSpeedMs: boolean;
@@ -16,7 +16,7 @@ export interface ConditionsGraphOpts {
   fmt: (value: number, category: 'speed' | 'depth', forceMs?: boolean) => { num: string; sym: string };
 }
 
-export interface ConditionsGraphResult {
+interface ConditionsGraphResult {
   svgContent: string;
   layout: GraphLayout;
   viewBox: string;

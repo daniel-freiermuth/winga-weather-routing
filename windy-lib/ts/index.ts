@@ -64,6 +64,6 @@ export { WINDY_CSRF, fetchWindyToken, loginWindy, tokenExpiresAt, tokenExpiresSo
 export type { WindyCredentials, WindyLoginResponse } from "./auth.js";
 export { fetchMinifest, refToCompact, getValidTimes } from "./minifest.js";
 export type { PointForecastOptions } from "./forecast.js";
-export { fetchPointForecast, kelvinToCelsius, msToKnots, paToHpa } from "./forecast.js";
+export { fetchPointForecast } from "./forecast.js";
 export { buildTileUrl, latLonToTile, latLonToPixel, latLonToPixelFrac, decodeTileHeader, sampleTilePixel, sampleTileBilinear, browserRgbaDecoder } from "./tiles.js";
 export type { RgbaDecoder } from "./tiles.js";

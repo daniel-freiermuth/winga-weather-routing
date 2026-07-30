@@ -120,9 +120,3 @@ export function findNowIndex(windTimes: string[]): number {
   if (idx < 0) idx = windTimes.length - 1;
   return Math.max(0, idx);
 }
-
-/** Convert an ISO time string to a local datetime-local input value. */
-export function toLocalDateTimeInput(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${String(d.getFullYear())}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}

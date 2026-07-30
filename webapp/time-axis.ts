@@ -4,7 +4,7 @@
 import * as dataLayer from './data-layer';
 import type { GribFileMeta } from './types';
 
-export interface TimeAxisManager {
+interface TimeAxisManager {
   windTimes: string[];
   windTimesCount: number;
   windNativeTimes: string[];

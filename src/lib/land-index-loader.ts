@@ -11,10 +11,9 @@
 
 import type { LandEdgeIndex, LandPolygon } from '../types';
 
-export const EDGE_INDEX_MAGIC = 0x4c4e4458; // 'LNDX'
-export const EDGE_INDEX_VERSION = 2;
-export const DILATED_INDEX_MAGIC = 0x444c4e44; // 'DLND'
-export const DILATED_INDEX_VERSION = 2;
+const EDGE_INDEX_MAGIC = 0x4c4e4458; // 'LNDX'
+const EDGE_INDEX_VERSION = 2;
+const DILATED_INDEX_MAGIC = 0x444c4e44; // 'DLND'
 
 /**
  * Parse a land edge-index binary buffer into the LandEdgeIndex structure.
