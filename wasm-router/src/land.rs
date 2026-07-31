@@ -72,7 +72,7 @@ fn read_f64_le(buf: &[u8], off: usize) -> f64 {
 /// `(latCell + 900) * 3600 + (((lonCell % 3600) + 3600) % 3600)`
 #[inline]
 fn edge_cell_key(lat_cell: i32, lon_cell: i32) -> u32 {
-    let lon_wrapped = ((lon_cell % 3600) + 3600) % 3600;
+    let lon_wrapped = lon_cell.rem_euclid(3600);
     ((lat_cell + 900) as u32) * 3600 + lon_wrapped as u32
 }
 
@@ -253,15 +253,6 @@ impl LandIndex {
             edge_grid,
             poly_grid,
         })
-    }
-
-    /// Create an empty index containing no land polygons.
-    pub fn empty() -> Self {
-        LandIndex {
-            polygons: Vec::new(),
-            edge_grid: HashMap::new(),
-            poly_grid: HashMap::new(),
-        }
     }
 
     /// Check whether the segment from (`lat1`, `lon1`) to (`lat2`, `lon2`) crosses

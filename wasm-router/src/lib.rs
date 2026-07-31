@@ -1,4 +1,5 @@
 // WASM isochrone routing — session-based entry point for wasm-bindgen.
+#![allow(clippy::too_many_arguments)]
 //
 // The JS worker creates a RouterSession, pushes weather frames on demand,
 // and drives the routing loop one step at a time. No per-point JS callbacks
@@ -86,7 +87,6 @@ impl RouterSession {
             sector_size: options.get(1).copied().unwrap_or(1.0),
             min_boat_speed: options.get(2).copied().unwrap_or(0.3),
             max_wind_kn: options.get(3).copied().unwrap_or(0.0),
-            max_wave_m: options.get(4).copied().unwrap_or(0.0),
             motor_speed_kn: options.get(5).copied().unwrap_or(0.0),
             motor_below_kn: options.get(6).copied().unwrap_or(0.0),
             wait_for_wind: options.get(7).copied().unwrap_or(0.0) > 0.5,

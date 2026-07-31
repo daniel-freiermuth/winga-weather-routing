@@ -39,7 +39,6 @@ pub struct LegConfig {
     pub sector_size: f64,
     pub min_boat_speed: f64,
     pub max_wind_kn: f64,
-    pub max_wave_m: f64,
     pub motor_speed_kn: f64,
     pub motor_below_kn: f64,
     pub wait_for_wind: bool,
@@ -151,11 +150,6 @@ impl LegState {
         self.current_time_ms + self.step_ms
     }
 
-    /// Whether the routing has arrived at the destination.
-    pub fn has_arrived(&self) -> bool {
-        self.arrived.is_some()
-    }
-
     /// Progress percentage (0–100).
     pub fn progress_pct(&self) -> f64 {
         ((self.steps_completed as f64 + 1.0) / self.est_total_steps as f64 * 100.0).min(99.0)
@@ -253,23 +247,24 @@ impl LegState {
                 } else {
                     direct_speed
                 };
-                if eff >= config.min_boat_speed && eff * dt_hours >= dist_to_dest {
-                    if !land.segment_crosses_land(pt_lat, pt_lon, end_lat, end_lon) {
-                        let travel_h = dist_to_dest / eff;
-                        let arrival_ms = self.current_time_ms + travel_h * 3_600_000.0;
-                        let arr_idx = self.arena.len();
-                        self.arena.push(IsoPoint {
-                            lat: end_lat,
-                            lon: end_lon,
-                            time_ms: arrival_ms,
-                            ctw: pt_to_dest,
-                            twa: direct_twa,
-                            boat_speed: eff,
-                            step_calc_ms: 0.0,
-                            parent: Some(pt_idx),
-                        });
-                        candidates.push(arr_idx);
-                    }
+                if eff >= config.min_boat_speed
+                    && eff * dt_hours >= dist_to_dest
+                    && !land.segment_crosses_land(pt_lat, pt_lon, end_lat, end_lon)
+                {
+                    let travel_h = dist_to_dest / eff;
+                    let arrival_ms = self.current_time_ms + travel_h * 3_600_000.0;
+                    let arr_idx = self.arena.len();
+                    self.arena.push(IsoPoint {
+                        lat: end_lat,
+                        lon: end_lon,
+                        time_ms: arrival_ms,
+                        ctw: pt_to_dest,
+                        twa: direct_twa,
+                        boat_speed: eff,
+                        step_calc_ms: 0.0,
+                        parent: Some(pt_idx),
+                    });
+                    candidates.push(arr_idx);
                 }
             }
 

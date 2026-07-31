@@ -2,7 +2,7 @@
 ///
 /// Stores GRIB-style forecast frames as flat row-major grids and provides
 /// allocation-free sampling for the isochrone router.
-
+///
 /// A single forecast frame on a regular lat/lon grid.
 struct WeatherFrame {
     time_ms: f64,
@@ -141,22 +141,6 @@ impl WeatherStore {
         if keep_from > 0 {
             self.frames.drain(..keep_from);
         }
-    }
-
-    /// Time range of currently stored frames, or `None` if empty.
-    pub fn time_range(&self) -> Option<(f64, f64)> {
-        if self.frames.is_empty() {
-            return None;
-        }
-        Some((
-            self.frames[0].time_ms,
-            self.frames[self.frames.len() - 1].time_ms,
-        ))
-    }
-
-    /// Number of frames currently stored.
-    pub fn frame_count(&self) -> usize {
-        self.frames.len()
     }
 
     /// Sample wind `(u, v)` in m/s at a position and time.
