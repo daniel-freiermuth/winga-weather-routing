@@ -11,18 +11,18 @@ const MINIFEST_BASE = {
   urls: { citytile: '', pointForecast: '', imageServer: '' },
 };
 
-void test('getValidTimes: does not hang on stepHours=0 (skips or throws)', () => {
+void test('getValidTimes: skips tuples with stepHours=0', () => {
   // stepHours=0 would cause an infinite loop at minifest.ts:78.
-  // The function must either skip the tuple or throw, not hang.
+  // The guard skips the invalid tuple, producing an empty result.
   const result = getValidTimes({ ...MINIFEST_BASE, dst: [[0, 3, 90]] });
-  // If we reach here, the function returned instead of looping forever.
-  assert.ok(Array.isArray(result));
+  assert.strictEqual(result.length, 0);
 });
 
 void test('getValidTimes: normal dst tuples still work', () => {
   const result = getValidTimes({ ...MINIFEST_BASE, dst: [[3, 3, 9]] });
   assert.strictEqual(result.length, 3); // h=3, h=6, h=9
-  assert.strictEqual(result[0]!.compact, '2026071903');
-  assert.strictEqual(result[1]!.compact, '2026071906');
-  assert.strictEqual(result[2]!.compact, '2026071909');
+  assert.deepStrictEqual(
+    result.map((s) => s.compact),
+    ['2026071903', '2026071906', '2026071909'],
+  );
 });
