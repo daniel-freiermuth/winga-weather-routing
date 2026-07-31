@@ -81,10 +81,13 @@ export function setupInfoPopupClick(map: maplibregl.Map, getState: () => InfoPop
 
 interface ViewportCallbacks { fetchWindPointsAt(timeIdx: number): void;
 fetchWavePointsAt(timeIdx: number): void;
+fetchCurrentPointsAt(timeMs: number): void;
 isWindTimesLoaded(): boolean;
 isWindVisible(): boolean;
 isWaveVisible(): boolean;
-getScrubberIndex(): number; }
+isCurrentVisible(): boolean;
+getScrubberIndex(): number;
+getWindTimes(): string[]; }
 
 /**
  * Re-fetch overlay data when the viewport changes. Returns a cleanup function.
@@ -97,6 +100,10 @@ export function setupViewportRefresh(map: maplibregl.Map, cb: ViewportCallbacks)
     }
     if (cb.isWaveVisible() && cb.isWindTimesLoaded()) {
       cb.fetchWavePointsAt(idx);
+    }
+    if (cb.isCurrentVisible() && cb.isWindTimesLoaded()) {
+      const timeStr = cb.getWindTimes()[idx];
+      if (timeStr) cb.fetchCurrentPointsAt(new Date(timeStr).getTime());
     }
   };
   map.on('moveend', handler);
