@@ -126,6 +126,7 @@ export class TileWindProvider implements WindProvider {
   private waveModelRun = '';
   private tiles: { x: number; y: number }[] = [];
   private loaded = false;
+  private bbox: BoundingBox = { latMin: -90, latMax: 90, lonMin: -180, lonMax: 180 };
 
   constructor(opts: TileWindProviderOptions = {}) {
     const model = opts.windModel ?? 'ecmwf';
@@ -136,6 +137,7 @@ export class TileWindProvider implements WindProvider {
   /** Load metadata (model runs, time steps, tile grid). No tiles fetched yet. */
   async load(bbox: BoundingBox, _fromMs?: number, _toMs?: number): Promise<void> {
     const [windMf, waveMf] = await Promise.all([fetchMinifest(this.windModel), fetchMinifest(this.waveModel)]);
+    this.bbox = bbox;
 
     this.windModelRun = refToCompact(windMf.ref);
     this.waveModelRun = refToCompact(waveMf.ref);
@@ -245,16 +247,22 @@ export class TileWindProvider implements WindProvider {
     return this.sampleWaveTile(lat, lon, step.compact)?.height;
   }
 
-  coversPoint(_lat: number, _lon: number): boolean {
-    return this.loaded; // tiles are global at z=3
+  coversPoint(lat: number, lon: number): boolean {
+    return (
+      this.loaded &&
+      lat >= this.bbox.latMin &&
+      lat <= this.bbox.latMax &&
+      lon >= this.bbox.lonMin &&
+      lon <= this.bbox.lonMax
+    );
   }
 
-  coversPointAtTime(_lat: number, _lon: number, timeIdx: number): boolean {
-    return this.loaded && timeIdx >= 0 && timeIdx < this.times.length;
+  coversPointAtTime(lat: number, lon: number, timeIdx: number): boolean {
+    return this.coversPoint(lat, lon) && timeIdx >= 0 && timeIdx < this.times.length;
   }
 
-  coversPointAtTimeMs(_lat: number, _lon: number, timeMs: number): boolean {
-    if (!this.loaded || this.times.length === 0) return false;
+  coversPointAtTimeMs(lat: number, lon: number, timeMs: number): boolean {
+    if (!this.coversPoint(lat, lon) || this.times.length === 0) return false;
     const first = this.times[0];
     const last = this.times[this.times.length - 1];
     if (first === undefined || last === undefined) return false;
