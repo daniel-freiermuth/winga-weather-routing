@@ -50,11 +50,17 @@ function post(msg: OutMessage): void {
 
 const _self = globalThis as Record<string, unknown>;
 let lastPct = 0;
+let lastFrontierLats: number[] = [];
+let lastFrontierLons: number[] = [];
 
 _self['js_on_progress'] = (pct: number, frontier: Float64Array): void => {
   lastPct = pct;
+  lastFrontierLats = [];
+  lastFrontierLons = [];
   const pairs: [number, number][] = [];
   for (let i = 0; i < frontier.length; i += 2) {
+    lastFrontierLats.push(frontier[i]!);
+    lastFrontierLons.push(frontier[i + 1]!);
     pairs.push([frontier[i]!, frontier[i + 1]!]);
   }
   post({ type: 'progress', pct, frontier: pairs });
@@ -104,6 +110,7 @@ interface WasmRouterSession {
   route(): Float64Array;
   error(): string | undefined;
   evict_old_frames(): void;
+  clear_weather(): void;
   free(): void;
 }
 
@@ -250,7 +257,8 @@ const pushedWindTimes = new Set<number>();
 const pushedCurrentTimes = new Set<number>();
 
 async function handleCalculate(payload: CalculatePayload): Promise<void> {
-  const { request, polarCsv, tileBbox, landIndexUrl, dilatedIndexUrl, windModel, useSafetyMargin } = payload;
+  const { request, polarCsv, landIndexUrl, dilatedIndexUrl, windModel, useSafetyMargin } = payload;
+  const tileBbox = { ...payload.tileBbox };
 
   const departureMs = new Date(request.departureTime).getTime();
   lastPct = 0;
@@ -268,14 +276,10 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
     useSafetyMargin === true && dilatedIndexUrl !== undefined ? dilatedIndexUrl : landIndexUrl,
   );
 
-  const routePoints = [request.start, request.end, ...(request.waypoints ?? [])];
-  const routeBbox: BoundingBox = {
-    latMin: Math.min(...routePoints.map((p) => p.lat)) - 1,
-    latMax: Math.max(...routePoints.map((p) => p.lat)) + 1,
-    lonMin: Math.min(...routePoints.map((p) => p.lon)) - 1,
-    lonMax: Math.max(...routePoints.map((p) => p.lon)) + 1,
-  };
-  const zoom = TileWindProvider.computeZoom(routeBbox, 2);
+  // Use the full tile coverage area as the weather corridor — let the
+  // routing algorithm explore freely instead of pre-guessing a corridor.
+  // tileBbox already has generous margin (30% of route span, min 3°).
+  const zoom = TileWindProvider.computeZoom(tileBbox, 2);
   const windProvider = new TileWindProvider({ windModel: windModel ?? 'ecmwf', zoom });
   const currentProvider = new TileCurrentProvider(zoom);
 
@@ -287,7 +291,7 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
   ]);
 
   const hasCurrent = currentProvider.times.length > 0;
-  const gridSpec = corridorGridSpec(routeBbox, zoom);
+  let gridSpec = corridorGridSpec(tileBbox, zoom);
 
   // Forecast end from the provider
   const forecastEnd = windProvider.times[windProvider.times.length - 1];
@@ -379,6 +383,38 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
         // Forecast exhausted
         exhausted = true;
         break;
+      }
+
+      // ── Dynamic corridor expansion ──────────────────────────────────────
+      // If any frontier point is within 1° of the grid edge, expand the
+      // tile coverage, re-sample weather, and re-push to WASM.
+      const EDGE_MARGIN = 1.0;
+      if (lastFrontierLats.length > 0) {
+        let needExpand = false;
+        for (let fi = 0; fi < lastFrontierLats.length; fi++) {
+          const fLat = lastFrontierLats[fi]!;
+          const fLon = lastFrontierLons[fi]!;
+          if (fLat < gridSpec.latMin + EDGE_MARGIN || fLat > gridSpec.latMin + (gridSpec.nLat - 1) * gridSpec.latStep - EDGE_MARGIN ||
+              fLon < gridSpec.lonMin + EDGE_MARGIN || fLon > gridSpec.lonMin + (gridSpec.nLon - 1) * gridSpec.lonStep - EDGE_MARGIN) {
+            needExpand = true;
+            break;
+          }
+        }
+        if (needExpand) {
+          // Grow tileBbox by 5° in all directions
+          tileBbox.latMin -= 5;
+          tileBbox.latMax += 5;
+          tileBbox.lonMin -= 5;
+          tileBbox.lonMax += 5;
+          // Reload tile metadata for the expanded area
+          await windProvider.load(tileBbox);
+          await currentProvider.load(tileBbox, departureMs, departureMs + 72 * 3_600_000);
+          // Recompute grid and re-push all weather frames
+          gridSpec = corridorGridSpec(tileBbox, zoom);
+          session.clear_weather();
+          pushedWindTimes.clear();
+          pushedCurrentTimes.clear();
+        }
       }
 
       // Evict old frames periodically (every 10 steps)

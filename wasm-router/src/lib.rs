@@ -317,6 +317,13 @@ impl RouterSession {
         }
     }
 
+    /// Clear all stored wind and current frames so they can be re-pushed
+    /// with a wider grid (dynamic corridor expansion).
+    pub fn clear_weather(&mut self) {
+        self.wind = WeatherStore::new();
+        self.current = WeatherStore::new();
+    }
+
     // ── internal ─────────────────────────────────────────────────────────────
 
     /// Finish the current leg: backtrack its route and advance to the next leg.

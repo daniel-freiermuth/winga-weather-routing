@@ -104,7 +104,7 @@ export function buildWorkerPayload(req: RoutingRequest): unknown {
   const latMax = Math.max(...lats);
   const lonMin = Math.min(...lons);
   const lonMax = Math.max(...lons);
-  const margin = Math.max(1, (latMax - latMin) * 0.3, (lonMax - lonMin) * 0.3);
+  const margin = Math.max(3, (latMax - latMin) * 0.3, (lonMax - lonMin) * 0.3);
 
   return {
     type: 'calculate',
