@@ -41,7 +41,6 @@ export interface GribFileEntry {
   data: GribData | null;
 }
 
-
 // Provides ocean current lookups for use by the routing algorithm.
 export interface CurrentProvider {
   getCurrent(lat: number, lon: number, t: Date): WindVector; // {u:0,v:0} when outside domain

@@ -148,7 +148,10 @@ impl WeatherStore {
         if self.frames.is_empty() {
             return None;
         }
-        Some((self.frames[0].time_ms, self.frames[self.frames.len() - 1].time_ms))
+        Some((
+            self.frames[0].time_ms,
+            self.frames[self.frames.len() - 1].time_ms,
+        ))
     }
 
     /// Number of frames currently stored.
@@ -249,11 +252,13 @@ mod tests {
     fn make_store_single() -> WeatherStore {
         let mut s = WeatherStore::new();
         // u values: row-major, u[lat][lon] = (lat * 10 + lon) as f32
-        let u: Vec<f32> = (0..9).map(|i| {
-            let lat = i / 3;
-            let lon = i % 3;
-            (lat * 10 + lon) as f32
-        }).collect();
+        let u: Vec<f32> = (0..9)
+            .map(|i| {
+                let lat = i / 3;
+                let lon = i % 3;
+                (lat * 10 + lon) as f32
+            })
+            .collect();
         // v values: constant 5.0
         let v: Vec<f32> = vec![5.0; 9];
         s.push_frame(1000.0, &u, &v, 0.0, 0.0, 1.0, 1.0, 3, 3);
@@ -354,7 +359,10 @@ mod tests {
         s.evict_before(250.0);
         assert_eq!(s.frame_count(), 3);
         let (lo, _) = s.time_range().unwrap();
-        assert!((lo - 200.0).abs() < 1e-6, "lowest frame should be 200, got {lo}");
+        assert!(
+            (lo - 200.0).abs() < 1e-6,
+            "lowest frame should be 200, got {lo}"
+        );
     }
 
     #[test]

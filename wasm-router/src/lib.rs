@@ -98,8 +98,7 @@ impl RouterSession {
             arrival_radius_nm: options.get(13).copied().unwrap_or(0.0),
         };
 
-        let land = LandIndex::from_binary(land_index)
-            .map_err(|e| JsValue::from_str(&e))?;
+        let land = LandIndex::from_binary(land_index).map_err(|e| JsValue::from_str(&e))?;
 
         // Parse leg endpoints
         let n_points = legs.len() / 2;
@@ -119,8 +118,13 @@ impl RouterSession {
         // Initialize the first leg
         let (s_lat, s_lon, e_lat, e_lon) = leg_list[0];
         let leg_state = LegState::new(
-            s_lat, s_lon, e_lat, e_lon,
-            departure_ms, forecast_end_ms, &config,
+            s_lat,
+            s_lon,
+            e_lat,
+            e_lon,
+            departure_ms,
+            forecast_end_ms,
+            &config,
         );
 
         Ok(RouterSession {
@@ -159,9 +163,15 @@ impl RouterSession {
         n_lon: u32,
     ) {
         self.wind.push_frame(
-            time_ms, u, v,
-            lat_min, lon_min, lat_step, lon_step,
-            n_lat as usize, n_lon as usize,
+            time_ms,
+            u,
+            v,
+            lat_min,
+            lon_min,
+            lat_step,
+            lon_step,
+            n_lat as usize,
+            n_lon as usize,
         );
     }
 
@@ -179,9 +189,15 @@ impl RouterSession {
         n_lon: u32,
     ) {
         self.current.push_frame(
-            time_ms, u, v,
-            lat_min, lon_min, lat_step, lon_step,
-            n_lat as usize, n_lon as usize,
+            time_ms,
+            u,
+            v,
+            lat_min,
+            lon_min,
+            lat_step,
+            lon_step,
+            n_lat as usize,
+            n_lon as usize,
         );
     }
 

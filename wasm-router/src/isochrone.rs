@@ -210,7 +210,9 @@ impl LegState {
             let wow_dir = wind_direction(wow_u, wow_v);
 
             // Max wind check (true wind)
-            if config.max_wind_kn > 0.0 && wind_speed_knots(wind_vec.0, wind_vec.1) > config.max_wind_kn {
+            if config.max_wind_kn > 0.0
+                && wind_speed_knots(wind_vec.0, wind_vec.1) > config.max_wind_kn
+            {
                 continue;
             }
 
@@ -224,7 +226,11 @@ impl LegState {
                 destination_point(pt_lat, pt_lon, config.cone_disable_lookahead_nm, pt_to_dest)
             };
             let direct_blocked = land.segment_crosses_land(pt_lat, pt_lon, cone_end.0, cone_end.1);
-            let cone_half = if direct_blocked { 180.0 } else { config.cone_half_angle };
+            let cone_half = if direct_blocked {
+                180.0
+            } else {
+                config.cone_half_angle
+            };
 
             // ── Direct-to-destination arrival ──────────────────────────────
             // When close enough to reach the destination this step, generate
@@ -233,7 +239,11 @@ impl LegState {
             let max_step_dist = 15.0 * dt_hours; // generous upper bound
             if dist_to_dest <= max_step_dist && !direct_blocked {
                 let direct_twa_raw = (pt_to_dest - wow_dir + 360.0) % 360.0;
-                let direct_twa = if direct_twa_raw > 180.0 { 360.0 - direct_twa_raw } else { direct_twa_raw };
+                let direct_twa = if direct_twa_raw > 180.0 {
+                    360.0 - direct_twa_raw
+                } else {
+                    direct_twa_raw
+                };
                 let direct_speed = polar.interpolate(direct_twa, wow_speed);
                 let eff = if config.motor_below_kn > 0.0
                     && config.motor_speed_kn > 0.0
@@ -287,13 +297,14 @@ impl LegState {
                 }
 
                 let polar_speed = polar.interpolate(twa, wow_speed);
-                let effective_speed =
-                    if config.motor_below_kn > 0.0 && config.motor_speed_kn > 0.0 && polar_speed < config.motor_below_kn
-                    {
-                        config.motor_speed_kn
-                    } else {
-                        polar_speed
-                    };
+                let effective_speed = if config.motor_below_kn > 0.0
+                    && config.motor_speed_kn > 0.0
+                    && polar_speed < config.motor_below_kn
+                {
+                    config.motor_speed_kn
+                } else {
+                    polar_speed
+                };
 
                 if effective_speed < config.min_boat_speed {
                     if config.wait_for_wind && !wait_added {
@@ -401,10 +412,19 @@ impl LegState {
             idx
         } else if !self.frontier.is_empty() {
             let mut best_idx = self.frontier[0];
-            let mut best_dist =
-                haversine_nm(self.arena[best_idx].lat, self.arena[best_idx].lon, self.end_lat, self.end_lon);
+            let mut best_dist = haversine_nm(
+                self.arena[best_idx].lat,
+                self.arena[best_idx].lon,
+                self.end_lat,
+                self.end_lon,
+            );
             for &idx in &self.frontier[1..] {
-                let d = haversine_nm(self.arena[idx].lat, self.arena[idx].lon, self.end_lat, self.end_lon);
+                let d = haversine_nm(
+                    self.arena[idx].lat,
+                    self.arena[idx].lon,
+                    self.end_lat,
+                    self.end_lon,
+                );
                 if d < best_dist {
                     best_dist = d;
                     best_idx = idx;
@@ -443,7 +463,11 @@ impl LegState {
         if self.arrived.is_some() {
             let arr = &self.arena[backtrack_idx];
             let extra_dist = haversine_nm(arr.lat, arr.lon, self.end_lat, self.end_lon);
-            let extra_h = if arr.boat_speed > 0.1 { extra_dist / arr.boat_speed } else { 0.0 };
+            let extra_h = if arr.boat_speed > 0.1 {
+                extra_dist / arr.boat_speed
+            } else {
+                0.0
+            };
             route.push(RoutePoint {
                 lat: self.end_lat,
                 lon: self.end_lon,

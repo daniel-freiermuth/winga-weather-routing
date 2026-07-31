@@ -94,6 +94,8 @@ void test('currentDirection: differs from windDirection by 180° (toward vs from
   // Northward flow: currentDirection = 0° (toward N), windDirection = 180° (from S)
   const toward = currentDirection(0, 0.5);
   const from = windDirection(0, 0.5);
-  assert.ok(Math.abs((toward - from + 360) % 360 - 180) < EPSILON,
-    `expected 180° difference, got toward=${String(toward)} from=${String(from)}`);
+  assert.ok(
+    Math.abs(((toward - from + 360) % 360) - 180) < EPSILON,
+    `expected 180° difference, got toward=${String(toward)} from=${String(from)}`,
+  );
 });

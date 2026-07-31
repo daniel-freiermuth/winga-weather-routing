@@ -203,11 +203,7 @@ function corridorGridSpec(bbox: BoundingBox, zoom: number): CorridorGridSpec {
 /**
  * Sample wind at a specific forecast time onto the corridor grid.
  */
-function sampleWindGrid(
-  provider: TileWindProvider,
-  timeMs: number,
-  spec: CorridorGridSpec,
-): WeatherGrid {
+function sampleWindGrid(provider: TileWindProvider, timeMs: number, spec: CorridorGridSpec): WeatherGrid {
   const { latMin, lonMin, latStep, lonStep, nLat, nLon } = spec;
   const u = new Float32Array(nLat * nLon);
   const v = new Float32Array(nLat * nLon);
@@ -227,11 +223,7 @@ function sampleWindGrid(
 /**
  * Sample current at a specific time onto the corridor grid.
  */
-function sampleCurrentGrid(
-  provider: TileCurrentProvider,
-  timeMs: number,
-  spec: CorridorGridSpec,
-): WeatherGrid {
+function sampleCurrentGrid(provider: TileCurrentProvider, timeMs: number, spec: CorridorGridSpec): WeatherGrid {
   const { latMin, lonMin, latStep, lonStep, nLat, nLon } = spec;
   const u = new Float32Array(nLat * nLon);
   const v = new Float32Array(nLat * nLon);
@@ -355,8 +347,12 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
       const timeHi = bracket[1]!;
 
       // Report weather-loading status — reuse last WASM pct to avoid bar flicker
-      post({ type: 'progress', pct: Math.max(lastPct, 5), frontier: [],
-        status: `Loading weather data (step ${String(iteration + 1)})…` });
+      post({
+        type: 'progress',
+        pct: Math.max(lastPct, 5),
+        frontier: [],
+        status: `Loading weather data (step ${String(iteration + 1)})…`,
+      });
 
       // Find which forecast steps bracket this time range (+ lookahead)
       const lookaheadMs = timeHi + LOOKAHEAD_FRAMES * (timeHi - timeLo);
@@ -394,8 +390,12 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
         for (let fi = 0; fi < lastFrontierLats.length; fi++) {
           const fLat = lastFrontierLats[fi]!;
           const fLon = lastFrontierLons[fi]!;
-          if (fLat < gridSpec.latMin + EDGE_MARGIN || fLat > gridSpec.latMin + (gridSpec.nLat - 1) * gridSpec.latStep - EDGE_MARGIN ||
-              fLon < gridSpec.lonMin + EDGE_MARGIN || fLon > gridSpec.lonMin + (gridSpec.nLon - 1) * gridSpec.lonStep - EDGE_MARGIN) {
+          if (
+            fLat < gridSpec.latMin + EDGE_MARGIN ||
+            fLat > gridSpec.latMin + (gridSpec.nLat - 1) * gridSpec.latStep - EDGE_MARGIN ||
+            fLon < gridSpec.lonMin + EDGE_MARGIN ||
+            fLon > gridSpec.lonMin + (gridSpec.nLon - 1) * gridSpec.lonStep - EDGE_MARGIN
+          ) {
             needExpand = true;
             break;
           }

@@ -72,7 +72,6 @@ let windModelRun = '';
 let waveModelRun = '';
 let cmemsModelRun = '';
 
-
 /**
  * Load forecast time axes from Windy minifests.
  * @returns {Promise<{windTimes: string[], currentTimes: string[]}>}
