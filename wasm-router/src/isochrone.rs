@@ -102,10 +102,13 @@ impl LegState {
         let step_ms = step_h * 3_600_000.0;
         let est_total_steps = (est_h / step_h).ceil() as u32;
 
+        // Arrival radius must be at least one step's sailing distance,
+        // otherwise the boat leaps over the destination without detecting arrival.
+        let step_dist_nm = est_speed * step_h;
         let arrival_r = if config.arrival_radius_nm > 0.0 {
             config.arrival_radius_nm
         } else {
-            (direct_dist / 100.0).clamp(0.1, 2.0)
+            step_dist_nm.max((direct_dist / 100.0).clamp(0.1, 2.0))
         };
 
         let mut arena = Vec::with_capacity(est_total_steps as usize * 500);
@@ -222,6 +225,43 @@ impl LegState {
             };
             let direct_blocked = land.segment_crosses_land(pt_lat, pt_lon, cone_end.0, cone_end.1);
             let cone_half = if direct_blocked { 180.0 } else { config.cone_half_angle };
+
+            // ── Direct-to-destination arrival ──────────────────────────────
+            // When close enough to reach the destination this step, generate
+            // a candidate placed exactly there with interpolated arrival time.
+            // This prevents overshooting when step_dist > arrival_r.
+            let max_step_dist = 15.0 * dt_hours; // generous upper bound
+            if dist_to_dest <= max_step_dist && !direct_blocked {
+                let direct_twa_raw = (pt_to_dest - wow_dir + 360.0) % 360.0;
+                let direct_twa = if direct_twa_raw > 180.0 { 360.0 - direct_twa_raw } else { direct_twa_raw };
+                let direct_speed = polar.interpolate(direct_twa, wow_speed);
+                let eff = if config.motor_below_kn > 0.0
+                    && config.motor_speed_kn > 0.0
+                    && direct_speed < config.motor_below_kn
+                {
+                    config.motor_speed_kn
+                } else {
+                    direct_speed
+                };
+                if eff >= config.min_boat_speed && eff * dt_hours >= dist_to_dest {
+                    if !land.segment_crosses_land(pt_lat, pt_lon, end_lat, end_lon) {
+                        let travel_h = dist_to_dest / eff;
+                        let arrival_ms = self.current_time_ms + travel_h * 3_600_000.0;
+                        let arr_idx = self.arena.len();
+                        self.arena.push(IsoPoint {
+                            lat: end_lat,
+                            lon: end_lon,
+                            time_ms: arrival_ms,
+                            ctw: pt_to_dest,
+                            twa: direct_twa,
+                            boat_speed: eff,
+                            step_calc_ms: 0.0,
+                            parent: Some(pt_idx),
+                        });
+                        candidates.push(arr_idx);
+                    }
+                }
+            }
 
             let mut wait_added = false;
             let mut ctw = 0.0f64;
