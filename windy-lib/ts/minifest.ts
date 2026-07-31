@@ -75,6 +75,7 @@ export function getValidTimes(
   const times: { iso: string; compact: string }[] = [];
 
   for (const [stepHours, firstHour, lastHour] of minifest.dst) {
+    if (stepHours <= 0) continue;
     for (let h = firstHour; h <= lastHour; h += stepHours) {
       const ms = refMs + h * 60 * 60 * 1000;
       const d = new Date(ms);
