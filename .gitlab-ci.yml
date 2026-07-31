@@ -12,6 +12,7 @@ pages:
     - corepack prepare pnpm@11 --activate
     - pnpm install --ignore-scripts
   script:
+    - pnpm -C windy-lib/ts build
     - pnpm build:wasm
     - pnpm build:webapp
     - mv dist/webapp public
