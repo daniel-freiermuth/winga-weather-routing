@@ -18,6 +18,11 @@ void test('getValidTimes: skips tuples with stepHours=0', () => {
   assert.strictEqual(result.length, 0);
 });
 
+void test('getValidTimes: skips tuples with negative stepHours', () => {
+  const result = getValidTimes({ ...MINIFEST_BASE, dst: [[-3, 3, 90]] });
+  assert.strictEqual(result.length, 0);
+});
+
 void test('getValidTimes: normal dst tuples still work', () => {
   const result = getValidTimes({ ...MINIFEST_BASE, dst: [[3, 3, 9]] });
   assert.strictEqual(result.length, 3); // h=3, h=6, h=9
