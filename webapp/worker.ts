@@ -36,6 +36,7 @@ type OutMessage =
       frontier: [number, number][];
       legOrigin?: [number, number];
       clearIsochrones?: boolean;
+      status?: string;
     }
   | { type: 'result'; route: RoutePoint[]; warning?: string }
   | { type: 'error'; message: string };
@@ -48,8 +49,10 @@ function post(msg: OutMessage): void {
 // The WASM RouterSession calls js_on_progress during step() to report frontier.
 
 const _self = globalThis as Record<string, unknown>;
+let lastPct = 0;
 
 _self['js_on_progress'] = (pct: number, frontier: Float64Array): void => {
+  lastPct = pct;
   const pairs: [number, number][] = [];
   for (let i = 0; i < frontier.length; i += 2) {
     pairs.push([frontier[i]!, frontier[i + 1]!]);
@@ -250,6 +253,7 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
   const { request, polarCsv, tileBbox, landIndexUrl, dilatedIndexUrl, windModel, useSafetyMargin } = payload;
 
   const departureMs = new Date(request.departureTime).getTime();
+  lastPct = 0;
   post({ type: 'progress', pct: 0, frontier: [] });
 
   // Reset pushed-frame tracking
@@ -338,12 +342,17 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
   const currentTimesMs = currentProvider.times.map((d) => d.getTime());
 
   try {
+    let exhausted = false;
     for (let iteration = 0; iteration < 500; iteration++) {
       const bracket = session.needs();
       if (bracket.length === 0) break; // done or error
 
       const timeLo = bracket[0]!;
       const timeHi = bracket[1]!;
+
+      // Report weather-loading status — reuse last WASM pct to avoid bar flicker
+      post({ type: 'progress', pct: Math.max(lastPct, 5), frontier: [],
+        status: `Loading weather data (step ${String(iteration + 1)})…` });
 
       // Find which forecast steps bracket this time range (+ lookahead)
       const lookaheadMs = timeHi + LOOKAHEAD_FRAMES * (timeHi - timeLo);
@@ -353,12 +362,12 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
       }
 
       // Run one step
-      const status = session.step();
+      const stepStatus = session.step();
 
-      if (status === 1) {
+      if (stepStatus === 1) {
         // Arrived — extract route
         break;
-      } else if (status === 2) {
+      } else if (stepStatus === 2) {
         // No progress
         const err = session.error();
         if (err) {
@@ -366,8 +375,9 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
           return;
         }
         break; // partial route
-      } else if (status === 3) {
+      } else if (stepStatus === 3) {
         // Forecast exhausted
+        exhausted = true;
         break;
       }
 
@@ -418,8 +428,10 @@ async function handleCalculate(payload: CalculatePayload): Promise<void> {
       route.push(pt);
     }
 
-    if (route.length === 0) {
-      post({ type: 'result', route, warning: 'Route may be partial — forecast or wind coverage exhausted' });
+    if (exhausted) {
+      post({ type: 'result', route, warning: 'Route is partial — forecast coverage exhausted before arrival' });
+    } else if (route.length === 0) {
+      post({ type: 'result', route, warning: 'No route found — check wind coverage and polar diagram' });
     } else {
       post({ type: 'result', route });
     }
