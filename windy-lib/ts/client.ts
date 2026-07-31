@@ -309,14 +309,18 @@ export class WindyClient {
       rgbaDecoder: RgbaDecoder;
       model?: WindyModelKey;
       level?: WindyLevel;
-      /** Zoom level for the covering tile. Max 3 for CMEMS. Default: 3. */
+      /**
+       * Zoom level for the covering tile.
+       * Defaults to the model's maxZoomPremium (z=4 for ECMWF/CMEMS/WAM, z=3 for GFS).
+       * The CDN does not enforce premium — these tiles are served to anyone.
+       */
       zoom?: number;
     }
   ): Promise<WindyTilePixelValue> {
-    const { rgbaDecoder, level = "surface", zoom = 3 } = opts;
     const overlayInfo = WINDY_OVERLAYS[overlay];
     const modelKey: WindyModelKey = opts.model ?? overlayInfo.model;
     const modelInfo = WINDY_MODELS[modelKey];
+    const { rgbaDecoder, level = "surface", zoom = modelInfo.maxZoomPremium } = opts;
 
     const minifest = await this.getMinifest(modelKey);
     const modelRun = refToCompact(minifest.ref);
