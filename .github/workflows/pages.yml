@@ -32,6 +32,10 @@ jobs:
       - run: pnpm install --ignore-scripts
       - run: pnpm -C windy-lib/ts build
       - run: pnpm build:wasm
+      - name: Resolve data symlinks
+        run: |
+          cd webapp/public/data
+          for f in *.bin.gz; do cp --remove-destination "$(readlink "$f")" "$f"; done
       - run: pnpm build:webapp
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
