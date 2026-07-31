@@ -43,6 +43,7 @@ async function fetchTile(url: string) {
     return { rgba: data, header };
   })();
   tileCache.set(url, pending);
+  pending.catch(() => tileCache.delete(url));
   return pending;
 }
 
