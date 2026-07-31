@@ -1,0 +1,22 @@
+pages:
+  image: node:24-bookworm
+  stage: deploy
+  before_script:
+    # Rust toolchain + wasm-pack
+    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+    - . "$HOME/.cargo/env"
+    - rustup target add wasm32-unknown-unknown
+    - cargo install wasm-pack
+    # pnpm
+    - corepack enable
+    - corepack prepare pnpm@11 --activate
+    - pnpm install --ignore-scripts
+  script:
+    - pnpm build:wasm
+    - pnpm build:webapp
+    - mv dist/webapp public
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
