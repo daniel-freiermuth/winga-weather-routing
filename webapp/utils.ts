@@ -1,18 +1,18 @@
 // Pure utility functions shared across the webapp.
 
-
 /** Converts a Date to a datetime-local input value string. */
 export function toLocalDateTimeInput(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${String(d.getFullYear())}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-
 const DEG = Math.PI / 180;
 
 /** Geodesic initial bearing (great-circle formula). */
 function geodesicBearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const φ1 = lat1 * DEG, φ2 = lat2 * DEG, dλ = (lon2 - lon1) * DEG;
+  const φ1 = lat1 * DEG,
+    φ2 = lat2 * DEG,
+    dλ = (lon2 - lon1) * DEG;
   const y = Math.sin(dλ) * Math.cos(φ2);
   const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dλ);
   return Math.atan2(y, x) / DEG; // degrees, -180..+180
@@ -25,7 +25,8 @@ export function sortByBearing(pts: number[][], origin: { lat: number; lon: numbe
   return pts
     .slice()
     .sort(
-      (a, b) => geodesicBearing(origin.lat, origin.lon, a[0]!, a[1]!) - geodesicBearing(origin.lat, origin.lon, b[0]!, b[1]!),
+      (a, b) =>
+        geodesicBearing(origin.lat, origin.lon, a[0]!, a[1]!) - geodesicBearing(origin.lat, origin.lon, b[0]!, b[1]!),
     );
 }
 

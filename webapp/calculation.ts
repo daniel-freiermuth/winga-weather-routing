@@ -363,6 +363,7 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
       frontier?: number[][];
       legOrigin?: [number, number];
       clearIsochrones?: boolean;
+      status?: string;
       route?: {
         lat: number;
         lon: number;
@@ -388,7 +389,7 @@ export function setupCalculation(ctx: CalculationContext): CalculationApi {
     if (j.type === 'progress') {
       const pct = Math.round(j.pct ?? j.progress ?? 0);
       ctx.setProgress(pct);
-      ctx.setStatus('', `Calculating… ${String(pct)}%`);
+      ctx.setStatus('', j.status ?? `Calculating… ${String(pct)}%`);
       if (j.clearIsochrones === true) {
         clearIsochrones(isochroneState);
       }

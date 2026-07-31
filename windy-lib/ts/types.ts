@@ -95,9 +95,30 @@ export interface WindyModelInfo {
   hasPointForecast: boolean;
   /** Whether this model covers ocean variables only. */
   oceanOnly: boolean;
+  /**
+   * Maximum tile zoom level the Windy UI renders for free-tier users.
+   * Note: the CDN does NOT enforce this — z=4 tiles exist and are served
+   * even without a premium token. The limit is client-side only.
+   */
+  maxZoomFree: number;
+  /**
+   * Maximum tile zoom level the CDN actually has tiles for.
+   * Above this, the server returns 400.
+   */
+  maxZoomPremium: number;
 }
 
-/** All models Windy supports, keyed by a stable short name. */
+/**
+ * All models Windy supports, keyed by a stable short name.
+ *
+ * Zoom level notes (verified against live CDN 2026-07-31):
+ *   z=3: ~17 km/pixel at equator, ~45° per tile — all models
+ *   z=4: ~8.5 km/pixel, ~22.5° per tile — matches ECMWF 9 km native grid
+ *   z=5+: only available for high-res regional models (HRRR, ICON-D2, UKV…)
+ *
+ * The free/premium zoom distinction is enforced ONLY in the Windy web client.
+ * The CDN serves any tile that exists regardless of auth status.
+ */
 export const WINDY_MODELS = {
   ecmwf: {
     name: "ECMWF HRES",
@@ -108,6 +129,8 @@ export const WINDY_MODELS = {
     premiumHours: 360,
     hasPointForecast: true,
     oceanOnly: false,
+    maxZoomFree: 3,
+    maxZoomPremium: 4,      // CDN confirmed: z=4→200, z=5→400
   },
   gfs: {
     name: "GFS",
@@ -118,6 +141,8 @@ export const WINDY_MODELS = {
     premiumHours: 360,
     hasPointForecast: true,
     oceanOnly: false,
+    maxZoomFree: 3,
+    maxZoomPremium: 3,      // CDN confirmed: z=3→200, z=4→400
   },
   icon: {
     name: "ICON",
@@ -128,6 +153,8 @@ export const WINDY_MODELS = {
     premiumHours: 360,
     hasPointForecast: true,
     oceanOnly: false,
+    maxZoomFree: 3,
+    maxZoomPremium: 3,
   },
   cmems: {
     name: "CMEMS",
@@ -138,6 +165,8 @@ export const WINDY_MODELS = {
     premiumHours: 72,
     hasPointForecast: false,
     oceanOnly: true,
+    maxZoomFree: 3,
+    maxZoomPremium: 4,      // UI renders z=3, but CDN confirmed: z=4→200
   },
   ecmwfWam: {
     name: "ECMWF WAM",
@@ -148,6 +177,8 @@ export const WINDY_MODELS = {
     premiumHours: 360,
     hasPointForecast: true,
     oceanOnly: true,
+    maxZoomFree: 3,
+    maxZoomPremium: 4,      // CDN confirmed: z=4→200, z=5→400
   },
 } as const satisfies Record<string, WindyModelInfo>;
 

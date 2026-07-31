@@ -1,0 +1,45 @@
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: jetli/wasm-pack-action@v0.4.0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --ignore-scripts
+      - run: pnpm -C windy-lib/ts build
+      - run: pnpm build:wasm
+      - name: Resolve data symlinks
+        run: |
+          cd webapp/public/data
+          for f in *.bin.gz; do cp --remove-destination "$(readlink "$f")" "$f"; done
+      - run: pnpm build:webapp
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/webapp
+      - uses: actions/deploy-pages@v4
+        id: deploy

@@ -11,7 +11,7 @@
 //
 // Returns an array of per-waypoint results for display.
 
-import { haversineNM, bearingTo, windSpeedKnots, windDirection } from '../src/lib/geo';
+import { haversineNM, bearingTo, windSpeedKnots, windDirection, currentDirection } from '../src/lib/geo';
 import { parsePolarCsv, interpolateBoatSpeed } from '../src/lib/polar';
 import * as dataLayer from './data-layer';
 
@@ -62,37 +62,12 @@ export async function analyseRouteWeather(
     const wp = waypoints[i]!;
     if (onProgress) onProgress(Math.round((i / waypoints.length) * 100));
 
-    // Query weather at this waypoint at the estimated arrival time
-    const wx = await dataLayer.queryPointWeather(wp.lat, wp.lon, currentTimeMs);
-
-    const twsKn = wx.wind ? windSpeedKnots(wx.wind.u, wx.wind.v) : null;
-    const twdDeg = wx.wind ? windDirection(wx.wind.u, wx.wind.v) : null;
-
-    const currentSpeedKn = wx.current ? windSpeedKnots(wx.current.u, wx.current.v) : null;
-    const currentDirDeg = wx.current ? windDirection(wx.current.u, wx.current.v) : null;
-
-    // Compute leg info for the NEXT leg (from this waypoint to the next)
-    let twaAbs = null;
-    let boatSpeedKn = null;
+    // Compute arrival time at this waypoint before querying weather
     let legDistNm = 0;
     let legDurationH = 0;
-
     if (i > 0) {
       const prev = waypoints[i - 1]!;
       legDistNm = haversineNM(prev.lat, prev.lon, wp.lat, wp.lon);
-    }
-
-    if (i < waypoints.length - 1 && twdDeg !== null && twsKn !== null) {
-      const nextWp = waypoints[i + 1]!;
-      const bearing = bearingTo(wp.lat, wp.lon, nextWp.lat, nextWp.lon);
-      let twa = (bearing - twdDeg + 360) % 360;
-      if (twa > 180) twa = 360 - twa;
-      twaAbs = Math.round(twa);
-      boatSpeedKn = Math.round(interpolateBoatSpeed(polar, twa, twsKn) * 10) / 10;
-    }
-
-    cumDistNm += legDistNm;
-    if (i > 0) {
       // Duration for this leg: use the boat speed computed at the PREVIOUS waypoint
       const prevResult = results[i - 1];
       const prevSpeed = prevResult?.boatSpeedKn;
@@ -102,8 +77,31 @@ export async function analyseRouteWeather(
         // No wind / can't sail — assume 3 kn motoring as fallback
         legDurationH = legDistNm / 3;
       }
+      cumDistNm += legDistNm;
       cumDurationH += legDurationH;
       currentTimeMs = departureMs + cumDurationH * 3_600_000;
+    }
+
+    // Query weather at this waypoint at the estimated arrival time
+    const wx = await dataLayer.queryPointWeather(wp.lat, wp.lon, currentTimeMs);
+
+    const twsKn = wx.wind ? windSpeedKnots(wx.wind.u, wx.wind.v) : null;
+    const twdDeg = wx.wind ? windDirection(wx.wind.u, wx.wind.v) : null;
+
+    const currentSpeedKn = wx.current ? windSpeedKnots(wx.current.u, wx.current.v) : null;
+    const currentDirDeg = wx.current ? currentDirection(wx.current.u, wx.current.v) : null;
+
+    // Compute leg info for the NEXT leg (from this waypoint to the next)
+    let twaAbs = null;
+    let boatSpeedKn = null;
+
+    if (i < waypoints.length - 1 && twdDeg !== null && twsKn !== null) {
+      const nextWp = waypoints[i + 1]!;
+      const bearing = bearingTo(wp.lat, wp.lon, nextWp.lat, nextWp.lon);
+      let twa = (bearing - twdDeg + 360) % 360;
+      if (twa > 180) twa = 360 - twa;
+      twaAbs = Math.round(twa);
+      boatSpeedKn = Math.round(interpolateBoatSpeed(polar, twa, twsKn) * 10) / 10;
     }
 
     const gustKn = wx.gustMs !== null ? Math.round(wx.gustMs * 1.94384 * 10) / 10 : null;

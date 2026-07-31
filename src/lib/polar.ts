@@ -35,7 +35,6 @@ export function parsePolarCsv(csv: string): PolarData {
   return { tws, twa, speeds };
 }
 
-
 export function interpolateBoatSpeed(polar: PolarData, twaDeg: number, twsKnots: number): number {
   // Polar is symmetric: use absolute TWA clamped to 0–180
   const twa = Math.min(180, Math.max(0, Math.abs(twaDeg)));
