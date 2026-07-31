@@ -128,9 +128,9 @@ export function buildWorkerPayload(req: RoutingRequest): unknown {
         lonMin: lonMin - margin,
         lonMax: lonMax + margin,
       },
-      landIndexUrl: new URL('./data/edge-index.bin.gz', import.meta.url).href,
+      landIndexUrl: new URL(`${import.meta.env.BASE_URL}data/edge-index.bin.gz`, location.href).href,
       dilatedIndexUrl: req.useSafetyMargin
-        ? new URL('./data/dilated-edge-index.bin.gz', import.meta.url).href
+        ? new URL(`${import.meta.env.BASE_URL}data/dilated-edge-index.bin.gz`, location.href).href
         : undefined,
       windModel: 'ecmwf',
       useSafetyMargin: req.useSafetyMargin,
