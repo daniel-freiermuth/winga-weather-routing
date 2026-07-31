@@ -6,20 +6,21 @@ on:
     branches: [main]
 permissions:
   contents: read
+
 jobs:
-  build:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          version: 11
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
+      - uses: jetli/wasm-pack-action@v0.4.0
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: 'pnpm'
-      - run: pnpm install
-      - run: pnpm build
-      - run: pnpm lint
-      - run: pnpm format:check
-      - run: pnpm test
+      - run: pnpm install --ignore-scripts
+      - run: pnpm check:all
