@@ -9,14 +9,20 @@
 //   The worker dynamically expands the tile corridor when the frontier
 //   approaches the grid edge (see worker.ts corridor expansion).
 //
-// LIFECYCLE
-// ─────────
+// LIFECYCLE (TileWindProvider)
+// ────────────────────────────
 //   1. Construct with model and optional zoom level.
 //   2. Call load(bbox) — fetches model metadata and sets up tile grid.
 //   3. Call prefetchForTime(timeMs) — lazily fetches tile data for a time bracket.
-//   4. Use getWind / getWave / getCurrent — fully synchronous after prefetch.
+//   4. Use getWind / getWave — fully synchronous after prefetch.
 //   5. Call load(expandedBbox) again on corridor expansion — resets tile grid,
 //      keeps cached tiles (they remain valid at new positions).
+//
+// LIFECYCLE (TileCurrentProvider)
+// ───────────────────────────────
+//   1. Construct with optional zoom level.
+//   2. Call load(bbox, fromMs, toMs) — fetches metadata and all tiles eagerly.
+//   3. Use getCurrent — fully synchronous after load.
 //
 // TILE CACHING
 // ─────────────
