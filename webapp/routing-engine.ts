@@ -10,26 +10,30 @@ export interface IsochroneState {
   map: maplibregl.Map;
 }
 
-interface RoutingRequest { start: { lat: number; lon: number };
-end: { lat: number; lon: number };
-departureTime: string;
-waypoints?: { lat: number; lon: number }[] | undefined;
-polarCsv: string;
-useLandAvoidance: boolean;
-useSafetyMargin: boolean;
-options: {
-  motorBelowKn?: number | undefined;
-  motorSpeedKn?: number | undefined;
-  waitForWind?: boolean | undefined;
-  maxWindKn?: number | undefined;
-  maxWaveM?: number | undefined;
-  tackPenaltySec?: number | undefined;
-  tackThresholdDeg?: number | undefined;
-}; }
+interface RoutingRequest {
+  start: { lat: number; lon: number };
+  end: { lat: number; lon: number };
+  departureTime: string;
+  waypoints?: { lat: number; lon: number }[] | undefined;
+  polarCsv: string;
+  useLandAvoidance: boolean;
+  useSafetyMargin: boolean;
+  options: {
+    motorBelowKn?: number | undefined;
+    motorSpeedKn?: number | undefined;
+    waitForWind?: boolean | undefined;
+    maxWindKn?: number | undefined;
+    maxWaveM?: number | undefined;
+    tackPenaltySec?: number | undefined;
+    tackThresholdDeg?: number | undefined;
+  };
+}
 
-interface RoutingCallbacks { onProgress: (pct: number, frontier?: number[][]) => void;
-onResult: (route: unknown) => void;
-onError: (msg: string) => void; }
+interface RoutingCallbacks {
+  onProgress: (pct: number, frontier?: number[][]) => void;
+  onResult: (route: unknown) => void;
+  onError: (msg: string) => void;
+}
 
 const ISOCHRONE_GAP_THRESHOLD_DEG = 10;
 const ISOCHRONE_COLOURS = ['#000000', '#4477ff', '#8833cc', '#cc3333'];
@@ -104,7 +108,7 @@ export function buildWorkerPayload(req: RoutingRequest): unknown {
   const latMax = Math.max(...lats);
   const lonMin = Math.min(...lons);
   const lonMax = Math.max(...lons);
-  const margin = Math.max(1, (latMax - latMin) * 0.3, (lonMax - lonMin) * 0.3);
+  const margin = Math.max(3, (latMax - latMin) * 0.3, (lonMax - lonMin) * 0.3);
 
   return {
     type: 'calculate',
@@ -124,9 +128,9 @@ export function buildWorkerPayload(req: RoutingRequest): unknown {
         lonMin: lonMin - margin,
         lonMax: lonMax + margin,
       },
-      landIndexUrl: new URL('./data/edge-index.bin.gz', import.meta.url).href,
+      landIndexUrl: new URL(`${import.meta.env.BASE_URL}data/edge-index.bin.gz`, location.href).href,
       dilatedIndexUrl: req.useSafetyMargin
-        ? new URL('./data/dilated-edge-index.bin.gz', import.meta.url).href
+        ? new URL(`${import.meta.env.BASE_URL}data/dilated-edge-index.bin.gz`, location.href).href
         : undefined,
       windModel: 'ecmwf',
       useSafetyMargin: req.useSafetyMargin,

@@ -43,4 +43,3 @@ export function fmt(value: number, category: UnitCategory, forceMs = false): { n
   const decimals = dot >= 0 ? fmtStr.length - dot - 1 : 0;
   return { num: raw.toFixed(decimals), sym: p.symbol ?? '' };
 }
-

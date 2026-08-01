@@ -54,6 +54,7 @@ async function fetchAndDecode(url: string): Promise<CachedTile> {
     return { rgba, header };
   })();
   inflight.set(url, pending);
+  pending.catch(() => inflight.delete(url));
   return pending;
 }
 

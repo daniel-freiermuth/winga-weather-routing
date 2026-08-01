@@ -3,7 +3,9 @@
 // trig, polar lookup, and candidate pruning.
 
 use crate::geo::{bearing_to, destination_point, haversine_nm, wind_direction, wind_speed_knots};
+use crate::land::LandIndex;
 use crate::polar::PolarData;
+use crate::weather::WeatherStore;
 
 const DEG_TO_RAD: f64 = std::f64::consts::PI / 180.0;
 
@@ -37,7 +39,6 @@ pub struct LegConfig {
     pub sector_size: f64,
     pub min_boat_speed: f64,
     pub max_wind_kn: f64,
-    pub max_wave_m: f64,
     pub motor_speed_kn: f64,
     pub motor_below_kn: f64,
     pub wait_for_wind: bool,
@@ -49,103 +50,154 @@ pub struct LegConfig {
     pub arrival_radius_nm: f64,
 }
 
-/// Callbacks into JS for data that lives in browser memory.
-pub trait DataProvider {
-    /// Get wind u/v (m/s) at a position and time.
-    fn get_wind(&self, lat: f64, lon: f64, time_ms: f64) -> (f64, f64);
-    /// Get current u/v (m/s) at a position and time. Returns (0,0) if unavailable.
-    fn get_current(&self, lat: f64, lon: f64, time_ms: f64) -> (f64, f64);
-    /// Check if a segment crosses land.
-    fn crosses_land(&self, lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> bool;
-    /// Check if a point is on land.
-    fn is_on_land(&self, lat: f64, lon: f64) -> bool;
-    /// Get wave height (m) at a position and time. Returns None if unavailable.
-    fn get_wave(&self, lat: f64, lon: f64, time_ms: f64) -> Option<f64>;
-    /// Check if wind data covers a point at a time.
-    fn covers_point(&self, lat: f64, lon: f64, time_ms: f64) -> bool;
-    /// Report progress (pct 0–100, frontier as flat [lat, lon, ...]).
-    fn on_progress(&self, pct: f64, frontier: &[(f64, f64)]);
-    /// Prefetch tiles for a time step.
-    fn prefetch(&self, time_ms: f64);
+/// Result of a single expansion step.
+pub enum StepResult {
+    /// Frontier advanced; more steps possible.
+    Running,
+    /// Route arrived at the destination.
+    Arrived,
+    /// No candidates survived this step (blocked or no wind).
+    NoProgress,
+    /// Next step would exceed the forecast horizon.
+    ForecastExhausted,
 }
 
-/// Calculate a single routing leg from start to end.
-#[allow(clippy::too_many_arguments)]
-pub fn calculate_leg(
+/// Manages the state of a single routing leg, allowing step-by-step execution.
+pub struct LegState {
+    arena: Vec<IsoPoint>,
+    frontier: Vec<usize>,
+    arrived: Option<usize>,
+    steps_completed: u32,
+    current_time_ms: f64,
+    // Leg endpoints.
     start_lat: f64,
     start_lon: f64,
     end_lat: f64,
     end_lon: f64,
-    departure_ms: f64,
+    // Timing.
     forecast_end_ms: f64,
-    polar: &PolarData,
-    config: &LegConfig,
-    data: &dyn DataProvider,
-) -> Result<Vec<RoutePoint>, String> {
-    // ── Adaptive timestep ──────────────────────────────────────────────
-    let direct_dist = haversine_nm(start_lat, start_lon, end_lat, end_lon);
-    let est_speed = 5.0; // reasonable sailing average
-    let forecast_h = (forecast_end_ms - departure_ms) / 3_600_000.0;
-    let est_h = (direct_dist / est_speed).min(forecast_h);
-    let step_h = (est_h / 100.0).max(0.25); // at least 15 min
-    let step_ms = step_h * 3_600_000.0;
-    let est_total_steps = (est_h / step_h).ceil() as u32;
+    step_ms: f64,
+    step_h: f64,
+    arrival_r: f64,
+    est_total_steps: u32,
+}
 
-    // Dynamic arrival radius
-    let arrival_r = if config.arrival_radius_nm > 0.0 {
-        config.arrival_radius_nm
-    } else {
-        (direct_dist / 100.0).clamp(0.1, 2.0)
-    };
+impl LegState {
+    /// Create a new leg state. The frontier starts as a single seed point at the start position.
+    pub fn new(
+        start_lat: f64,
+        start_lon: f64,
+        end_lat: f64,
+        end_lon: f64,
+        departure_ms: f64,
+        forecast_end_ms: f64,
+        config: &LegConfig,
+    ) -> Self {
+        let direct_dist = haversine_nm(start_lat, start_lon, end_lat, end_lon);
+        let est_speed = 5.0;
+        let forecast_h = (forecast_end_ms - departure_ms) / 3_600_000.0;
+        let est_h = (direct_dist / est_speed).min(forecast_h);
+        let step_h = (est_h / 100.0).max(0.25);
+        let step_ms = step_h * 3_600_000.0;
+        let est_total_steps = (est_h / step_h).ceil() as u32;
 
-    // ── Arena for all points (parent references by index) ──────────────
-    let mut arena: Vec<IsoPoint> = Vec::with_capacity(est_total_steps as usize * 500);
+        // Arrival radius must be at least one step's sailing distance,
+        // otherwise the boat leaps over the destination without detecting arrival.
+        let step_dist_nm = est_speed * step_h;
+        let arrival_r = if config.arrival_radius_nm > 0.0 {
+            config.arrival_radius_nm
+        } else {
+            step_dist_nm.max((direct_dist / 100.0).clamp(0.1, 2.0))
+        };
 
-    // Seed
-    arena.push(IsoPoint {
-        lat: start_lat,
-        lon: start_lon,
-        time_ms: departure_ms,
-        ctw: 0.0,
-        twa: 0.0,
-        boat_speed: 0.0,
-        step_calc_ms: 0.0,
-        parent: None,
-    });
+        let mut arena = Vec::with_capacity(est_total_steps as usize * 500);
+        arena.push(IsoPoint {
+            lat: start_lat,
+            lon: start_lon,
+            time_ms: departure_ms,
+            ctw: 0.0,
+            twa: 0.0,
+            boat_speed: 0.0,
+            step_calc_ms: 0.0,
+            parent: None,
+        });
 
-    let mut frontier: Vec<usize> = vec![0]; // indices into arena
-    let mut arrived: Option<usize> = None;
-    let mut steps_completed: u32 = 0;
-    let mut current_time_ms = departure_ms;
+        Self {
+            arena,
+            frontier: vec![0],
+            arrived: None,
+            steps_completed: 0,
+            current_time_ms: departure_ms,
+            start_lat,
+            start_lon,
+            end_lat,
+            end_lon,
+            forecast_end_ms,
+            step_ms,
+            step_h,
+            arrival_r,
+            est_total_steps,
+        }
+    }
 
-    for _step in 0..500 {
-        let next_time_ms = current_time_ms + step_ms;
-        if next_time_ms > forecast_end_ms {
-            break;
+    /// Time the next step will evaluate wind/current at.
+    pub fn current_time_ms(&self) -> f64 {
+        self.current_time_ms
+    }
+
+    /// Time the next step will advance the frontier to.
+    pub fn next_time_ms(&self) -> f64 {
+        self.current_time_ms + self.step_ms
+    }
+
+    /// Progress percentage (0–100).
+    pub fn progress_pct(&self) -> f64 {
+        ((self.steps_completed as f64 + 1.0) / self.est_total_steps as f64 * 100.0).min(99.0)
+    }
+
+    /// Current frontier as (lat, lon) pairs for progress display.
+    pub fn frontier_points(&self) -> Vec<(f64, f64)> {
+        self.frontier
+            .iter()
+            .map(|&i| (self.arena[i].lat, self.arena[i].lon))
+            .collect()
+    }
+
+    /// Run one expansion step using the given data sources.
+    pub fn step(
+        &mut self,
+        polar: &PolarData,
+        config: &LegConfig,
+        wind: &WeatherStore,
+        current: &WeatherStore,
+        land: &LandIndex,
+    ) -> StepResult {
+        let next_time_ms = self.current_time_ms + self.step_ms;
+        if next_time_ms > self.forecast_end_ms {
+            return StepResult::ForecastExhausted;
         }
 
-        data.prefetch(current_time_ms);
+        let dt_hours = self.step_h;
+        let end_lat = self.end_lat;
+        let end_lon = self.end_lon;
+        let mut candidates: Vec<usize> = Vec::with_capacity(self.frontier.len() * 72);
 
-        let dt_hours = step_h;
-        let mut candidates: Vec<usize> = Vec::with_capacity(frontier.len() * 72);
+        for &pt_idx in &self.frontier {
+            let pt_lat = self.arena[pt_idx].lat;
+            let pt_lon = self.arena[pt_idx].lon;
+            let pt_ctw = self.arena[pt_idx].ctw;
+            let pt_twa = self.arena[pt_idx].twa;
+            let pt_has_parent = self.arena[pt_idx].parent.is_some();
 
-        for &pt_idx in &frontier {
-            // Copy fields from the frontier point to avoid borrow conflict with arena.push
-            let pt_lat = arena[pt_idx].lat;
-            let pt_lon = arena[pt_idx].lon;
-            let pt_ctw = arena[pt_idx].ctw;
-            let pt_twa = arena[pt_idx].twa;
-            let pt_has_parent = arena[pt_idx].parent.is_some();
-
-            if data.is_on_land(pt_lat, pt_lon) {
+            if land.is_on_land(pt_lat, pt_lon) {
                 continue;
             }
 
             let pt_to_dest = bearing_to(pt_lat, pt_lon, end_lat, end_lon);
-            let wind_vec = data.get_wind(pt_lat, pt_lon, current_time_ms);
+            let wind_vec = wind.sample(pt_lat, pt_lon, self.current_time_ms);
 
             // Wind over water
-            let cur = data.get_current(pt_lat, pt_lon, current_time_ms);
+            let cur = current.sample(pt_lat, pt_lon, self.current_time_ms);
             let wow_u = wind_vec.0 - cur.0;
             let wow_v = wind_vec.1 - cur.1;
             let wow_speed = wind_speed_knots(wow_u, wow_v);
@@ -158,14 +210,7 @@ pub fn calculate_leg(
                 continue;
             }
 
-            // Max wave check
-            if config.max_wave_m > 0.0
-                && data
-                    .get_wave(pt_lat, pt_lon, current_time_ms)
-                    .is_some_and(|wh| wh > config.max_wave_m)
-            {
-                continue;
-            }
+            // Wave check skipped — wave data not yet passed to Rust
 
             // Cone check
             let dist_to_dest = haversine_nm(pt_lat, pt_lon, end_lat, end_lon);
@@ -174,12 +219,54 @@ pub fn calculate_leg(
             } else {
                 destination_point(pt_lat, pt_lon, config.cone_disable_lookahead_nm, pt_to_dest)
             };
-            let direct_blocked = data.crosses_land(pt_lat, pt_lon, cone_end.0, cone_end.1);
+            let direct_blocked = land.segment_crosses_land(pt_lat, pt_lon, cone_end.0, cone_end.1);
             let cone_half = if direct_blocked {
                 180.0
             } else {
                 config.cone_half_angle
             };
+
+            // ── Direct-to-destination arrival ──────────────────────────────
+            // When close enough to reach the destination this step, generate
+            // a candidate placed exactly there with interpolated arrival time.
+            // This prevents overshooting when step_dist > arrival_r.
+            let max_step_dist = 15.0 * dt_hours; // generous upper bound
+            if dist_to_dest <= max_step_dist && !direct_blocked {
+                let direct_twa_raw = (pt_to_dest - wow_dir + 360.0) % 360.0;
+                let direct_twa = if direct_twa_raw > 180.0 {
+                    360.0 - direct_twa_raw
+                } else {
+                    direct_twa_raw
+                };
+                let direct_speed = polar.interpolate(direct_twa, wow_speed);
+                let eff = if config.motor_below_kn > 0.0
+                    && config.motor_speed_kn > 0.0
+                    && direct_speed < config.motor_below_kn
+                {
+                    config.motor_speed_kn
+                } else {
+                    direct_speed
+                };
+                if eff >= config.min_boat_speed
+                    && eff * dt_hours >= dist_to_dest
+                    && !land.segment_crosses_land(pt_lat, pt_lon, end_lat, end_lon)
+                {
+                    let travel_h = dist_to_dest / eff;
+                    let arrival_ms = self.current_time_ms + travel_h * 3_600_000.0;
+                    let arr_idx = self.arena.len();
+                    self.arena.push(IsoPoint {
+                        lat: end_lat,
+                        lon: end_lon,
+                        time_ms: arrival_ms,
+                        ctw: pt_to_dest,
+                        twa: direct_twa,
+                        boat_speed: eff,
+                        step_calc_ms: 0.0,
+                        parent: Some(pt_idx),
+                    });
+                    candidates.push(arr_idx);
+                }
+            }
 
             let mut wait_added = false;
             let mut ctw = 0.0f64;
@@ -216,8 +303,8 @@ pub fn calculate_leg(
 
                 if effective_speed < config.min_boat_speed {
                     if config.wait_for_wind && !wait_added {
-                        let wait_idx = arena.len();
-                        arena.push(IsoPoint {
+                        let wait_idx = self.arena.len();
+                        self.arena.push(IsoPoint {
                             lat: pt_lat,
                             lon: pt_lon,
                             time_ms: next_time_ms,
@@ -254,19 +341,19 @@ pub fn calculate_leg(
                 }
 
                 // Coverage check
-                if !data.covers_point(new_lat, new_lon, next_time_ms) {
+                if !wind.covers(new_lat, new_lon, next_time_ms) {
                     ctw += config.heading_step;
                     continue;
                 }
 
                 // Land check
-                if data.crosses_land(pt_lat, pt_lon, new_lat, new_lon) {
+                if land.segment_crosses_land(pt_lat, pt_lon, new_lat, new_lon) {
                     ctw += config.heading_step;
                     continue;
                 }
 
-                let new_idx = arena.len();
-                arena.push(IsoPoint {
+                let new_idx = self.arena.len();
+                self.arena.push(IsoPoint {
                     lat: new_lat,
                     lon: new_lon,
                     time_ms: next_time_ms,
@@ -285,108 +372,110 @@ pub fn calculate_leg(
         // Check for arrival
         let mut best_arrival: Option<(usize, f64)> = None;
         for &idx in &candidates {
-            let p = &arena[idx];
+            let p = &self.arena[idx];
             let d = haversine_nm(p.lat, p.lon, end_lat, end_lon);
-            if d <= arrival_r && (best_arrival.is_none() || d < best_arrival.unwrap().1) {
+            if d <= self.arrival_r && (best_arrival.is_none() || d < best_arrival.unwrap().1) {
                 best_arrival = Some((idx, d));
             }
         }
         if let Some((idx, _)) = best_arrival {
-            arrived = Some(idx);
-            break;
+            self.arrived = Some(idx);
+            return StepResult::Arrived;
         }
 
         // Prune to frontier
-        frontier = prune_to_frontier(
-            &arena,
+        self.frontier = prune_to_frontier(
+            &self.arena,
             &candidates,
-            start_lat,
-            start_lon,
+            self.start_lat,
+            self.start_lon,
             config.sector_size,
         );
 
-        if frontier.is_empty() {
-            return Err(format!(
-                "No reachable positions at step {}",
-                steps_completed + 1
-            ));
+        if self.frontier.is_empty() {
+            return StepResult::NoProgress;
         }
 
-        steps_completed += 1;
-        let pct = ((steps_completed as f64 + 1.0) / est_total_steps as f64 * 100.0).min(99.0);
-        let frontier_pts: Vec<(f64, f64)> = frontier
-            .iter()
-            .map(|&i| (arena[i].lat, arena[i].lon))
-            .collect();
-        data.on_progress(pct, &frontier_pts);
-
-        current_time_ms = next_time_ms;
+        self.steps_completed += 1;
+        self.current_time_ms = next_time_ms;
+        StepResult::Running
     }
 
-    // Backtrack from arrival or closest frontier point
-    let backtrack_idx = if let Some(idx) = arrived {
-        idx
-    } else if !frontier.is_empty() {
-        // Partial route: find frontier point closest to destination
-        let mut best_idx = frontier[0];
-        let mut best_dist =
-            haversine_nm(arena[best_idx].lat, arena[best_idx].lon, end_lat, end_lon);
-        for &idx in &frontier[1..] {
-            let d = haversine_nm(arena[idx].lat, arena[idx].lon, end_lat, end_lon);
-            if d < best_dist {
-                best_dist = d;
-                best_idx = idx;
+    /// Backtrack from the best arrival or closest frontier point to produce the route.
+    pub fn backtrack(&self) -> Vec<RoutePoint> {
+        let backtrack_idx = if let Some(idx) = self.arrived {
+            idx
+        } else if !self.frontier.is_empty() {
+            let mut best_idx = self.frontier[0];
+            let mut best_dist = haversine_nm(
+                self.arena[best_idx].lat,
+                self.arena[best_idx].lon,
+                self.end_lat,
+                self.end_lon,
+            );
+            for &idx in &self.frontier[1..] {
+                let d = haversine_nm(
+                    self.arena[idx].lat,
+                    self.arena[idx].lon,
+                    self.end_lat,
+                    self.end_lon,
+                );
+                if d < best_dist {
+                    best_dist = d;
+                    best_idx = idx;
+                }
             }
+            best_idx
+        } else {
+            return Vec::new();
+        };
+
+        let mut route = Vec::new();
+
+        // Walk parent chain — skip the arrival point when we snap to the exact destination
+        let start_idx = if self.arrived.is_some() {
+            self.arena[backtrack_idx].parent
+        } else {
+            Some(backtrack_idx)
+        };
+        let mut cur_idx = start_idx;
+        while let Some(i) = cur_idx {
+            let p = &self.arena[i];
+            route.push(RoutePoint {
+                lat: p.lat,
+                lon: p.lon,
+                time_ms: p.time_ms,
+                ctw: p.ctw,
+                twa: p.twa,
+                boat_speed: p.boat_speed,
+                step_calc_ms: p.step_calc_ms,
+            });
+            cur_idx = p.parent;
         }
-        best_idx
-    } else {
-        return Err(format!(
-            "No reachable positions after {} steps",
-            steps_completed
-        ));
-    };
+        route.reverse();
 
-    let mut route = Vec::new();
+        // Snap to exact destination with estimated extra travel time
+        if self.arrived.is_some() {
+            let arr = &self.arena[backtrack_idx];
+            let extra_dist = haversine_nm(arr.lat, arr.lon, self.end_lat, self.end_lon);
+            let extra_h = if arr.boat_speed > 0.1 {
+                extra_dist / arr.boat_speed
+            } else {
+                0.0
+            };
+            route.push(RoutePoint {
+                lat: self.end_lat,
+                lon: self.end_lon,
+                time_ms: arr.time_ms + extra_h * 3_600_000.0,
+                ctw: arr.ctw,
+                twa: arr.twa,
+                boat_speed: arr.boat_speed,
+                step_calc_ms: 0.0,
+            });
+        }
 
-    // Walk parent chain — skip the arrival point when we snap to the exact destination
-    let start_idx = if arrived.is_some() {
-        arena[backtrack_idx].parent
-    } else {
-        Some(backtrack_idx)
-    };
-    let mut cur_idx = start_idx;
-    while let Some(i) = cur_idx {
-        let p = &arena[i];
-        route.push(RoutePoint {
-            lat: p.lat,
-            lon: p.lon,
-            time_ms: p.time_ms,
-            ctw: p.ctw,
-            twa: p.twa,
-            boat_speed: p.boat_speed,
-            step_calc_ms: p.step_calc_ms,
-        });
-        cur_idx = p.parent;
+        route
     }
-    route.reverse();
-
-    // Snap to exact destination with estimated extra travel time
-    if arrived.is_some() {
-        let arr = &arena[backtrack_idx];
-        let extra_dist = haversine_nm(arr.lat, arr.lon, end_lat, end_lon);
-        let extra_h = if arr.boat_speed > 0.1 { extra_dist / arr.boat_speed } else { 0.0 };
-        route.push(RoutePoint {
-            lat: end_lat,
-            lon: end_lon,
-            time_ms: arr.time_ms + extra_h * 3_600_000.0,
-            ctw: arr.ctw,
-            twa: arr.twa,
-            boat_speed: arr.boat_speed,
-            step_calc_ms: 0.0,
-        });
-    }
-
-    Ok(route)
 }
 
 /// Sector-based frontier pruning: keep the two farthest-from-start candidates per bearing sector.

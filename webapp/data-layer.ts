@@ -43,6 +43,7 @@ async function fetchTile(url: string) {
     return { rgba: data, header };
   })();
   tileCache.set(url, pending);
+  pending.catch(() => tileCache.delete(url));
   return pending;
 }
 
@@ -70,7 +71,6 @@ let cmemsSteps: ForecastStep[] = [];
 let windModelRun = '';
 let waveModelRun = '';
 let cmemsModelRun = '';
-
 
 /**
  * Load forecast time axes from Windy minifests.

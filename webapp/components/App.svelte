@@ -721,6 +721,10 @@
       if (windTimesCount > 0) {
         await fetchWindPointsAt(0);
         await fetchWavePointsAt(0);
+        const t0 = windTimes[0];
+        if (t0) {
+          await fetchCurrentPointsAt(new Date(t0).getTime());
+        }
       }
       setStatus('done', 'Ready');
     })();
@@ -747,10 +751,13 @@
     setupViewportRefresh(m, {
       fetchWindPointsAt,
       fetchWavePointsAt,
+      fetchCurrentPointsAt,
       isWindTimesLoaded: () => windTimesLoaded,
       isWindVisible: () => windOverlayVisible,
       isWaveVisible: () => waveOverlayVisible,
+      isCurrentVisible: () => currentOverlayVisible,
       getScrubberIndex: () => scrubberIndex,
+      getWindTimes: () => windTimes,
     });
     setupInfoPopupClick(m, () => ({
       allWindPoints: forecaster.getWindPoints(),
@@ -768,6 +775,18 @@
       if (dataLayer.dilatedLandDataReady()) { dilatedIndexReady = true; clearInterval(dilatedPoll); }
     }, 5000);
 
+  });
+
+  // ── Isochrone layer visibility toggle ────────────────────────────────────
+  $effect(() => {
+    const vis = isochroneVisibleState;
+    if (!isochroneState || !mapRef) return;
+    const visibility = vis ? 'visible' : 'none';
+    for (const layerId of isochroneState.layerIds) {
+      if (mapRef.getLayer(layerId)) {
+        mapRef.setLayoutProperty(layerId, 'visibility', visibility);
+      }
+    }
   });
 
 </script>

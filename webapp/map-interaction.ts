@@ -6,7 +6,7 @@ import maplibregl from 'maplibre-gl';
 import type { WindPoint, WavePoint, CurrentPoint } from './stores';
 import { fmt as _fmt } from './units';
 
-type LatLon = { lat: number; lon: number }
+type LatLon = { lat: number; lon: number };
 
 // ── Marker icons ──────────────────────────────────────────────────────────────
 
@@ -26,13 +26,15 @@ export function redIcon(): HTMLDivElement {
 
 // ── Info popup (wind/wave/current on click) ───────────────────────────────────
 
-interface InfoPopupState { allWindPoints: WindPoint[];
-allWavePoints: WavePoint[];
-allCurrentPoints: CurrentPoint[];
-windSpeedMs: boolean;
-windVisible: boolean;
-waveVisible: boolean;
-currentVisible: boolean; }
+interface InfoPopupState {
+  allWindPoints: WindPoint[];
+  allWavePoints: WavePoint[];
+  allCurrentPoints: CurrentPoint[];
+  windSpeedMs: boolean;
+  windVisible: boolean;
+  waveVisible: boolean;
+  currentVisible: boolean;
+}
 
 /**
  * Register the info-popup click handler. Returns a cleanup function.
@@ -79,12 +81,17 @@ export function setupInfoPopupClick(map: maplibregl.Map, getState: () => InfoPop
 
 // ── Viewport change handler ───────────────────────────────────────────────────
 
-interface ViewportCallbacks { fetchWindPointsAt(timeIdx: number): void;
-fetchWavePointsAt(timeIdx: number): void;
-isWindTimesLoaded(): boolean;
-isWindVisible(): boolean;
-isWaveVisible(): boolean;
-getScrubberIndex(): number; }
+interface ViewportCallbacks {
+  fetchWindPointsAt(timeIdx: number): void;
+  fetchWavePointsAt(timeIdx: number): void;
+  fetchCurrentPointsAt(timeMs: number): void;
+  isWindTimesLoaded(): boolean;
+  isWindVisible(): boolean;
+  isWaveVisible(): boolean;
+  isCurrentVisible(): boolean;
+  getScrubberIndex(): number;
+  getWindTimes(): string[];
+}
 
 /**
  * Re-fetch overlay data when the viewport changes. Returns a cleanup function.
@@ -97,6 +104,10 @@ export function setupViewportRefresh(map: maplibregl.Map, cb: ViewportCallbacks)
     }
     if (cb.isWaveVisible() && cb.isWindTimesLoaded()) {
       cb.fetchWavePointsAt(idx);
+    }
+    if (cb.isCurrentVisible() && cb.isWindTimesLoaded()) {
+      const timeStr = cb.getWindTimes()[idx];
+      if (timeStr) cb.fetchCurrentPointsAt(new Date(timeStr).getTime());
     }
   };
   map.on('moveend', handler);
