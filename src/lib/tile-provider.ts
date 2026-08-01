@@ -138,7 +138,6 @@ export class TileWindProvider implements WindProvider {
   /** Load metadata (model runs, time steps, tile grid). No tiles fetched yet. */
   async load(bbox: BoundingBox, _fromMs?: number, _toMs?: number): Promise<void> {
     const [windMf, waveMf] = await Promise.all([fetchMinifest(this.windModel), fetchMinifest(this.waveModel)]);
-    this.bbox = bbox;
 
     this.windModelRun = refToCompact(windMf.ref);
     this.waveModelRun = refToCompact(waveMf.ref);
@@ -152,6 +151,7 @@ export class TileWindProvider implements WindProvider {
     this.times.length = 0;
     this.times.push(...this.windStepsMs.map((ms) => new Date(ms)));
 
+    this.bbox = bbox;
     this.loaded = true;
   }
 
