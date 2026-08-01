@@ -44,12 +44,13 @@ export interface GribFileEntry {
 // Provides ocean current lookups for use by the routing algorithm.
 export interface CurrentProvider {
   getCurrent(lat: number, lon: number, t: Date): WindVector; // {u:0,v:0} when outside domain
-  coversPoint(lat: number, lon: number): boolean;
   readonly times: Date[];
   readonly meta: GribFileMeta;
 }
 
-// Abstraction over one or more loaded GRIB files; used by the routing algorithm.
+// Abstraction over wind/wave data; used by the routing algorithm.
+// Coverage checking is handled by the WASM routing engine (WeatherStore::covers),
+// not by the provider — the provider only samples data at requested positions.
 export interface WindProvider {
   readonly times: Date[]; // merged, sorted, deduplicated time axis across all files
   getWind(lat: number, lon: number, timeIdx: number): WindVector;
@@ -64,11 +65,6 @@ export interface WindProvider {
   getWavePeriodAtTime?(lat: number, lon: number, timeMs: number): number | undefined;
   /** Wave propagation direction at continuous time (ms), degrees from north */
   getWaveDirAtTime?(lat: number, lon: number, timeMs: number): number | undefined;
-  coversPoint(lat: number, lon: number): boolean;
-  coversPointAtTime(lat: number, lon: number, timeIdx: number): boolean;
-  /** Check if a point is covered at a specific time in ms */
-  coversPointAtTimeMs?(lat: number, lon: number, timeMs: number): boolean;
-  getFilePathForPoint(lat: number, lon: number, timeIdx: number): string;
   /** Fetch tiles on-demand for a specific time step. Call before each algorithm step. */
   prefetchForTime?(timeMs: number): Promise<void>;
 }
