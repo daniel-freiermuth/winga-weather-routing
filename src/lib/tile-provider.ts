@@ -1,19 +1,29 @@
 // TileWindProvider / TileCurrentProvider: WindProvider and CurrentProvider
 // implementations backed by pre-fetched Windy forecast tiles.
 //
+// ARCHITECTURE
+// ────────────
+//   The providers are data samplers, not coverage gatekeepers. Coverage
+//   checking is handled by the WASM routing engine (WeatherStore::covers)
+//   using the grid dimensions pushed via push_wind_frame/push_current_frame.
+//   The worker dynamically expands the tile corridor when the frontier
+//   approaches the grid edge (see worker.ts corridor expansion).
+//
 // LIFECYCLE
 // ─────────
-//   1. Construct with model, time range, and bounding box.
-//   2. Call load() — fetches and decodes all needed tiles in parallel.
-//   3. Use getWind / getWave / getCurrent — fully synchronous after load().
+//   1. Construct with model and optional zoom level.
+//   2. Call load(bbox) — fetches model metadata and sets up tile grid.
+//   3. Call prefetchForTime(timeMs) — lazily fetches tile data for a time bracket.
+//   4. Use getWind / getWave / getCurrent — fully synchronous after prefetch.
+//   5. Call load(expandedBbox) again on corridor expansion — resets tile grid,
+//      keeps cached tiles (they remain valid at new positions).
 //
 // TILE CACHING
 // ─────────────
 // Each tile is fetched once and its decoded RGBA buffer + header are stored
-// in memory. At z=3, one tile covers ~45°×45°. A 5-day Baltic route
-// typically needs ~1 tile × 40 time steps × 2 overlays ≈ 80 tile fetches,
-// each ~28 KB → ~2 MB total. The 257×265×4 decoded RGBA is ~272 KB per
-// tile, so ~22 MB total in memory — fine for a planning session.
+// in memory. At z=3, one tile covers ~45°×25–40°; at z=4, ~22°×12–20°.
+// The cache accumulates across load() calls — old tiles remain valid and
+// are reused when the corridor expands.
 //
 // BROWSER COMPATIBILITY
 // ──────────────────────
@@ -103,13 +113,16 @@ export interface TileWindProviderOptions {
 }
 
 /**
- * Pre-fetch Windy wind + wave tiles for a geographic area and time range,
- * then provide synchronous O(1) wind/wave lookups for the routing algorithm.
+ * Windy wind + wave tile provider: loads model metadata eagerly, fetches
+ * tile data lazily per time step. Provides synchronous O(1) wind/wave lookups.
  *
  * ```
- * const wp = new TileWindProvider(options);
- * await wp.load(bbox, fromMs, toMs);
- * // Now usable as WindProvider — synchronous getWind / getWave
+ * const wp = new TileWindProvider({ windModel: 'ecmwf', zoom });
+ * await wp.load(bbox);
+ * // Before each routing step:
+ * await wp.prefetchForTime(timeMs);
+ * // Then sample synchronously:
+ * wp.getWindAtTime(lat, lon, timeMs);
  * ```
  */
 export class TileWindProvider implements WindProvider {
@@ -126,8 +139,6 @@ export class TileWindProvider implements WindProvider {
   private windModelRun = '';
   private waveModelRun = '';
   private tiles: { x: number; y: number }[] = [];
-  private loaded = false;
-  private bbox: BoundingBox = { latMin: -90, latMax: 90, lonMin: -180, lonMax: 180 };
 
   constructor(opts: TileWindProviderOptions = {}) {
     const model = opts.windModel ?? 'ecmwf';
@@ -150,9 +161,6 @@ export class TileWindProvider implements WindProvider {
     // Build full time axis from all available wind steps
     this.times.length = 0;
     this.times.push(...this.windStepsMs.map((ms) => new Date(ms)));
-
-    this.bbox = bbox;
-    this.loaded = true;
   }
 
   /**
@@ -246,28 +254,6 @@ export class TileWindProvider implements WindProvider {
     const step = this.waveSteps[idx];
     if (step === undefined) return undefined;
     return this.sampleWaveTile(lat, lon, step.compact)?.height;
-  }
-
-  coversPoint(lat: number, lon: number): boolean {
-    return (
-      this.loaded &&
-      lat >= this.bbox.latMin &&
-      lat <= this.bbox.latMax &&
-      lon >= this.bbox.lonMin &&
-      lon <= this.bbox.lonMax
-    );
-  }
-
-  coversPointAtTime(lat: number, lon: number, timeIdx: number): boolean {
-    return this.coversPoint(lat, lon) && timeIdx >= 0 && timeIdx < this.times.length;
-  }
-
-  coversPointAtTimeMs(lat: number, lon: number, timeMs: number): boolean {
-    if (!this.coversPoint(lat, lon) || this.times.length === 0) return false;
-    const first = this.times[0];
-    const last = this.times[this.times.length - 1];
-    if (first === undefined || last === undefined) return false;
-    return timeMs >= first.getTime() && timeMs <= last.getTime();
   }
 
   // Cache the last time-bracket index to avoid repeated binary searches
@@ -425,13 +411,6 @@ export class TileWindProvider implements WindProvider {
     return Math.max(3, Math.min(z, 4)); // Windy serves zoom 3–4 only
   }
 
-  getFilePathForPoint(lat: number, lon: number, timeIdx: number): string {
-    const step = this.windSteps[this.stepIdxForTimeIdx(timeIdx)];
-    if (step === undefined) return '';
-    const { x, y } = latLonToTile(lat, lon, this.zoom);
-    return `windy/${this.windModel}/${this.windModelRun}/${step.compact}/${String(this.zoom)}/${String(x)}/${String(y)}`;
-  }
-
   // ── Private ─────────────────────────────────────────────────────────────────
 
   /** Map a times[] index to the closest wind step index. */
@@ -476,7 +455,6 @@ export class TileCurrentProvider implements CurrentProvider {
   private modelRun = '';
   private tiles: { x: number; y: number }[] = [];
   private loaded = false;
-  private bbox: BoundingBox = { latMin: -90, latMax: 90, lonMin: -180, lonMax: 180 };
 
   constructor(zoom = 3) {
     this.zoom = zoom;
@@ -499,7 +477,6 @@ export class TileCurrentProvider implements CurrentProvider {
   }
 
   async load(bbox: BoundingBox, fromMs: number, toMs: number): Promise<void> {
-    this.bbox = bbox;
     const mf = await fetchMinifest('cmems');
     this.modelRun = refToCompact(mf.ref);
     this.steps = getValidTimes(mf);
@@ -586,15 +563,5 @@ export class TileCurrentProvider implements CurrentProvider {
     const { px, py } = latLonToPixelFrac(lat, lon, this.zoom, x, y);
     const val = sampleTileBilinear(tile.rgba, tile.header, px, py, true);
     return val.hasData ? { u: val.u, v: val.v } : { u: 0, v: 0 };
-  }
-
-  coversPoint(lat: number, lon: number): boolean {
-    return (
-      this.loaded &&
-      lat >= this.bbox.latMin &&
-      lat <= this.bbox.latMax &&
-      lon >= this.bbox.lonMin &&
-      lon <= this.bbox.lonMax
-    );
   }
 }
