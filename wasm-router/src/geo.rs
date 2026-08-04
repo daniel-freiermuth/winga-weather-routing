@@ -63,8 +63,14 @@ mod tests {
             lon >= -180.0 && lon <= 180.0,
             "longitude must be in [-180, 180], got {lon}"
         );
-        assert!(lon < 0.0, "120 nm east from 179°E crosses antimeridian, got {lon}");
-        assert!(lat.abs() < 1.0, "near-equatorial start should stay near equator, got {lat}");
+        assert!(
+            lon < 0.0,
+            "120 nm east from 179°E crosses antimeridian, got {lon}"
+        );
+        assert!(
+            lat.abs() < 1.0,
+            "near-equatorial start should stay near equator, got {lat}"
+        );
     }
 
     #[test]
@@ -75,6 +81,9 @@ mod tests {
             lon >= -180.0 && lon <= 180.0,
             "longitude must be in [-180, 180], got {lon}"
         );
-        assert!(lon > 0.0, "120 nm west from 179°W crosses antimeridian, got {lon}");
+        assert!(
+            lon > 0.0,
+            "120 nm west from 179°W crosses antimeridian, got {lon}"
+        );
     }
 }
