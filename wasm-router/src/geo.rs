@@ -49,3 +49,31 @@ pub fn wind_direction(u: f64, v: f64) -> f64 {
     // atan2(-u, -v) gives the direction wind blows FROM
     ((-u).atan2(-v) * RAD_TO_DEG + 360.0) % 360.0
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn destination_point_wraps_longitude_eastward() {
+        // 120 nm due east from 179°E — should wrap to negative longitude.
+        let (lat, lon) = destination_point(0.0, 179.0, 120.0, 90.0);
+        assert!(
+            lon >= -180.0 && lon <= 180.0,
+            "longitude must be in [-180, 180], got {lon}"
+        );
+        assert!(lon < 0.0, "120 nm east from 179°E crosses antimeridian, got {lon}");
+        assert!(lat.abs() < 1.0, "near-equatorial start should stay near equator, got {lat}");
+    }
+
+    #[test]
+    fn destination_point_wraps_longitude_westward() {
+        // 120 nm due west from 179°W — should wrap to positive longitude.
+        let (_lat, lon) = destination_point(0.0, -179.0, 120.0, 270.0);
+        assert!(
+            lon >= -180.0 && lon <= 180.0,
+            "longitude must be in [-180, 180], got {lon}"
+        );
+        assert!(lon > 0.0, "120 nm west from 179°W crosses antimeridian, got {lon}");
+    }
+}
